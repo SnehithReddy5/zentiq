@@ -81,7 +81,7 @@ jobs:
       - name: Package Windows Installer
         run: |
           npm install --save-dev electron electron-builder
-          npx electron-builder --win nsis portable
+          npx electron-builder --win nsis portable --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -83,7 +83,7 @@
       "icon": "assets/icon.png"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
@@ -92,6 +92,9 @@
     },
     "extraMetadata": {
       "main": "electron/main.js"
-    }
-  }
+    },
+    "publish": null
+  },
+  "description": "Zentiq Restaurant Point of Sale & Billing Terminal",
+  "author": "Zentiq"
 }
