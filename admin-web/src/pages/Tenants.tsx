@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import {
   Building2,
   Plus,
@@ -22,7 +22,10 @@ import {
   ChevronDown,
   ChevronUp,
   Ban,
-  CheckCircle
+  CheckCircle,
+  Trash2,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 
 // Subcomponent to display and control branches for each tenant
@@ -147,6 +150,10 @@ export const Tenants = () => {
   const [editDineInEnabled, setEditDineInEnabled] = useState(true);
   const [editPickupEnabled, setEditPickupEnabled] = useState(true);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editRenewalDate, setEditRenewalDate] = useState('');
+  const [deleteTargetTenant, setDeleteTargetTenant] = useState<any | null>(null);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Real-time snapshot listener on tenants
   useEffect(() => {
@@ -171,7 +178,12 @@ export const Tenants = () => {
       const tenantId = tenantName.toLowerCase().trim().replace(/[^a-z0-9]/g, '-');
       const locationId = 'loc-primary';
 
-      // A. Create Tenant profile
+      // Calculate 1 Calendar Year Renewal Date
+      const now = new Date();
+      const renewalDate = new Date(now);
+      renewalDate.setFullYear(now.getFullYear() + 1);
+
+      // A. Create Tenant profile with Annual Renewal
       await setDoc(doc(db, 'tenants', tenantId), {
         id: tenantId,
         businessName: tenantName.trim(),
@@ -181,6 +193,9 @@ export const Tenants = () => {
         multiLocationEnabled,
         adminUsername: adminMobile.trim(),
         adminPassword: adminPassword.trim(),
+        subscriptionPlan: 'ANNUAL',
+        renewalDate: renewalDate.toISOString(),
+        provisionedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -276,6 +291,13 @@ export const Tenants = () => {
     setEditAdminMobile(tenant.adminUsername || '');
     setEditAdminPassword(tenant.adminPassword || '');
     setEditMultiLocationEnabled(tenant.multiLocationEnabled ?? true);
+    if (tenant.renewalDate) {
+      setEditRenewalDate(tenant.renewalDate.split('T')[0]);
+    } else {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() + 1);
+      setEditRenewalDate(d.toISOString().split('T')[0]);
+    }
 
     // Fetch feature configuration
     const featRef = doc(db, 'tenants', tenant.id, 'features', 'config');
@@ -304,6 +326,7 @@ export const Tenants = () => {
         multiLocationEnabled: editMultiLocationEnabled,
         adminUsername: editAdminMobile.trim() || undefined,
         adminPassword: editAdminPassword.trim() || undefined,
+        renewalDate: editRenewalDate ? new Date(editRenewalDate).toISOString() : undefined,
         updatedAt: serverTimestamp(),
       });
 
@@ -381,6 +404,106 @@ export const Tenants = () => {
       case 'FOOD_TRUCK': return <Truck size={14} className="text-cyan-400" />;
       case 'CURRY_POINT': return <Store size={14} className="text-orange-400" />;
       default: return <UtensilsCrossed size={14} className="text-purple-400" />;
+    }
+  };
+
+  // Calculate Annual Renewal Status
+  const getRenewalInfo = (tenant: any) => {
+    let renewal: Date;
+    if (tenant.renewalDate) {
+      renewal = new Date(tenant.renewalDate);
+    } else {
+      const created = tenant.createdAt?.seconds ? new Date(tenant.createdAt.seconds * 1000) : new Date();
+      renewal = new Date(created);
+      renewal.setFullYear(created.getFullYear() + 1);
+    }
+    const daysRemaining = Math.ceil((renewal.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return {
+      dateStr: renewal.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      daysRemaining,
+      isOverdue: daysRemaining <= 0,
+      isExpiringSoon: daysRemaining > 0 && daysRemaining <= 30
+    };
+  };
+
+  // Helper to delete all documents in a subcollection
+  const deleteSubcollectionDocs = async (colRef: any) => {
+    try {
+      const snap = await getDocs(colRef);
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref);
+      }
+    } catch (err) {
+      console.warn('Subcollection delete skip:', err);
+    }
+  };
+
+  // Cascade Delete Tenant with ALL data
+  const handleCascadeDeleteTenant = async () => {
+    if (!deleteTargetTenant) return;
+    const tenantId = deleteTargetTenant.id;
+    const expectedConfirm = (deleteTargetTenant.businessName || deleteTargetTenant.id).trim();
+
+    if (deleteConfirmationInput.trim().toLowerCase() !== expectedConfirm.toLowerCase()) {
+      alert(`Please type "${expectedConfirm}" exactly to confirm permanent deletion.`);
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      // 1. Delete all locations and their nested subcollections
+      const locsSnap = await getDocs(collection(db, 'tenants', tenantId, 'locations'));
+      for (const locDoc of locsSnap.docs) {
+        const locId = locDoc.id;
+        await deleteSubcollectionDocs(collection(db, 'tenants', tenantId, 'locations', locId, 'menuItems'));
+        await deleteSubcollectionDocs(collection(db, 'tenants', tenantId, 'locations', locId, 'menuCategories'));
+        await deleteSubcollectionDocs(collection(db, 'tenants', tenantId, 'locations', locId, 'tables'));
+        await deleteSubcollectionDocs(collection(db, 'tenants', tenantId, 'locations', locId, 'orders'));
+        await deleteDoc(locDoc.ref);
+      }
+
+      // 2. Delete tenant direct subcollections
+      const subCollections = ['users', 'tables', 'menuItems', 'menuCategories', 'orders'];
+      for (const sub of subCollections) {
+        await deleteSubcollectionDocs(collection(db, 'tenants', tenantId, sub));
+      }
+
+      // 3. Delete feature & branding docs
+      try { await deleteDoc(doc(db, 'tenants', tenantId, 'features', 'config')); } catch (_) {}
+      try { await deleteDoc(doc(db, 'tenants', tenantId, 'branding', 'config')); } catch (_) {}
+
+      // 4. Delete root collections tied to this tenant
+      const rootCollections = ['users', 'location_requests', 'orders', 'tables', 'menuItems', 'menuCategories'];
+      for (const colName of rootCollections) {
+        try {
+          const q = query(collection(db, colName), where('tenantId', '==', tenantId));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await deleteDoc(d.ref);
+          }
+        } catch (err) {
+          console.warn(`Error wiping root collection ${colName}:`, err);
+        }
+      }
+
+      // 5. Delete root user documents created with admin username
+      if (deleteTargetTenant.adminUsername) {
+        const username = deleteTargetTenant.adminUsername.trim();
+        try { await deleteDoc(doc(db, 'users', username)); } catch (_) {}
+        try { await deleteDoc(doc(db, 'users', username.toLowerCase())); } catch (_) {}
+      }
+
+      // 6. Delete the primary tenant document
+      await deleteDoc(doc(db, 'tenants', tenantId));
+
+      alert(`Tenant "${expectedConfirm}" and ALL associated data have been permanently wiped from the database.`);
+      setDeleteTargetTenant(null);
+      setDeleteConfirmationInput('');
+    } catch (err: any) {
+      console.error('Cascade delete error:', err);
+      alert('Failed to delete tenant: ' + err.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -487,6 +610,35 @@ export const Tenants = () => {
                         {tenant.adminUsername || 'N/A'}
                       </span>
                     </div>
+
+                    {/* Annual Calendar Renewal */}
+                    {(() => {
+                      const renewal = getRenewalInfo(tenant);
+                      return (
+                        <div className="flex items-center justify-between pt-1 text-slate-400">
+                          <span className="flex items-center gap-1">
+                            <Calendar size={12} className="text-indigo-400" />
+                            Annual Renewal:
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-200 font-semibold text-[11px]">{renewal.dateStr}</span>
+                            {renewal.isOverdue ? (
+                              <span className="bg-rose-500/15 text-rose-400 border border-rose-500/30 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                Overdue
+                              </span>
+                            ) : renewal.isExpiringSoon ? (
+                              <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                {renewal.daysRemaining}d left
+                              </span>
+                            ) : (
+                              <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                Active (1-Yr)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Real-time Branch Manager for this Tenant */}
@@ -496,21 +648,31 @@ export const Tenants = () => {
                 <div className="pt-3 border-t border-slate-800 flex items-center gap-2">
                   <button
                     onClick={() => openEditModal(tenant)}
-                    className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2 rounded-xl transition-all cursor-pointer"
+                    className="flex-1 flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2 rounded-xl transition-all cursor-pointer"
                   >
-                    <Edit2 size={13} />
-                    Edit Info
+                    <Edit2 size={12} />
+                    Edit
                   </button>
                   <button
                     onClick={() => toggleTenantStatus(tenant.id, tenant.status || 'ACTIVE')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer ${
+                    className={`flex-1 flex items-center justify-center gap-1 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer ${
                       isActive
-                        ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20'
+                        ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/20'
                         : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/20'
                     }`}
                   >
-                    <Power size={13} />
-                    {isActive ? 'Deactivate' : 'Activate'}
+                    <Power size={12} />
+                    {isActive ? 'Pause' : 'Activate'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDeleteTargetTenant(tenant);
+                      setDeleteConfirmationInput('');
+                    }}
+                    title="Delete Tenant & All Data"
+                    className="p-2 bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 rounded-xl transition-all cursor-pointer shrink-0"
+                  >
+                    <Trash2 size={13} />
                   </button>
                 </div>
               </div>
@@ -573,6 +735,33 @@ export const Tenants = () => {
               </div>
 
               {/* Order Types & Multi-Location Licensing */}
+              <div className="bg-slate-800/40 border border-slate-800 p-3 rounded-2xl space-y-2 mb-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Calendar size={13} className="text-indigo-400" />
+                    Annual Renewal Date (Calendar Year)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = editRenewalDate ? new Date(editRenewalDate) : new Date();
+                      cur.setFullYear(cur.getFullYear() + 1);
+                      setEditRenewalDate(cur.toISOString().split('T')[0]);
+                    }}
+                    className="text-[10px] bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 border border-indigo-500/30 px-2 py-0.5 rounded-md font-bold cursor-pointer transition-all"
+                  >
+                    +1 Year Renewal
+                  </button>
+                </div>
+                <input
+                  type="date"
+                  value={editRenewalDate}
+                  onChange={(e) => setEditRenewalDate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
+                <p className="text-[10px] text-slate-500">Each provisioned client renews annually every calendar year.</p>
+              </div>
+
               <div className="bg-slate-800/40 border border-slate-800 p-3 rounded-2xl space-y-2">
                 <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider block">
                   Service & Branch Entitlements
@@ -653,6 +842,98 @@ export const Tenants = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent Cascade Deletion Modal */}
+      {deleteTargetTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="bg-slate-900 border border-rose-500/40 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                  <AlertTriangle size={20} className="text-rose-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Delete Tenant & Purge All Data</h2>
+                  <p className="text-xs text-rose-400/90 font-medium mt-0.5">Permanent cascade deletion</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDeleteTargetTenant(null)}
+                disabled={isDeleting}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-rose-950/25 border border-rose-500/20 rounded-2xl p-4 text-xs space-y-2">
+              <p className="text-rose-200 font-semibold">
+                You are about to permanently delete:
+              </p>
+              <div className="bg-black/40 p-2.5 rounded-xl font-mono text-slate-200 text-xs">
+                <div><strong className="text-slate-400">Business:</strong> {deleteTargetTenant.businessName || deleteTargetTenant.id}</div>
+                <div><strong className="text-slate-400">Tenant ID:</strong> {deleteTargetTenant.id}</div>
+              </div>
+              <p className="text-slate-300">
+                This action will <strong className="text-rose-400">recursively destroy all data</strong> belonging to this tenant, including:
+              </p>
+              <ul className="list-disc list-inside text-slate-400 space-y-1 pl-1 text-[11px]">
+                <li>All branch locations, floor zones & table configurations</li>
+                <li>Full menu catalog, variants, and categories</li>
+                <li>All settled and historical order / billing records</li>
+                <li>Staff user accounts and root admin credentials</li>
+                <li>Branding and feature configurations</li>
+              </ul>
+              <p className="text-amber-400 font-semibold pt-1 text-[11px]">
+                ⚠️ This operation CANNOT be undone!
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300">
+                Type <span className="text-rose-400 font-bold font-mono select-all">{deleteTargetTenant.businessName || deleteTargetTenant.id}</span> to confirm:
+              </label>
+              <input
+                type="text"
+                placeholder="Type tenant name here..."
+                value={deleteConfirmationInput}
+                onChange={(e) => setDeleteConfirmationInput(e.target.value)}
+                disabled={isDeleting}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetTenant(null)}
+                disabled={isDeleting}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2.5 rounded-xl transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCascadeDeleteTenant}
+                disabled={isDeleting || deleteConfirmationInput.trim().toLowerCase() !== (deleteTargetTenant.businessName || deleteTargetTenant.id).trim().toLowerCase()}
+                className="flex-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:hover:bg-rose-600 text-white text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw size={13} className="animate-spin" />
+                    Purging All Data...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={13} />
+                    Permanently Delete
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

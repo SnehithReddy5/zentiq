@@ -73,12 +73,33 @@ export const MenuManagementScreen = () => {
     }
   };
 
+  // Open Add Category Modal
+  const openAddCategoryModal = () => {
+    setEditingCategoryId(null);
+    setCatName('');
+    setCategoryModalOpen(true);
+  };
+
   // Open Add Item Modal
   const openAddItemModal = () => {
+    if (categories.length === 0) {
+      Alert.alert(
+        'Create Category First',
+        'You need to create at least one category (e.g. Starters, Mains, Beverages) before adding menu items.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: '+ Create Category', onPress: () => openAddCategoryModal() }
+        ]
+      );
+      return;
+    }
     setEditingItemId(null);
     setItemName('');
     setItemPrice('');
-    setItemCategoryId(activeCategory !== 'all' && activeCategory !== 'favorites' ? activeCategory : (categories[0]?.id || ''));
+    const defaultCat = (activeCategory !== 'all' && activeCategory !== 'favorites' && categories.some(c => c.id === activeCategory))
+      ? activeCategory
+      : (categories[0]?.id || '');
+    setItemCategoryId(defaultCat);
     setItemIsFavorite(false);
     setHasVariants(false);
     setVariants([]);
@@ -110,6 +131,10 @@ export const MenuManagementScreen = () => {
     }
 
     if (!itemCategoryId) {
+      if (categories.length === 0) {
+        Alert.alert('Category Needed', 'Please create a menu category first before adding items.');
+        return;
+      }
       Alert.alert('Required', 'Please select a category for this item.');
       return;
     }
@@ -130,11 +155,12 @@ export const MenuManagementScreen = () => {
     let cleanVariants: MenuItemVariant[] | undefined = undefined;
 
     if (hasVariants) {
-      if (variants.length === 0) {
-        Alert.alert('Variants Required', 'Please add at least one variant or turn off options.');
+      const validVariants = variants.filter(v => v.name.trim().length > 0);
+      if (validVariants.length === 0) {
+        Alert.alert('Variants Required', 'Please add at least one named variant or turn off multiple sizes.');
         return;
       }
-      cleanVariants = variants.map((v, idx) => ({
+      cleanVariants = validVariants.map((v, idx) => ({
         id: v.id || `var_${Date.now()}_${idx}`,
         name: v.name.trim(),
         price: parseFloat(v.price) || 0,
@@ -143,16 +169,21 @@ export const MenuManagementScreen = () => {
     }
 
     try {
+      const payload: any = {
+        name: itemName.trim(),
+        price: parsedPrice,
+        categoryId: itemCategoryId,
+        isFavorite: itemIsFavorite,
+      };
+
+      if (cleanVariants && cleanVariants.length > 0) {
+        payload.variants = cleanVariants;
+      }
+
       if (editingItemId) {
         await DBServices.updateMenuItem(
           editingItemId,
-          {
-            name: itemName.trim(),
-            price: parsedPrice,
-            categoryId: itemCategoryId,
-            isFavorite: itemIsFavorite,
-            variants: cleanVariants,
-          },
+          payload,
           tenant?.id,
           activeLocationId || undefined
         );
@@ -160,12 +191,8 @@ export const MenuManagementScreen = () => {
       } else {
         await DBServices.addMenuItem(
           {
-            name: itemName.trim(),
-            price: parsedPrice,
-            categoryId: itemCategoryId,
+            ...payload,
             isAvailable: true,
-            isFavorite: itemIsFavorite,
-            variants: cleanVariants,
           },
           tenant?.id,
           activeLocationId || undefined
@@ -175,7 +202,8 @@ export const MenuManagementScreen = () => {
 
       setItemModalOpen(false);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      console.error('Error saving menu item:', e);
+      Alert.alert('Save Failed', e.message || 'Could not save menu item.');
     }
   };
 
@@ -449,7 +477,19 @@ export const MenuManagementScreen = () => {
                 <View className="mb-3">
                   <Text className="text-slate-300 font-bold text-xs mb-1.5">Category *</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
-                    {categories.map(c => (
+                    {categories.length === 0 ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setItemModalOpen(false);
+                        openAddCategoryModal();
+                      }}
+                      className="bg-purple-600/30 border border-purple-500/50 px-3 py-2 rounded-xl flex-row items-center"
+                    >
+                      <Plus size={14} color="#C084FC" />
+                      <Text className="text-purple-300 text-xs font-bold ml-1.5">+ Add Category First</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    categories.map(c => (
                       <TouchableOpacity
                         key={c.id}
                         onPress={() => setItemCategoryId(c.id)}
@@ -461,7 +501,8 @@ export const MenuManagementScreen = () => {
                       >
                         <Text className="text-white text-xs font-semibold">{c.name}</Text>
                       </TouchableOpacity>
-                    ))}
+                    ))
+                  )}
                   </ScrollView>
                 </View>
 

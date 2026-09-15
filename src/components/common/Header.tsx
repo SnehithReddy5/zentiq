@@ -43,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Menu size={20} color="#CBD5E1" />
           </TouchableOpacity>
         )}
-        <View className="flex-1">
+        <View className="flex-1 mr-1.5">
           <Text className="text-lg font-bold text-white" numberOfLines={1}>
             {title}
           </Text>
@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </View>
       </View>
-      {rightElement && <View className="ml-2">{rightElement}</View>}
+      {rightElement && <View className="ml-2 shrink-0 flex-shrink-0">{rightElement}</View>}
     </View>
   );
 };

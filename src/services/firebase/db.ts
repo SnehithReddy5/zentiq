@@ -16,6 +16,16 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './config';
+function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
+  const clean: any = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
 import { Table } from '../../types/table.types';
 import { MenuCategory, MenuItem } from '../../types/menu.types';
 import { Order } from '../../types/order.types';
@@ -227,14 +237,16 @@ export const DBServices = {
       ? collection(db, 'tenants', tenantId, 'locations', locationId, 'menuItems')
       : collection(db, 'menuItems');
     const itemRef = doc(itemsCol);
-    await setDoc(itemRef, { ...item, id: itemRef.id, active: true });
+    const sanitized = cleanFirestoreData({ ...item, id: itemRef.id, active: true });
+    await setDoc(itemRef, sanitized);
   },
 
   async updateMenuItem(id: string, updates: Partial<MenuItem>, tenantId?: string, locationId?: string): Promise<void> {
     const itemRef = (tenantId && locationId)
       ? doc(db, 'tenants', tenantId, 'locations', locationId, 'menuItems', id)
       : doc(db, 'menuItems', id);
-    await updateDoc(itemRef, updates);
+    const sanitized = cleanFirestoreData(updates);
+    await updateDoc(itemRef, sanitized);
   },
 
   async deleteMenuItem(id: string, tenantId?: string, locationId?: string): Promise<void> {

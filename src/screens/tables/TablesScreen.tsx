@@ -158,10 +158,10 @@ export const TablesScreen = () => {
     <SafeAreaView className="flex-1 bg-[#090D1A]">
       <Header
         title="Tables Floor Plan"
-        subtitle={tables.length + ' tables configured • Tap trash or long-press to delete'}
+        subtitle={tables.length + ' tables configured'}
         rightElement={
           <TouchableOpacity
-            className="bg-[#5D3FD3] px-3.5 py-2 rounded-xl flex-row items-center shadow-sm"
+            className="bg-[#5D3FD3] px-3 py-1.5 rounded-xl flex-row items-center shrink-0 shadow-sm"
             onPress={handleAddTable}
             disabled={isAdding}
           >
