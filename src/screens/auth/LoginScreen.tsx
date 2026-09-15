@@ -228,7 +228,7 @@ export const LoginScreen = () => {
             </Text>
           </View>
 
-          <View className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-2xl backdrop-blur-xl">
+          <View className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-2xl backdrop-blur-xl max-w-md mx-auto w-full">
             <Text className="text-white text-base font-semibold text-center mb-6">Sign in to your restaurant</Text>
 
             <Input

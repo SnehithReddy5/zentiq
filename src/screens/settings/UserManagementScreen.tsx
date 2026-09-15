@@ -138,7 +138,7 @@ export const UserManagementScreen = () => {
       <FlatList
         data={users}
         keyExtractor={(u) => u.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom + 36, 52) }}
+        contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom + 36, 52), maxWidth: 1000, alignSelf: "center", width: "100%" }}
         renderItem={({ item }) => (
           <View className="bg-slate-900 border border-slate-800 p-4 rounded-2xl mb-3 flex-row items-center justify-between">
             <View className="flex-1 min-w-0 pr-3">

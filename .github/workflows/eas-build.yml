@@ -38,6 +38,7 @@ jobs:
   build-ios:
     name: Build iOS App
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

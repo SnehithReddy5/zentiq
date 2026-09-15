@@ -49,7 +49,7 @@ export const PrinterSettingsScreen = () => {
     <SafeAreaView className="flex-1 bg-[#090D1A]">
       <Header title="Thermal Printers" subtitle="Port 9100 RAW ESC/POS LAN Configuration" />
 
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 20, paddingBottom: Math.max(insets.bottom + 40, 60) }} keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 20, paddingBottom: Math.max(insets.bottom + 40, 60), maxWidth: 800, alignSelf: "center", width: "100%" }} keyboardShouldPersistTaps="handled">
         <View className="bg-slate-900 border border-slate-800 p-4 rounded-2xl mb-5">
           <Text className="text-white font-bold text-base mb-3">Billing Counter Printer</Text>
           <Input label="IP Address" placeholder="e.g. 192.168.1.100" value={ipAddress} onChangeText={setIpAddress} keyboardType="numeric" />
