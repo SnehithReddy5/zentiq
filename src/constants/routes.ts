@@ -1,0 +1,16 @@
+export const Routes = {
+  AUTH: 'Auth',
+  LOGIN: 'Login',
+  APP: 'App',
+  SETUP_WIZARD: 'SetupWizard',
+  HOME: 'Home',
+  TABLES: 'Tables',
+  MENU: 'Menu',
+  MENU_MANAGEMENT: 'MenuManagement',
+  CART: 'Cart',
+  ORDERS: 'Orders',
+  SETTINGS: 'Settings',
+  USER_MANAGEMENT: 'UserManagement',
+  BUSINESS_PROFILE: 'BusinessProfile',
+  LOCATION_MANAGEMENT: 'LocationManagement',
+} as const;

@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Zentiq POS",
+    "slug": "zentiq-pos",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.zentiq.pos"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#090D1A"
+      },
+      "package": "com.zentiq.pos",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_WIFI_STATE"
+      ],
+      "backgroundColor": "#090D1A"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "NEVER"
+    },
+    "androidNavigationBar": {
+      "visible": "always",
+      "barStyle": "light-content",
+      "backgroundColor": "#090D1A"
+    },
+    "backgroundColor": "#090D1A",
+    "extra": {
+      "eas": {
+        "projectId": "9090b988-350b-4e74-8177-9a43ad1ffd3d"
+      }
+    },
+    "owner": "snehith0890"
+  }
+}
