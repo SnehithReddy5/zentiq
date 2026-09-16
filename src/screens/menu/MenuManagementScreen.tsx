@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check } from 'lucide-react-native';
+import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check, Package, Scale, Layers } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
@@ -33,7 +33,19 @@ export const MenuManagementScreen = () => {
   const [itemCategoryId, setItemCategoryId] = useState('');
   const [itemIsFavorite, setItemIsFavorite] = useState(false);
   const [hasVariants, setHasVariants] = useState(false);
-  const [variants, setVariants] = useState<{ id?: string; name: string; price: string }[]>([]);
+  const [variants, setVariants] = useState<{ id?: string; name: string; price: string; portionDeduction?: string }[]>([]);
+
+  // Inventory Management State
+  const [itemTrackInventory, setItemTrackInventory] = useState(false);
+  const [itemStockQuantity, setItemStockQuantity] = useState('10');
+  const [itemStockUnit, setItemStockUnit] = useState<'kg' | 'g' | 'pcs' | 'portions' | 'ltr' | 'ml'>('kg');
+  const [itemLowStockThreshold, setItemLowStockThreshold] = useState('2');
+  const [isInventoryModalVisible, setIsInventoryModalVisible] = useState(false);
+
+  // Quick Restock State
+  const [restockTargetItem, setRestockTargetItem] = useState<MenuItem | null>(null);
+  const [restockAmount, setRestockAmount] = useState('');
+  const [isRestocking, setIsRestocking] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeToMenu();
@@ -103,6 +115,10 @@ export const MenuManagementScreen = () => {
     setItemIsFavorite(false);
     setHasVariants(false);
     setVariants([]);
+    setItemTrackInventory(false);
+    setItemStockQuantity('10');
+    setItemStockUnit('kg');
+    setItemLowStockThreshold('2');
     setItemModalOpen(true);
   };
 
@@ -113,14 +129,50 @@ export const MenuManagementScreen = () => {
     setItemPrice(item.price.toString());
     setItemCategoryId(item.categoryId);
     setItemIsFavorite(!!item.isFavorite);
+    setItemTrackInventory(!!item.trackInventory);
+    setItemStockQuantity(item.stockQuantity !== undefined ? item.stockQuantity.toString() : '10');
+    setItemStockUnit(item.stockUnit || 'kg');
+    setItemLowStockThreshold(item.lowStockThreshold !== undefined ? item.lowStockThreshold.toString() : '2');
     if (item.variants && item.variants.length > 0) {
       setHasVariants(true);
-      setVariants(item.variants.map(v => ({ id: v.id, name: v.name, price: v.price.toString() })));
+      setVariants(item.variants.map(v => ({
+        id: v.id,
+        name: v.name,
+        price: v.price.toString(),
+        portionDeduction: v.portionDeduction !== undefined ? v.portionDeduction.toString() : '1'
+      })));
     } else {
       setHasVariants(false);
       setVariants([]);
     }
     setItemModalOpen(true);
+  };
+
+  // Quick Restock Handler (e.g. morning chicken 10 kg)
+  const handleConfirmRestock = async () => {
+    if (!restockTargetItem) return;
+    const amount = parseFloat(restockAmount);
+    if (isNaN(amount) || amount < 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid stock quantity.');
+      return;
+    }
+
+    setIsRestocking(true);
+    try {
+      await DBServices.quickRestockItem(
+        restockTargetItem.id,
+        amount,
+        tenant?.id,
+        activeLocationId || undefined
+      );
+      Alert.alert('Restocked', `${restockTargetItem.name} stock updated to ${amount} ${restockTargetItem.stockUnit || 'units'}!`);
+      setRestockTargetItem(null);
+      setRestockAmount('');
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setIsRestocking(false);
+    }
   };
 
   // Save Item (Create or Update)
@@ -164,6 +216,7 @@ export const MenuManagementScreen = () => {
         id: v.id || `var_${Date.now()}_${idx}`,
         name: v.name.trim(),
         price: parseFloat(v.price) || 0,
+        portionDeduction: parseFloat(v.portionDeduction || '1') || 1,
       }));
       parsedPrice = cleanVariants[0].price;
     }
@@ -174,7 +227,14 @@ export const MenuManagementScreen = () => {
         price: parsedPrice,
         categoryId: itemCategoryId,
         isFavorite: itemIsFavorite,
+        trackInventory: itemTrackInventory,
       };
+
+      if (itemTrackInventory) {
+        payload.stockQuantity = parseFloat(itemStockQuantity) || 0;
+        payload.stockUnit = itemStockUnit;
+        payload.lowStockThreshold = parseFloat(itemLowStockThreshold) || 2;
+      }
 
       if (cleanVariants && cleanVariants.length > 0) {
         payload.variants = cleanVariants;
@@ -456,7 +516,79 @@ export const MenuManagementScreen = () => {
       {isItemModalOpen && (
         <Modal visible={true} transparent animationType="slide">
           <View className="flex-1 justify-center items-center bg-black/75 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-            <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-md max-h-[85%]">
+            <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-md max-h-[85%] relative overflow-hidden">
+                {/* DEDICATED INVENTORY CONFIGURATION DIALOG / MODAL */}
+                {isInventoryModalVisible && (
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0B1120', zIndex: 100, padding: 20, justifyContent: 'center' }}>
+                    <View className="flex-row items-center justify-between pb-3 mb-3 border-b border-slate-800">
+                      <View className="flex-row items-center">
+                        <Package size={20} color="#818CF8" />
+                        <Text className="text-white font-black text-base ml-2">Configure Live Inventory</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setIsInventoryModalVisible(false)} className="p-1 bg-slate-800 rounded-full">
+                        <X size={18} color="#94A3B8" />
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text className="text-slate-300 font-bold text-xs mb-1">Current Stock Quantity *</Text>
+                    <TextInput
+                      placeholder="e.g. 10"
+                      placeholderTextColor="#64748B"
+                      keyboardType="numeric"
+                      value={itemStockQuantity}
+                      onChangeText={setItemStockQuantity}
+                      className="bg-slate-950 border border-slate-700 text-white text-base p-3 rounded-2xl mb-3 font-bold"
+                    />
+
+                    <Text className="text-slate-300 font-bold text-xs mb-1.5">Measurement Unit *</Text>
+                    <View className="flex-row flex-wrap gap-2 mb-3">
+                      {(['kg', 'g', 'pcs', 'portions', 'ltr', 'ml'] as const).map(unit => (
+                        <TouchableOpacity
+                          key={unit}
+                          onPress={() => setItemStockUnit(unit)}
+                          className={`px-3 py-1.5 rounded-xl border ${itemStockUnit === unit ? 'bg-[#5D3FD3] border-[#5D3FD3]' : 'bg-slate-800 border-slate-700'}`}
+                        >
+                          <Text className={`text-xs font-bold ${itemStockUnit === unit ? 'text-white' : 'text-slate-400'}`}>
+                            {unit}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <Text className="text-slate-300 font-bold text-xs mb-1">Low Stock Warning Threshold *</Text>
+                    <TextInput
+                      placeholder="e.g. 2"
+                      placeholderTextColor="#64748B"
+                      keyboardType="numeric"
+                      value={itemLowStockThreshold}
+                      onChangeText={setItemLowStockThreshold}
+                      className="bg-slate-950 border border-slate-700 text-white text-base p-3 rounded-2xl mb-4 font-bold"
+                    />
+
+                    <View className="bg-indigo-500/10 border border-indigo-500/30 p-3 rounded-2xl mb-4">
+                      <Text className="text-indigo-300 text-xs">
+                        When available stock drops below {itemLowStockThreshold || 0} {itemStockUnit}, POS and Menu screens will highlight this item with a low stock badge.
+                      </Text>
+                    </View>
+
+                    <View className="flex-row gap-2">
+                      <Button
+                        title="Cancel"
+                        variant="secondary"
+                        onPress={() => setIsInventoryModalVisible(false)}
+                        className="flex-1"
+                      />
+                      <Button
+                        title="Save & Enable Stock"
+                        onPress={() => {
+                          setItemTrackInventory(true);
+                          setIsInventoryModalVisible(false);
+                        }}
+                        className="flex-1"
+                      />
+                    </View>
+                  </View>
+                )}
               <View className="flex-row justify-between items-center mb-4 border-b border-slate-800 pb-2">
                 <Text className="text-white font-black text-lg">
                   {editingItemId ? 'Edit Menu Item' : 'Add Menu Item'}
@@ -520,7 +652,95 @@ export const MenuManagementScreen = () => {
                   </Text>
                 </TouchableOpacity>
 
-                {/* Has Variants Toggle */}
+                                {/* Live Inventory Tracking Trigger & Status */}
+                {itemTrackInventory ? (
+                  <View className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-2xl mb-3">
+                    <View className="flex-row items-center justify-between mb-2">
+                      <View className="flex-row items-center flex-1 mr-2">
+                        <Package size={18} color="#10B981" />
+                        <View className="ml-2.5">
+                          <Text className="text-white font-bold text-xs">Live Stock Inventory: Active</Text>
+                          <Text className="text-emerald-400 font-bold text-[11px] mt-0.5">
+                            Stock: {itemStockQuantity || 0} {itemStockUnit} (Alert &lt;= {itemLowStockThreshold})
+                          </Text>
+                        </View>
+                      </View>
+                      <View className="flex-row gap-1.5 items-center">
+                        <TouchableOpacity
+                          onPress={() => setIsInventoryModalVisible(true)}
+                          className="bg-indigo-600 px-3 py-1.5 rounded-xl shadow-sm"
+                        >
+                          <Text className="text-white font-bold text-xs">Configure</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setItemTrackInventory(false)}
+                          className="bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-xl"
+                        >
+                          <Text className="text-slate-400 text-xs font-bold">Turn Off</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Inline Stock Parameters */}
+                    <View className="pt-2 border-t border-emerald-500/20">
+                      <View className="flex-row gap-2 mb-2">
+                        <View className="flex-1">
+                          <Text className="text-slate-400 text-[10px] font-bold mb-1">Available Qty</Text>
+                          <TextInput
+                            placeholder="10"
+                            placeholderTextColor="#64748B"
+                            keyboardType="numeric"
+                            value={itemStockQuantity}
+                            onChangeText={setItemStockQuantity}
+                            className="bg-slate-900 border border-slate-700 text-white text-xs px-2.5 py-1.5 rounded-xl font-bold"
+                          />
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-slate-400 text-[10px] font-bold mb-1">Low Stock Alert &lt;=</Text>
+                          <TextInput
+                            placeholder="2"
+                            placeholderTextColor="#64748B"
+                            keyboardType="numeric"
+                            value={itemLowStockThreshold}
+                            onChangeText={setItemLowStockThreshold}
+                            className="bg-slate-900 border border-slate-700 text-white text-xs px-2.5 py-1.5 rounded-xl font-bold"
+                          />
+                        </View>
+                      </View>
+                      <View className="flex-row flex-wrap gap-1 mt-1">
+                        {(['kg', 'g', 'pcs', 'portions', 'ltr', 'ml'] as const).map(unit => (
+                          <TouchableOpacity
+                            key={unit}
+                            onPress={() => setItemStockUnit(unit)}
+                            className={`px-2 py-0.5 rounded-lg border ${itemStockUnit === unit ? 'bg-emerald-600 border-emerald-500' : 'bg-slate-800 border-slate-700'}`}
+                          >
+                            <Text className={`text-[10px] font-bold ${itemStockUnit === unit ? 'text-white' : 'text-slate-400'}`}>
+                              {unit}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setItemTrackInventory(true);
+                      setIsInventoryModalVisible(true);
+                    }}
+                    className="flex-row items-center justify-between bg-slate-800/80 border border-slate-700 p-3.5 rounded-2xl mb-3 active:opacity-80"
+                  >
+                    <View className="flex-row items-center">
+                      <Package size={16} color="#818CF8" />
+                      <Text className="text-white font-bold text-xs ml-2">Track Live Stock Inventory</Text>
+                    </View>
+                    <View className="bg-[#5D3FD3] px-3 py-1 rounded-xl">
+                      <Text className="text-white text-xs font-bold">+ Enable Stock</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
+                  {/* Has Variants Toggle */}
                 <TouchableOpacity
                   onPress={() => setHasVariants(!hasVariants)}
                   className="flex-row items-center justify-between bg-slate-800/80 border border-slate-700 p-3 rounded-xl mb-3"
@@ -566,8 +786,22 @@ export const MenuManagementScreen = () => {
                             newVars[i].price = txt;
                             setVariants(newVars);
                           }}
-                          className="w-20 bg-slate-900 border border-slate-700 text-white text-xs p-2 rounded-xl"
+                          className="w-16 bg-slate-900 border border-slate-700 text-white text-xs p-2 rounded-xl"
                         />
+                        {itemTrackInventory && (
+                          <TextInput
+                            placeholder={`Deducts (${itemStockUnit})`}
+                            placeholderTextColor="#64748B"
+                            keyboardType="numeric"
+                            value={v.portionDeduction || '1'}
+                            onChangeText={txt => {
+                              const newVars = [...variants];
+                              newVars[i].portionDeduction = txt;
+                              setVariants(newVars);
+                            }}
+                            className="w-24 bg-slate-900 border border-indigo-500/50 text-indigo-300 text-xs p-2 rounded-xl"
+                          />
+                        )}
                         <TouchableOpacity
                           onPress={() => setVariants(variants.filter((_, idx) => idx !== i))}
                           className="p-2 bg-rose-500/10 rounded-lg"
@@ -601,6 +835,60 @@ export const MenuManagementScreen = () => {
                   />
                 </View>
               </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Quick Restock Modal (e.g. Morning Chicken 10 kg) */}
+      {restockTargetItem && (
+        <Modal visible={true} transparent animationType="fade">
+          <View className="flex-1 justify-center items-center bg-black/75 p-4">
+            <View className="bg-slate-900 border border-indigo-500/40 rounded-3xl p-5 w-full max-w-sm shadow-2xl">
+              <View className="flex-row items-center justify-between pb-3 mb-3 border-b border-slate-800">
+                <View className="flex-row items-center">
+                  <Package size={18} color="#818CF8" />
+                  <Text className="text-white font-black text-base ml-2">Quick Restock</Text>
+                </View>
+                <TouchableOpacity onPress={() => setRestockTargetItem(null)}>
+                  <Text className="text-slate-400 text-xs font-bold">Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text className="text-slate-300 text-xs mb-1">
+                Item: <Text className="text-white font-bold">{restockTargetItem.name}</Text>
+              </Text>
+              <Text className="text-slate-400 text-[11px] mb-3">
+                Current Stock: <Text className="text-amber-400 font-bold">{restockTargetItem.stockQuantity || 0} {restockTargetItem.stockUnit || 'kg'}</Text>
+              </Text>
+
+              <Text className="text-slate-200 font-bold text-xs mb-1.5">
+                Set Available Stock ({restockTargetItem.stockUnit || 'kg'}):
+              </Text>
+              <TextInput
+                placeholder="e.g. 10"
+                placeholderTextColor="#64748B"
+                keyboardType="numeric"
+                autoFocus
+                value={restockAmount}
+                onChangeText={setRestockAmount}
+                className="bg-slate-950 border border-slate-700 text-white text-base p-3 rounded-2xl mb-4 font-bold"
+              />
+
+              <View className="flex-row gap-2">
+                <Button
+                  title="Cancel"
+                  variant="secondary"
+                  onPress={() => setRestockTargetItem(null)}
+                  className="flex-1"
+                />
+                <Button
+                  title="Update Stock"
+                  onPress={handleConfirmRestock}
+                  isLoading={isRestocking}
+                  className="flex-1"
+                />
+              </View>
             </View>
           </View>
         </Modal>

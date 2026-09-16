@@ -27,6 +27,10 @@ export interface TenantBranding {
   gstin?: string;
   receiptHeader?: string;
   receiptFooter?: string;
+  gstEnabled?: boolean;
+  gstType?: 'INCLUSIVE' | 'EXCLUSIVE';
+  cgstRate?: number;
+  sgstRate?: number;
 }
 
 export interface TenantFeatures {
@@ -38,6 +42,15 @@ export interface TenantFeatures {
   inventoryEnabled: boolean;
   splitPaymentsEnabled: boolean;
   insightsEnabled: boolean;
+  paymentsEnabled?: boolean;
+  cashEnabled?: boolean;
+  upiEnabled?: boolean;
+  cardEnabled?: boolean;
+  customPaymentMethods?: string[];
+  gstEnabled?: boolean;
+  gstType?: 'INCLUSIVE' | 'EXCLUSIVE';
+  cgstRate?: number;
+  sgstRate?: number;
 }
 
 export type LocationStatus = 'REQUESTED' | 'APPROVED' | 'ACTIVE' | 'DISABLED' | 'SUSPENDED' | 'DEACTIVATED';

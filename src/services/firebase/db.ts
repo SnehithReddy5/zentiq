@@ -28,7 +28,7 @@ function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> 
 
 import { Table } from '../../types/table.types';
 import { MenuCategory, MenuItem } from '../../types/menu.types';
-import { Order } from '../../types/order.types';
+import { Order, OrderItem } from '../../types/order.types';
 import { TenantProfile, TenantBranding, TenantFeatures, Location } from '../../types/tenant.types';
 
 export const DBServices = {
@@ -364,7 +364,57 @@ export const DBServices = {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+
+    // Automatically deduct inventory stock for sold items
+    if (orderData.items && orderData.items.length > 0) {
+      await this.deductInventory(orderData.items, tenantId, locationId).catch(err =>
+        console.warn('Inventory deduction warning:', err)
+      );
+    }
+
     return orderRef.id;
+  },
+
+  async deductInventory(items: OrderItem[], tenantId?: string, locationId?: string): Promise<void> {
+    for (const item of items) {
+      const targetItemId = item.baseItemId || item.itemId;
+      if (!targetItemId) continue;
+
+      const itemRef = (tenantId && locationId)
+        ? doc(db, 'tenants', tenantId, 'locations', locationId, 'menuItems', targetItemId)
+        : doc(db, 'menuItems', targetItemId);
+
+      try {
+        const snap = await getDoc(itemRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.trackInventory && typeof data.stockQuantity === 'number') {
+            const deductionPerUnit = typeof item.portionDeduction === 'number' ? item.portionDeduction : 1;
+            const totalDeduction = (item.qty || 1) * deductionPerUnit;
+            const newStock = Math.max(0, data.stockQuantity - totalDeduction);
+            await updateDoc(itemRef, {
+              stockQuantity: Number(newStock.toFixed(3)),
+              isAvailable: newStock > 0,
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+      } catch (err) {
+        console.warn(`Could not deduct inventory for item ${targetItemId}:`, err);
+      }
+    }
+  },
+
+  async quickRestockItem(itemId: string, newStock: number, tenantId?: string, locationId?: string): Promise<void> {
+    const itemRef = (tenantId && locationId)
+      ? doc(db, 'tenants', tenantId, 'locations', locationId, 'menuItems', itemId)
+      : doc(db, 'menuItems', itemId);
+
+    await updateDoc(itemRef, {
+      stockQuantity: Number(newStock.toFixed(3)),
+      isAvailable: newStock > 0,
+      updatedAt: serverTimestamp(),
+    });
   },
 
   async updateOrderStatus(id: string, status: Order['status'], tenantId?: string, locationId?: string): Promise<void> {

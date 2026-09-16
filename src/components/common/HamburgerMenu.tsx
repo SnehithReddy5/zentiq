@@ -170,15 +170,15 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
                 </TouchableOpacity>
               )}
 
-              {/* Business Profile: Admin Only */}
-              {isSuperAdmin && (
+              {/* Store & Payment Settings: Managers and Admins */}
+              {isManager && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.BUSINESS_PROFILE)}
                   className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
                 >
                   <View className="flex-row items-center">
                     <Settings size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Receipt & Profile</Text>
+                    <Text className="text-slate-200 text-sm font-semibold ml-3">Store & Payment Settings</Text>
                   </View>
                   <ChevronRight size={16} color="#64748B" />
                 </TouchableOpacity>

@@ -5,6 +5,7 @@ export interface MenuItemVariant {
   price: number;
   active?: boolean;
   recipeId?: string;
+  portionDeduction?: number; // Amount deducted from root item stock per unit sold (e.g. 0.5 kg for 500gm)
 }
 
 export interface MenuCategory {
@@ -29,4 +30,9 @@ export interface MenuItem {
   sku?: string;
   description?: string;
   variants?: MenuItemVariant[];
+  // Live Inventory Tracking
+  trackInventory?: boolean;
+  stockQuantity?: number;
+  stockUnit?: 'kg' | 'g' | 'pcs' | 'portions' | 'ltr' | 'ml';
+  lowStockThreshold?: number;
 }

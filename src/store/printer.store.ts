@@ -13,6 +13,7 @@ export const usePrinterStore = create<PrinterState>()(
     (set) => ({
       settings: {
         printerType: 'LAN',
+        printerWorkflowMode: 'RESTAURANT',
         printerName: 'Billing Thermal Printer',
         ipAddress: '192.168.1.100',
         port: 9100,

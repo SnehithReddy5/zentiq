@@ -25,6 +25,8 @@ export interface OrderItem {
   sentQty?: number;
   price: number;
   note?: string;
+  baseItemId?: string; // Links variant cart item back to master inventory item
+  portionDeduction?: number; // Stock deduction per 1 unit sold (e.g. 0.5 kg)
 }
 
 export interface Order {
@@ -33,6 +35,7 @@ export interface Order {
   kotNo: number;
   tenantId?: string;
   locationId?: string;
+  locationName?: string;
   orderType: OrderType;
   tableId?: string | null;
   tableNo: number; // 0 for pickup/takeaway or table-free dine-in
@@ -40,6 +43,7 @@ export interface Order {
   captainName: string;
   status: OrderStatus;
   paymentStatus?: PaymentStatus;
+  paymentMethod?: PaymentMethod;
   payments?: OrderPayment[];
   items: OrderItem[];
   subtotal?: number;

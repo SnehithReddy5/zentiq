@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Header } from '../../components/common/Header';
@@ -14,7 +14,7 @@ import { DBServices } from '../../services/firebase/db';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { Routes } from '../../constants/routes';
-import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2 } from 'lucide-react-native';
+import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2, Utensils } from 'lucide-react-native';
 
 export const CartScreen = () => {
   const insets = useSafeAreaInsets();
@@ -24,19 +24,149 @@ export const CartScreen = () => {
   const orderType = route.params?.orderType || (tableNo === 0 ? 'PICKUP' : 'DINE_IN');
 
   const { carts, clearCart } = useCartStore();
-  const { tenant, branding, locations, activeLocationId } = useTenantStore();
+  const { tenant, branding, features, locations, activeLocationId } = useTenantStore();
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
   const { isLargePOS } = useResponsiveLayout();
 
   const cartItems = carts[tableNo] || [];
-  const cartTotal = cartItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
+  const rawItemsSum = cartItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
 
-  // Split Payment states
-  const [selectedMethod, setSelectedMethod] = useState<'CASH' | 'UPI' | 'CARD' | 'OTHER'>('CASH');
+  // Dynamic GST Tax Configuration from Store Settings
+  const gstEnabled = features.gstEnabled !== false;
+  const gstType = features.gstType || 'INCLUSIVE';
+  const cgstRate = typeof features.cgstRate === 'number' ? features.cgstRate : 2.5;
+  const sgstRate = typeof features.sgstRate === 'number' ? features.sgstRate : 2.5;
+  const totalTaxRate = (cgstRate + sgstRate) / 100;
+
+  const { subtotal, cgst, sgst, totalTax, cartTotal } = useMemo(() => {
+    if (!gstEnabled) {
+      return {
+        subtotal: rawItemsSum,
+        cgst: 0,
+        sgst: 0,
+        totalTax: 0,
+        cartTotal: rawItemsSum,
+      };
+    }
+    if (gstType === 'EXCLUSIVE') {
+      const sub = rawItemsSum;
+      const c = Math.round((sub * (cgstRate / 100)) * 100) / 100;
+      const s = Math.round((sub * (sgstRate / 100)) * 100) / 100;
+      const tax = c + s;
+      const total = Math.round(sub + tax);
+      return { subtotal: sub, cgst: c, sgst: s, totalTax: tax, cartTotal: total };
+    } else {
+      // INCLUSIVE
+      const total = rawItemsSum;
+      const sub = totalTaxRate > 0 ? Math.round((total / (1 + totalTaxRate)) * 100) / 100 : total;
+      const tax = total - sub;
+      const c = Math.round((tax * (cgstRate / ((cgstRate + sgstRate) || 1))) * 100) / 100;
+      const s = Math.round((tax - c) * 100) / 100;
+      return { subtotal: sub, cgst: c, sgst: s, totalTax: tax, cartTotal: total };
+    }
+  }, [rawItemsSum, gstEnabled, gstType, cgstRate, sgstRate, totalTaxRate]);
+
+  // Features & Active Payment Methods
+  const paymentsEnabled = features.paymentsEnabled !== false;
+  const activePaymentMethods = useMemo(() => {
+    if (!paymentsEnabled) return [];
+    const methods: string[] = [];
+    if (features.cashEnabled !== false) methods.push('CASH');
+    if (features.upiEnabled !== false) methods.push('UPI');
+    if (features.cardEnabled !== false) methods.push('CARD');
+    if (features.customPaymentMethods && features.customPaymentMethods.length > 0) {
+      features.customPaymentMethods.forEach(m => {
+        if (!methods.includes(m)) methods.push(m);
+      });
+    }
+    return methods;
+  }, [features, paymentsEnabled]);
+
+  const allowSplit = paymentsEnabled && features.splitPaymentsEnabled !== false && activePaymentMethods.length >= 2;
+
+  // Payment Mode: FULL (1-tap single mode) vs SPLIT (multi-mode ledger)
+  const [paymentMode, setPaymentMode] = useState<'FULL' | 'SPLIT'>('FULL');
+  const [selectedMethod, setSelectedMethod] = useState<string>(activePaymentMethods[0] || 'CASH');
+  const [cashTendered, setCashTendered] = useState('');
   const [paymentAmount, setPaymentAmount] = useState(cartTotal.toString());
   const [payments, setPayments] = useState<{ method: string; amount: number }[]>([]);
   const [isSettling, setIsSettling] = useState(false);
+
+  // Sync default selected method if activePaymentMethods change
+  useEffect(() => {
+    if (activePaymentMethods.length > 0 && !activePaymentMethods.includes(selectedMethod)) {
+      setSelectedMethod(activePaymentMethods[0]);
+    }
+  }, [activePaymentMethods]);
+
+  // Pure KOT handler (when payments are disabled or no payment methods enabled)
+  const handlePrintKOTOnly = async () => {
+    if (cartItems.length === 0) return;
+
+    if (!activeLocationId && locations && locations.length > 0) {
+      Alert.alert('Branch Required', 'Please select an active operating branch on the home screen before completing orders.');
+      return;
+    }
+
+    setIsSettling(true);
+    try {
+      const kotNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
+
+      // 1. Create active RUNNING order in Firestore
+      await DBServices.createOrder({
+        kotNo,
+        orderNumber: kotNo,
+        orderType,
+        tableNo,
+        captainId: user?.id || 'staff',
+        captainName: user?.name || 'Staff',
+        status: 'RUNNING',
+        paymentStatus: 'UNPAID',
+        items: cartItems,
+        subtotal,
+        tax: totalTax,
+        totalAmount: cartTotal,
+        createdAt: new Date(),
+      }, tenant?.id, activeLocationId || undefined);
+
+      // 2. Mark table as running/occupied if dine-in
+      if (tableNo !== 0) {
+        await DBServices.updateTableStatusByNo(tableNo, 'running', tenant?.id, activeLocationId || undefined);
+      }
+
+      // 3. Print Kitchen KOT
+      const targetIp = (settings.kitchenIpAddress || settings.ipAddress)?.trim();
+      const targetPort = settings.kitchenPort || settings.port || 9100;
+      if (targetIp) {
+        try {
+          await printerService.connect(targetIp, targetPort);
+          const buffer = ESCPOSService.buildKOT(
+            kotNo,
+            tableNo,
+            user?.name || 'Staff',
+            cartItems,
+            'KOT DISPATCH (NO PAYMENT)',
+            orderType
+          );
+          await printerService.print(buffer);
+          await printerService.disconnect();
+        } catch (printErr: any) {
+          console.warn('Printer warning in KOT mode:', printErr.message);
+        }
+      }
+
+      // 4. Clear cart and return
+      clearCart(tableNo);
+      Alert.alert('KOT Dispatched', `KOT #${kotNo} printed and sent to kitchen!`, [
+        { text: 'OK', onPress: () => navigation.navigate(Routes.HOME) }
+      ]);
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setIsSettling(false);
+    }
+  };
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const remaining = Math.max(0, cartTotal - totalPaid);
@@ -67,7 +197,25 @@ export const CartScreen = () => {
     setPaymentAmount((remaining + removed.amount).toString());
   };
 
+  // 1-Tap Quick Settle with single payment method
+  const handleQuickSettle = async (overrideMethod?: 'CASH' | 'UPI' | 'CARD') => {
+    const methodToUse = overrideMethod || selectedMethod;
+    await executeSettlement([{ method: methodToUse, amount: cartTotal }]);
+  };
+
   const handleSettleAndPrint = async () => {
+    // If no split payments entered, automatically pay remaining with selected method
+    let finalPayments = [...payments];
+    if (finalPayments.length === 0) {
+      finalPayments = [{ method: selectedMethod, amount: cartTotal }];
+    } else if (remaining > 0) {
+      // Auto-cover remaining balance with current selected method
+      finalPayments.push({ method: selectedMethod, amount: remaining });
+    }
+    await executeSettlement(finalPayments);
+  };
+
+  const executeSettlement = async (finalPayments: { method: string; amount: number }[]) => {
     if (user?.role === 'WAITER' || user?.role === 'captain') {
       Alert.alert(
         'Action Restricted',
@@ -76,10 +224,6 @@ export const CartScreen = () => {
       return;
     }
     if (cartItems.length === 0) return;
-    if (remaining > 0) {
-      Alert.alert('Remaining Balance', 'There is still ₹' + remaining.toFixed(2) + ' unpaid.');
-      return;
-    }
 
     if (!activeLocationId && locations && locations.length > 0) {
       Alert.alert('Branch Required', 'Please select an active operating branch on the home screen before completing orders.');
@@ -100,7 +244,7 @@ export const CartScreen = () => {
         captainName: user?.name || 'Staff',
         status: 'COMPLETED',
         paymentStatus: 'PAID',
-        payments: payments.map(p => ({ ...p, id: 'pay_' + Date.now(), method: p.method as any, timestamp: new Date().toISOString() })),
+        payments: finalPayments.map(p => ({ ...p, id: 'pay_' + Date.now(), method: p.method as any, timestamp: new Date().toISOString() })),
         items: cartItems,
         totalAmount: cartTotal,
         createdAt: new Date(),
@@ -111,32 +255,90 @@ export const CartScreen = () => {
         await DBServices.updateTableStatusByNo(tableNo, 'available', tenant?.id, activeLocationId || undefined);
       }
 
-      // 3. Print Customer Thermal Receipt
+      // 3. Print based on Printer Workflow Mode (Restaurant, Curry Point, Tiffin Center)
       const activeLoc = locations.find(l => l.id === activeLocationId);
       const branchName = activeLoc ? activeLoc.name : branding?.displayName;
+      const brandPayload = branding ? { ...branding, gstEnabled, gstType, cgstRate, sgstRate } : null;
+      const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
 
-      const buffer = ESCPOSService.buildBill(
-        billNo,
-        tableNo,
-        user?.name || 'Staff',
-        cartItems,
-        branding,
-        orderType,
-        payments
-      );
+      if (workflowMode === 'TIFFIN_CENTER') {
+        // Mode 3: Tiffin Center - 1 Printer, 2 Prints (Customer Bill, paper cut, then small Kitchen Token slip)
+        try {
+          const combinedBuffer = ESCPOSService.buildCombinedTiffinPrints(
+            billNo,
+            tableNo,
+            user?.name || 'Staff',
+            cartItems,
+            brandPayload,
+            orderType,
+            finalPayments
+          );
+          await printerService.connect(settings.ipAddress, settings.port);
+          await printerService.print(combinedBuffer);
+          await printerService.disconnect();
+        } catch (printErr) {
+          console.warn('Tiffin Center 2-print thermal dispatch error:', printErr);
+        }
+      } else if (workflowMode === 'CURRY_POINT') {
+        // Mode 2: Curry Point - Single Main Printer (Customer Bill only, no kitchen ticket)
+        try {
+          const billBuffer = ESCPOSService.buildBill(
+            billNo,
+            tableNo,
+            user?.name || 'Staff',
+            cartItems,
+            brandPayload,
+            orderType,
+            finalPayments
+          );
+          await printerService.connect(settings.ipAddress, settings.port);
+          await printerService.print(billBuffer);
+          await printerService.disconnect();
+        } catch (printErr) {
+          console.warn('Curry Point bill print error:', printErr);
+        }
+      } else {
+        // Mode 1: Restaurant - Dual Printers (Customer Bill on Main, Kitchen KOT on Kitchen)
+        try {
+          const billBuffer = ESCPOSService.buildBill(
+            billNo,
+            tableNo,
+            user?.name || 'Staff',
+            cartItems,
+            brandPayload,
+            orderType,
+            finalPayments
+          );
+          await printerService.connect(settings.ipAddress, settings.port);
+          await printerService.print(billBuffer);
+          await printerService.disconnect();
+        } catch (printErr) {
+          console.warn('Restaurant billing printer error:', printErr);
+        }
 
-      try {
-        await printerService.connect(settings.ipAddress, settings.port);
-        await printerService.print(buffer);
-        await printerService.disconnect();
-      } catch (printErr) {
-        console.warn('Billing printer offline or error:', printErr);
+        const kitchenIp = (settings.kitchenIpAddress || '').trim();
+        if (kitchenIp) {
+          try {
+            const kotBuffer = ESCPOSService.buildKOT(
+              billNo,
+              tableNo,
+              user?.name || 'Staff',
+              cartItems,
+              'ORDER SETTLED',
+              orderType
+            );
+            await printerService.connect(kitchenIp, settings.kitchenPort || 9100);
+            await printerService.print(kotBuffer);
+            await printerService.disconnect();
+          } catch (kotErr) {
+            console.warn('Restaurant kitchen printer error:', kotErr);
+          }
+        }
       }
 
       clearCart(tableNo);
-      Alert.alert('Success', 'Order settled and bill generated!', [
-        { text: 'Done', onPress: () => navigation.navigate(Routes.HOME) }
-      ]);
+      // Fast transition without blocking alert modal
+      navigation.navigate(Routes.HOME);
     } catch (e: any) {
       Alert.alert('Checkout Error', e.message);
     } finally {
@@ -196,14 +398,35 @@ export const CartScreen = () => {
               {/* Total Calculation */}
               <View className="pt-4 mt-3 border-t border-slate-800">
                 <View className="flex-row justify-between py-1">
-                  <Text className="text-slate-400 text-xs">Subtotal</Text>
-                  <Text className="text-slate-300 font-bold text-xs">₹{cartTotal.toFixed(2)}</Text>
+                  <Text className="text-slate-400 text-xs">
+                    {gstEnabled && gstType === 'INCLUSIVE' ? 'Subtotal (Excl. Tax)' : 'Subtotal'}
+                  </Text>
+                  <Text className="text-slate-300 font-bold text-xs">₹{subtotal.toFixed(2)}</Text>
                 </View>
-                <View className="flex-row justify-between py-1">
-                  <Text className="text-slate-400 text-xs">Taxes & GST (Included)</Text>
-                  <Text className="text-slate-400 text-xs">₹0.00</Text>
-                </View>
-                <View className="flex-row justify-between pt-3 mt-1 border-t border-slate-800/80">
+
+                {gstEnabled ? (
+                  <>
+                    <View className="flex-row justify-between py-1">
+                      <Text className="text-slate-400 text-xs">
+                        CGST ({cgstRate}%){gstType === 'INCLUSIVE' ? ' [Incl]' : ''}
+                      </Text>
+                      <Text className="text-slate-300 text-xs font-semibold">₹{cgst.toFixed(2)}</Text>
+                    </View>
+                    <View className="flex-row justify-between py-1">
+                      <Text className="text-slate-400 text-xs">
+                        SGST ({sgstRate}%){gstType === 'INCLUSIVE' ? ' [Incl]' : ''}
+                      </Text>
+                      <Text className="text-slate-300 text-xs font-semibold">₹{sgst.toFixed(2)}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View className="flex-row justify-between py-1">
+                    <Text className="text-slate-400 text-xs">GST / Tax</Text>
+                    <Text className="text-slate-500 text-xs">Tax Disabled</Text>
+                  </View>
+                )}
+
+                <View className="flex-row justify-between pt-3 mt-1 border-t border-slate-800/80 items-center">
                   <Text className="text-white font-black text-base">Grand Total</Text>
                   <Text className="text-emerald-400 font-black text-xl">₹{cartTotal.toFixed(2)}</Text>
                 </View>
@@ -211,147 +434,317 @@ export const CartScreen = () => {
             </View>
           </View>
 
-          {/* Right Panel (50% on desktop): Split Payment Keypad & Settlement */}
-          <View className={isLargePOS ? 'w-[460px]' : ''}>
+          {/* Right Panel: Pure KOT Mode OR Dynamic Payment Settlement */}
+          <View className={isLargePOS ? 'w-[480px]' : ''}>
             <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-              <View className="flex-row items-center justify-between pb-3 mb-4 border-b border-slate-800">
-                <Text className="text-white font-black text-base">Payment Method</Text>
-                <View className={'px-3 py-1 rounded-xl border ' + (remaining === 0 ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-amber-500/20 border-amber-500/30')}>
-                  <Text className={'text-xs font-bold ' + (remaining === 0 ? 'text-emerald-300' : 'text-amber-300')}>
-                    {remaining === 0 ? 'Paid in Full' : ('Due: ₹' + remaining.toFixed(2))}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Payment Mode Selector */}
-              <View className="flex-row gap-2 mb-4">
-                <TouchableOpacity
-                  className={'flex-1 p-3 rounded-2xl border items-center ' + (selectedMethod === 'CASH' ? 'bg-purple-950/50 border-[#5D3FD3]' : 'bg-slate-800/80 border-slate-700')}
-                  onPress={() => setSelectedMethod('CASH')}
-                >
-                  <Banknote size={20} color={selectedMethod === 'CASH' ? '#A78BFA' : '#94A3B8'} />
-                  <Text className="text-white font-bold text-xs mt-1">Cash</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  className={'flex-1 p-3 rounded-2xl border items-center ' + (selectedMethod === 'UPI' ? 'bg-purple-950/50 border-[#5D3FD3]' : 'bg-slate-800/80 border-slate-700')}
-                  onPress={() => setSelectedMethod('UPI')}
-                >
-                  <Smartphone size={20} color={selectedMethod === 'UPI' ? '#A78BFA' : '#94A3B8'} />
-                  <Text className="text-white font-bold text-xs mt-1">UPI</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  className={'flex-1 p-3 rounded-2xl border items-center ' + (selectedMethod === 'CARD' ? 'bg-purple-950/50 border-[#5D3FD3]' : 'bg-slate-800/80 border-slate-700')}
-                  onPress={() => setSelectedMethod('CARD')}
-                >
-                  <CreditCard size={20} color={selectedMethod === 'CARD' ? '#A78BFA' : '#94A3B8'} />
-                  <Text className="text-white font-bold text-xs mt-1">Card</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  className={'flex-1 p-3 rounded-2xl border items-center ' + (selectedMethod === 'OTHER' ? 'bg-purple-950/50 border-[#5D3FD3]' : 'bg-slate-800/80 border-slate-700')}
-                  onPress={() => setSelectedMethod('OTHER')}
-                >
-                  <HelpCircle size={20} color={selectedMethod === 'OTHER' ? '#A78BFA' : '#94A3B8'} />
-                  <Text className="text-white font-bold text-xs mt-1">Other</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Quick Cash Tender Buttons for Cashier */}
-              <View className="mb-4">
-                <Text className="text-slate-400 text-xs font-semibold mb-2">Quick Amount Tender:</Text>
-                <View className="flex-row gap-2">
-                  <TouchableOpacity
-                    onPress={() => setPaymentAmount(remaining.toString())}
-                    className="flex-1 bg-slate-800 border border-slate-700 py-1.5 rounded-xl items-center"
-                  >
-                    <Text className="text-purple-300 font-bold text-xs">Exact (₹{remaining.toFixed(0)})</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => handleQuickAddAmount(100)}
-                    className="flex-1 bg-slate-800 border border-slate-700 py-1.5 rounded-xl items-center"
-                  >
-                    <Text className="text-slate-200 font-bold text-xs">₹100</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => handleQuickAddAmount(500)}
-                    className="flex-1 bg-slate-800 border border-slate-700 py-1.5 rounded-xl items-center"
-                  >
-                    <Text className="text-slate-200 font-bold text-xs">₹500</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Amount Entry and Add Split */}
-              <View className="flex-row gap-3 items-end mb-4">
-                <View className="flex-1">
-                  <Input
-                    label="Payment Tender (₹)"
-                    placeholder="0.00"
-                    keyboardType="numeric"
-                    value={paymentAmount}
-                    onChangeText={setPaymentAmount}
-                  />
-                </View>
-                <Button
-                  title="+ Record Mode"
-                  onPress={handleAddPayment}
-                  size="md"
-                  disabled={remaining === 0}
-                  className="mb-3"
-                />
-              </View>
-
-              {/* Payments Recorded History */}
-              {payments.length > 0 && (
-                <View className="bg-slate-950/60 border border-slate-800 p-3 rounded-2xl mb-4">
-                  <Text className="text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-2">
-                    Splits Recorded:
-                  </Text>
-                  {payments.map((p, idx) => (
-                    <View key={idx} className="flex-row justify-between items-center py-1.5 border-b border-slate-850 last:border-b-0">
-                      <View className="flex-row items-center">
-                        <CheckCircle2 size={12} color="#10B981" />
-                        <Text className="text-slate-200 text-xs font-semibold ml-1.5">{p.method}</Text>
-                      </View>
-                      <View className="flex-row items-center gap-2">
-                        <Text className="text-emerald-400 font-bold text-xs">₹{p.amount.toFixed(2)}</Text>
-                        <TouchableOpacity
-                          onPress={() => handleRemovePayment(idx)}
-                          className="p-1 rounded bg-rose-500/20"
-                        >
-                          <Trash2 size={12} color="#F43F5E" />
-                        </TouchableOpacity>
-                      </View>
+              
+              {/* CASE 1: PURE KOT MODE (Payments Disabled in Store Settings) */}
+              {!paymentsEnabled || activePaymentMethods.length === 0 ? (
+                <View>
+                  <View className="flex-row items-center justify-between pb-3 mb-4 border-b border-slate-800">
+                    <View className="flex-row items-center">
+                      <Utensils size={20} color="#F59E0B" />
+                      <Text className="text-white font-black text-base ml-2">Kitchen KOT Dispatch</Text>
                     </View>
-                  ))}
+                    <View className="px-2.5 py-0.5 rounded-full border bg-amber-500/10 border-amber-500/30">
+                      <Text className="text-amber-400 text-[10px] font-bold">Payments Disabled</Text>
+                    </View>
+                  </View>
+
+                  <View className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 mb-5">
+                    <Text className="text-slate-300 text-xs leading-relaxed">
+                      Payment collection is currently turned OFF in Store Settings. Tapping below will print the kitchen ticket and create an active running order without collecting payment.
+                    </Text>
+                    <View className="flex-row items-center justify-between mt-3 pt-3 border-t border-slate-850">
+                      <Text className="text-slate-400 text-xs font-semibold">Order Total:</Text>
+                      <Text className="text-white font-black text-lg">₹{cartTotal.toFixed(2)}</Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={handlePrintKOTOnly}
+                    disabled={isSettling || cartItems.length === 0}
+                    className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
+                      cartItems.length > 0
+                        ? 'bg-amber-500 shadow-amber-500/30 active:opacity-90'
+                        : 'bg-slate-800 opacity-60'
+                    }`}
+                  >
+                    {isSettling ? (
+                      <ActivityIndicator size="small" color="#1E293B" />
+                    ) : (
+                      <>
+                        <Printer size={18} color="#0F172A" />
+                        <Text className="text-slate-950 font-black text-base ml-2">
+                          Print KOT & Dispatch
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                /* CASE 2: PAYMENT METHODS ENABLED */
+                <View>
+                  {/* Payment Mode Segmented Tab (Only shown if split payments are enabled) */}
+                  {allowSplit && (
+                    <View className="flex-row bg-slate-950 p-1 rounded-2xl mb-5 border border-slate-800">
+                      <TouchableOpacity
+                        onPress={() => setPaymentMode('FULL')}
+                        className={`flex-1 py-2 rounded-xl items-center ${
+                          paymentMode === 'FULL' ? 'bg-[#5D3FD3]' : 'bg-transparent'
+                        }`}
+                      >
+                        <Text className={`text-xs font-black ${paymentMode === 'FULL' ? 'text-white' : 'text-slate-400'}`}>
+                          ⚡ Single Payment (1-Tap)
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          setPaymentMode('SPLIT');
+                          setPaymentAmount(remaining > 0 ? remaining.toString() : cartTotal.toString());
+                        }}
+                        className={`flex-1 py-2 rounded-xl items-center ${
+                          paymentMode === 'SPLIT' ? 'bg-[#5D3FD3]' : 'bg-transparent'
+                        }`}
+                      >
+                        <Text className={`text-xs font-black ${paymentMode === 'SPLIT' ? 'text-white' : 'text-slate-400'}`}>
+                          ✂️ Split Payment
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* MODE A: SINGLE PAYMENT */}
+                  {paymentMode === 'FULL' || !allowSplit ? (
+                    <View>
+                      <Text className="text-slate-400 text-xs font-bold uppercase mb-3">
+                        Choose Payment Method:
+                      </Text>
+
+                      {/* Dynamic Payment Methods Selector */}
+                      <View className="flex-row flex-wrap gap-2 mb-4">
+                        {activePaymentMethods.map(m => {
+                          const isSelected = selectedMethod === m;
+                          return (
+                            <TouchableOpacity
+                              key={m}
+                              className={`flex-1 min-w-[90px] p-3 rounded-2xl border items-center ${
+                                isSelected ? 'bg-purple-950/60 border-[#5D3FD3]' : 'bg-slate-800/80 border-slate-700'
+                              }`}
+                              onPress={() => setSelectedMethod(m)}
+                            >
+                              {m === 'CASH' ? (
+                                <Banknote size={22} color={isSelected ? '#A78BFA' : '#94A3B8'} />
+                              ) : m === 'UPI' ? (
+                                <Smartphone size={22} color={isSelected ? '#A78BFA' : '#94A3B8'} />
+                              ) : m === 'CARD' ? (
+                                <CreditCard size={22} color={isSelected ? '#A78BFA' : '#94A3B8'} />
+                              ) : (
+                                <HelpCircle size={22} color={isSelected ? '#A78BFA' : '#94A3B8'} />
+                              )}
+                              <Text className="text-white font-bold text-xs mt-1.5" numberOfLines={1}>
+                                {m}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      {/* Cash Return Change Calculator (if Cash is selected) */}
+                      {selectedMethod === 'CASH' && (
+                        <View className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 mb-4">
+                          <View className="flex-row items-center justify-between mb-2">
+                            <Text className="text-slate-400 text-xs font-semibold">Cash Handed by Customer:</Text>
+                            <View className="flex-row gap-1.5">
+                              <TouchableOpacity
+                                onPress={() => setCashTendered(cartTotal.toFixed(0))}
+                                className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700"
+                              >
+                                <Text className="text-purple-300 text-[10px] font-bold">Exact</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => setCashTendered('500')}
+                                className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700"
+                              >
+                                <Text className="text-slate-300 text-[10px] font-bold">₹500</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => setCashTendered('1000')}
+                                className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700"
+                              >
+                                <Text className="text-slate-300 text-[10px] font-bold">₹1000</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+
+                          <TextInput
+                            placeholder={`e.g. ${cartTotal.toFixed(0)}`}
+                            placeholderTextColor="#64748B"
+                            keyboardType="numeric"
+                            value={cashTendered}
+                            onChangeText={setCashTendered}
+                            className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-sm"
+                          />
+
+                          {parseFloat(cashTendered) > cartTotal && (
+                            <View className="flex-row justify-between items-center mt-2 pt-2 border-t border-slate-850">
+                              <Text className="text-amber-400 font-bold text-xs">Return Change:</Text>
+                              <Text className="text-amber-400 font-black text-sm">
+                                ₹{(parseFloat(cashTendered) - cartTotal).toFixed(2)}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      {/* Summary Card */}
+                      <View className="bg-slate-950/40 p-3 rounded-2xl border border-slate-800/80 mb-5 flex-row justify-between items-center">
+                        <Text className="text-slate-400 text-xs">Full Payment via <Text className="text-white font-bold">{selectedMethod}</Text></Text>
+                        <Text className="text-emerald-400 font-black text-lg">₹{cartTotal.toFixed(2)}</Text>
+                      </View>
+
+                      {/* Big 1-Click Settle CTA */}
+                      <TouchableOpacity
+                        onPress={handleSettleAndPrint}
+                        disabled={isSettling || cartItems.length === 0}
+                        className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
+                          cartItems.length > 0 ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90' : 'bg-slate-800 opacity-60'
+                        }`}
+                      >
+                        {isSettling ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <>
+                            <Printer size={18} color="white" />
+                            <Text className="text-white font-black text-base ml-2">
+                              Settle & Print Bill (₹{cartTotal.toFixed(2)})
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    /* MODE B: SPLIT PAYMENT (MULTI-TENDER LEDGER) */
+                    <View>
+                      {/* Ledger Balance Strip */}
+                      <View className="flex-row gap-2 mb-4">
+                        <View className="flex-1 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 items-center">
+                          <Text className="text-slate-500 text-[10px] uppercase font-bold">Total Bill</Text>
+                          <Text className="text-white font-black text-sm mt-0.5">₹{cartTotal.toFixed(2)}</Text>
+                        </View>
+                        <View className="flex-1 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 items-center">
+                          <Text className="text-slate-500 text-[10px] uppercase font-bold">Recorded</Text>
+                          <Text className="text-indigo-400 font-black text-sm mt-0.5">₹{totalPaid.toFixed(2)}</Text>
+                        </View>
+                        <View className={`flex-1 p-2.5 rounded-2xl border items-center ${
+                          remaining === 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-amber-500/10 border-amber-500/30'
+                        }`}>
+                          <Text className={`text-[10px] uppercase font-bold ${remaining === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {remaining === 0 ? 'Balance' : 'Remaining'}
+                          </Text>
+                          <Text className={`font-black text-sm mt-0.5 ${remaining === 0 ? 'text-emerald-300' : 'text-amber-300'}`}>
+                            ₹{remaining.toFixed(2)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Add Split Section (only if balance remains) */}
+                      {remaining > 0 && (
+                        <View className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 mb-4">
+                          <Text className="text-slate-400 text-xs font-bold mb-2">Record Part Payment:</Text>
+
+                          {/* Dynamic Split Method Selector */}
+                          <View className="flex-row flex-wrap gap-1.5 mb-3">
+                            {activePaymentMethods.map(m => (
+                              <TouchableOpacity
+                                key={m}
+                                onPress={() => setSelectedMethod(m)}
+                                className={`flex-1 min-w-[70px] py-1.5 rounded-xl border items-center ${
+                                  selectedMethod === m ? 'bg-purple-950/60 border-[#5D3FD3]' : 'bg-slate-800 border-slate-700'
+                                }`}
+                              >
+                                <Text className={`text-[11px] font-bold ${selectedMethod === m ? 'text-purple-300' : 'text-slate-400'}`}>
+                                  {m}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+
+                          {/* Part Amount Input & Add Button */}
+                          <View className="flex-row gap-2 items-center">
+                            <View className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 flex-row items-center">
+                              <Text className="text-slate-400 font-bold mr-1">₹</Text>
+                              <TextInput
+                                placeholder="0.00"
+                                placeholderTextColor="#64748B"
+                                keyboardType="numeric"
+                                value={paymentAmount}
+                                onChangeText={setPaymentAmount}
+                                className="flex-1 text-white font-bold text-sm"
+                              />
+                            </View>
+                            <TouchableOpacity
+                              onPress={handleAddPayment}
+                              className="bg-[#5D3FD3] px-3.5 py-2.5 rounded-xl flex-row items-center active:opacity-80"
+                            >
+                              <Text className="text-white font-bold text-xs">+ Add Split</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Recorded Splits History List */}
+                      {payments.length > 0 && (
+                        <View className="bg-slate-950/50 border border-slate-800 p-3 rounded-2xl mb-4">
+                          <Text className="text-slate-400 text-[11px] font-bold uppercase mb-2">
+                            Recorded Split Parts ({payments.length}):
+                          </Text>
+                          {payments.map((p, idx) => (
+                            <View key={idx} className="flex-row justify-between items-center py-1.5 border-b border-slate-850 last:border-b-0">
+                              <View className="flex-row items-center">
+                                <CheckCircle2 size={13} color="#10B981" />
+                                <Text className="text-slate-200 text-xs font-semibold ml-1.5">{p.method}</Text>
+                              </View>
+                              <View className="flex-row items-center gap-2">
+                                <Text className="text-emerald-400 font-bold text-xs">₹{p.amount.toFixed(2)}</Text>
+                                <TouchableOpacity
+                                  onPress={() => handleRemovePayment(idx)}
+                                  className="p-1 rounded bg-rose-500/20"
+                                >
+                                  <Trash2 size={12} color="#F43F5E" />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Settle Split CTA */}
+                      <TouchableOpacity
+                        onPress={handleSettleAndPrint}
+                        disabled={isSettling || remaining > 0 || cartItems.length === 0}
+                        className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
+                          remaining === 0 && cartItems.length > 0
+                            ? 'bg-emerald-600 shadow-emerald-600/30'
+                            : 'bg-slate-800 opacity-60'
+                        }`}
+                      >
+                        {isSettling ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <>
+                            <Printer size={18} color="white" />
+                            <Text className="text-white font-black text-base ml-2">
+                              {remaining === 0 ? 'Settle Order & Print Bill' : `Pending ₹${remaining.toFixed(2)} Split`}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               )}
-
-              {/* Settle & Print Final CTA Button */}
-              <TouchableOpacity
-                onPress={handleSettleAndPrint}
-                disabled={isSettling || remaining > 0 || cartItems.length === 0}
-                className={'w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ' + (
-                  remaining === 0 && cartItems.length > 0
-                    ? 'bg-emerald-600 shadow-emerald-600/30'
-                    : 'bg-slate-800 opacity-60'
-                )}
-              >
-                {isSettling ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <>
-                    <Printer size={18} color="white" />
-                    <Text className="text-white font-black text-base ml-2">
-                      {remaining === 0 ? 'Settle Order & Print Bill' : ('Pending ₹' + remaining.toFixed(2))}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
             </View>
           </View>
         </View>

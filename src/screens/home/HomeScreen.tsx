@@ -1,3 +1,4 @@
+import { MenuScreen } from '../menu/MenuScreen';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -164,6 +165,11 @@ export const HomeScreen = () => {
     setOnlineOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'READY' } : o));
     Alert.alert('Rider Notified', 'Order marked ready! Delivery rider notified for pickup.');
   };
+
+  const isDirectMenuMode = features.dineInEnabled === false && features.pickupEnabled === false;
+  if (isDirectMenuMode) {
+    return <MenuScreen isDirectHome={true} />;
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-[#090D1A]">

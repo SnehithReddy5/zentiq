@@ -30,6 +30,15 @@ const defaultFeatures: TenantFeatures = {
   inventoryEnabled: false,
   splitPaymentsEnabled: true,
   insightsEnabled: true,
+  paymentsEnabled: true,
+  cashEnabled: true,
+  upiEnabled: true,
+  cardEnabled: true,
+  customPaymentMethods: [],
+  gstEnabled: true,
+  gstType: 'INCLUSIVE',
+  cgstRate: 2.5,
+  sgstRate: 2.5,
 };
 
 const defaultBranding: TenantBranding = {
@@ -40,6 +49,10 @@ const defaultBranding: TenantBranding = {
   address: '',
   receiptHeader: 'ZENTIQ RESTAURANT POS',
   receiptFooter: 'Thank You & Visit Again!!',
+  gstEnabled: true,
+  gstType: 'INCLUSIVE',
+  cgstRate: 2.5,
+  sgstRate: 2.5,
 };
 
 export const useTenantStore = create<TenantState>()(
