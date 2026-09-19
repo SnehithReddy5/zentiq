@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TenantProfile, TenantBranding, TenantFeatures, Location } from '../types/tenant.types';
-import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase/config';
 
 interface TenantState {
@@ -76,7 +76,21 @@ export const useTenantStore = create<TenantState>()(
           activeLocationId: validActive ? currentActive : (locations[0]?.id || null)
         });
       },
-      setActiveLocationId: (activeLocationId) => set({ activeLocationId }),
+      setActiveLocationId: (activeLocationId) => {
+        set({ activeLocationId });
+        try {
+          const { user } = require('./auth.store').useAuthStore.getState();
+          const currentTenantId = get().tenant?.id || user?.tenantId;
+          if (user?.id && activeLocationId) {
+            if (currentTenantId) {
+              setDoc(doc(db, 'tenants', currentTenantId, 'users', user.id), { lastActiveLocationId: activeLocationId }, { merge: true }).catch(() => {});
+              const { usePrinterStore } = require('./printer.store');
+              usePrinterStore.getState().fetchSettingsFromCloud(currentTenantId, activeLocationId);
+            }
+            setDoc(doc(db, 'users', user.id), { lastActiveLocationId: activeLocationId }, { merge: true }).catch(() => {});
+          }
+        } catch (e) {}
+      },
       setLoading: (isLoading) => set({ isLoading }),
       resetTenant: () => set({
         tenant: null,
@@ -127,16 +141,28 @@ export const useTenantStore = create<TenantState>()(
           const assigned = user?.assignedLocationId || (user?.locationIds && user.locationIds[0] !== '*' ? user.locationIds[0] : null);
 
           let finalActive = currentActive;
-          if (!isClientAdmin && assigned) {
+          if (!finalActive && user?.lastActiveLocationId && locs.some(l => l.id === user.lastActiveLocationId)) {
+            finalActive = user.lastActiveLocationId;
+          } else if (!isClientAdmin && assigned) {
             finalActive = assigned;
           } else if (!locs.some(l => l.id === finalActive)) {
-            finalActive = locs[0]?.id || null;
+            finalActive = (user?.lastActiveLocationId && locs.some(l => l.id === user.lastActiveLocationId))
+              ? user.lastActiveLocationId
+              : (locs[0]?.id || null);
           }
 
           set({
             locations: locs,
             activeLocationId: finalActive
           });
+
+          // Cloud sync printer settings for the active location
+          if (finalActive && tenantId) {
+            try {
+              const { usePrinterStore } = require('./printer.store');
+              usePrinterStore.getState().fetchSettingsFromCloud(tenantId, finalActive);
+            } catch (err) {}
+          }
         });
 
         return () => {

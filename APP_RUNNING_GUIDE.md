@@ -183,3 +183,27 @@ Even when your phone and laptop are on the exact same Wi-Fi router, connection f
      cd C:\Vasudha\zentiq
      npx expo start -c
      ```
+
+---
+
+## Part 5: Thermal Printing on Windows (Desktop & Browser)
+
+### 5.1 Why "Print Success" previously showed with no paper:
+Browsers (Chrome/Edge) cannot open raw TCP sockets to thermal printer port 9100 directly. Previously, Expo Web resolved a mock printer service that simply logged to the console without sending bytes to the printer.
+
+### 5.2 How Windows Printing is now configured:
+We implemented a **Dual Windows Print Pipeline**:
+1. **Electron Desktop App** (`npm run electron`):
+   - Uses native Node `net.Socket` via Electron IPC to print directly to network thermal printers.
+2. **Web Browser Mode** (Chrome / Edge at `localhost:8081` or Expo Web):
+   - Bridges print jobs to the **ZENTIQ Thermal Print Bridge** running on `http://127.0.0.1:9123`.
+   - Sends the raw ESC/POS binary data to your thermal printer (IP: `192.168.x.x`, Port: `9100`).
+   - If the printer is offline or the IP is incorrect, the bridge returns the exact error (e.g. `ECONNREFUSED`, `ETIMEDOUT`) instead of falsely reporting success.
+
+### 5.3 Starting the Thermal Print Bridge on Windows:
+Whenever you test in a Windows web browser, run:
+```bash
+cd C:\Vasudha\zentiq
+npm run print-bridge
+```
+*(The print bridge is already running as an active daemon on your machine).*

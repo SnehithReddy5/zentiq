@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -68,10 +69,7 @@ export const MenuManagementScreen = () => {
         );
       } else {
         if (favoriteCount >= 10) {
-          Alert.alert(
-            'Favorite Limit Reached',
-            'Only a maximum of 10 favorite items can be selected at once. Please unstar an existing favorite item first before adding a new one.'
-          );
+          toast.warning('Only a maximum of 10 favorite items can be selected at once. Please unstar an existing favorite item first before adding a new one.', 'Favorite Limit Reached');
           return;
         }
         await DBServices.updateMenuItem(
@@ -82,7 +80,7 @@ export const MenuManagementScreen = () => {
         );
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'Category Error');
     }
   };
 
@@ -154,7 +152,7 @@ export const MenuManagementScreen = () => {
     if (!restockTargetItem) return;
     const amount = parseFloat(restockAmount);
     if (isNaN(amount) || amount < 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid stock quantity.');
+      toast.warning('Please enter a valid stock quantity.', 'Invalid Amount');
       return;
     }
 
@@ -166,11 +164,11 @@ export const MenuManagementScreen = () => {
         tenant?.id,
         activeLocationId || undefined
       );
-      Alert.alert('Restocked', `${restockTargetItem.name} stock updated to ${amount} ${restockTargetItem.stockUnit || 'units'}!`);
+      toast.success(`${restockTargetItem.name} stock updated to ${amount} ${restockTargetItem.stockUnit || 'units'}!`, 'Restocked');
       setRestockTargetItem(null);
       setRestockAmount('');
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      toast.error(err.message, 'Restock Error');
     } finally {
       setIsRestocking(false);
     }
@@ -179,16 +177,16 @@ export const MenuManagementScreen = () => {
   // Save Item (Create or Update)
   const handleSaveItem = async () => {
     if (!itemName.trim()) {
-      Alert.alert('Required', 'Item name is required.');
+      toast.warning('Item name is required.', 'Required');
       return;
     }
 
     if (!itemCategoryId) {
       if (categories.length === 0) {
-        Alert.alert('Category Needed', 'Please create a menu category first before adding items.');
+        toast.warning('Please create a category first.', 'Category Needed');
         return;
       }
-      Alert.alert('Required', 'Please select a category for this item.');
+      toast.warning('Please select a category for this item.', 'Required');
       return;
     }
 
@@ -196,10 +194,7 @@ export const MenuManagementScreen = () => {
     if (itemIsFavorite) {
       const isAlreadyFav = editingItemId ? items.find(i => i.id === editingItemId)?.isFavorite : false;
       if (!isAlreadyFav && favoriteCount >= 10) {
-        Alert.alert(
-          'Favorite Limit Reached',
-          'Only a maximum of 10 favorite items can be selected at once. Please unstar another item first.'
-        );
+        toast.warning('Only a maximum of 10 favorite items can be selected at once. Please unstar another item first.', 'Favorite Limit Reached');
         return;
       }
     }
@@ -210,7 +205,7 @@ export const MenuManagementScreen = () => {
     if (hasVariants) {
       const validVariants = variants.filter(v => v.name.trim().length > 0);
       if (validVariants.length === 0) {
-        Alert.alert('Variants Required', 'Please add at least one named variant or turn off multiple sizes.');
+        toast.warning('Please add at least one named variant.', 'Variants Required');
         return;
       }
       cleanVariants = validVariants.map((v, idx) => ({
@@ -248,7 +243,7 @@ export const MenuManagementScreen = () => {
           tenant?.id,
           activeLocationId || undefined
         );
-        Alert.alert('Success', 'Item updated successfully!');
+        toast.success('Item updated successfully!');
       } else {
         await DBServices.addMenuItem(
           {
@@ -258,13 +253,13 @@ export const MenuManagementScreen = () => {
           tenant?.id,
           activeLocationId || undefined
         );
-        Alert.alert('Success', 'Item added to menu!');
+        toast.success('Item added to menu!');
       }
 
       setItemModalOpen(false);
     } catch (e: any) {
       console.error('Error saving menu item:', e);
-      Alert.alert('Save Failed', e.message || 'Could not save menu item.');
+      toast.error(e.message || 'Could not save menu item.', 'Save Failed');
     }
   };
 
@@ -292,7 +287,7 @@ export const MenuManagementScreen = () => {
       setEditingCategoryId(null);
       setCategoryModalOpen(false);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'Item Save Error');
     }
   };
 
@@ -743,7 +738,7 @@ export const MenuManagementScreen = () => {
                     <View className="flex-row justify-between items-center mb-2">
                       <Text className="text-slate-300 font-bold text-xs">Variants & Prices</Text>
                       <TouchableOpacity
-                        onPress={() => setVariants([...variants, { name: '', price: '' }])}
+                        onPress={() => setVariants([...variants, { name: '', price: '', portionDeduction: '1' }])}
                         className="bg-[#5D3FD3] px-2 py-1 rounded"
                       >
                         <Text className="text-white text-[11px] font-bold">+ Variant</Text>
@@ -780,7 +775,7 @@ export const MenuManagementScreen = () => {
                             placeholder={`Deducts (${itemStockUnit})`}
                             placeholderTextColor="#64748B"
                             keyboardType="numeric"
-                            value={v.portionDeduction || '1'}
+                            value={v.portionDeduction !== undefined ? String(v.portionDeduction) : ''}
                             onChangeText={txt => {
                               const newVars = [...variants];
                               newVars[i].portionDeduction = txt;

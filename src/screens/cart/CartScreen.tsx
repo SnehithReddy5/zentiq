@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import { Input } from '../../components/common/Input';
 import { useCartStore } from '../../store/cart.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { usePrinterStore } from '../../store/printer.store';
+import { useToastStore } from '../../store/toast.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { DBServices } from '../../services/firebase/db';
@@ -105,7 +107,7 @@ export const CartScreen = () => {
     if (cartItems.length === 0) return;
 
     if (!activeLocationId && locations && locations.length > 0) {
-      Alert.alert('Branch Required', 'Please select an active operating branch on the home screen before completing orders.');
+      toast.warning('Please select an operating branch on the home screen first.', 'Branch Required');
       return;
     }
 
@@ -158,11 +160,10 @@ export const CartScreen = () => {
 
       // 4. Clear cart and return
       clearCart(tableNo);
-      Alert.alert('KOT Dispatched', `KOT #${kotNo} printed and sent to kitchen!`, [
-        { text: 'OK', onPress: () => navigation.navigate(Routes.HOME) }
-      ]);
+      toast.success(`KOT #${kotNo} printed and sent to kitchen!`, 'KOT Dispatched');
+      navigation.navigate(Routes.HOME);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'Settlement Error');
     } finally {
       setIsSettling(false);
     }
@@ -174,11 +175,11 @@ export const CartScreen = () => {
   const handleAddPayment = () => {
     const amt = parseFloat(paymentAmount);
     if (isNaN(amt) || amt <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount.');
+      toast.warning('Please enter a valid amount.', 'Invalid Amount');
       return;
     }
     if (amt > remaining) {
-      Alert.alert('Amount Exceeded', 'Remaining amount is only ₹' + remaining.toFixed(2));
+      toast.warning('Remaining amount is only ₹' + remaining.toFixed(2), 'Amount Exceeded');
       return;
     }
     setPayments([...payments, { method: selectedMethod, amount: amt }]);
@@ -217,16 +218,13 @@ export const CartScreen = () => {
 
   const executeSettlement = async (finalPayments: { method: string; amount: number }[]) => {
     if (user?.role === 'WAITER' || user?.role === 'captain') {
-      Alert.alert(
-        'Action Restricted',
-        'Bill settlement requires Biller or Manager authorization. Please hand over this table order to the billing counter.'
-      );
+      toast.warning('Bill settlement requires Biller or Manager authorization. Please hand over this table order to the billing counter.', 'Action Restricted');
       return;
     }
     if (cartItems.length === 0) return;
 
     if (!activeLocationId && locations && locations.length > 0) {
-      Alert.alert('Branch Required', 'Please select an active operating branch on the home screen before completing orders.');
+      toast.warning('Please select an active operating branch on the home screen before completing orders.', 'Branch Required');
       return;
     }
 
@@ -234,8 +232,8 @@ export const CartScreen = () => {
     try {
       const billNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
 
-      // 1. Create completed order in Firestore
-      await DBServices.createOrder({
+      // 1. Parallel database updates (Record Order & Free Table simultaneously)
+      const orderPromise = DBServices.createOrder({
         orderNumber: billNo,
         kotNo: billNo,
         orderType,
@@ -250,97 +248,118 @@ export const CartScreen = () => {
         createdAt: new Date(),
       }, tenant?.id, activeLocationId || undefined);
 
-      // 2. Free the table if dine-in
-      if (tableNo !== 0) {
-        await DBServices.updateTableStatusByNo(tableNo, 'available', tenant?.id, activeLocationId || undefined);
-      }
+      const tablePromise = tableNo !== 0
+        ? DBServices.updateTableStatusByNo(tableNo, 'available', tenant?.id, activeLocationId || undefined)
+        : Promise.resolve();
 
-      // 3. Print based on Printer Workflow Mode (Restaurant, Curry Point, Tiffin Center)
+      // 2. Pre-generate ESC/POS buffers synchronously in memory (< 1ms)
       const activeLoc = locations.find(l => l.id === activeLocationId);
       const branchName = activeLoc ? activeLoc.name : branding?.displayName;
       const brandPayload = branding ? { ...branding, gstEnabled, gstType, cgstRate, sgstRate } : null;
       const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
 
-      if (workflowMode === 'TIFFIN_CENTER') {
-        // Mode 3: Tiffin Center - 1 Printer, 2 Prints (Customer Bill, paper cut, then small Kitchen Token slip)
-        try {
-          const combinedBuffer = ESCPOSService.buildCombinedTiffinPrints(
-            billNo,
-            tableNo,
-            user?.name || 'Staff',
-            cartItems,
-            brandPayload,
-            orderType,
-            finalPayments
-          );
-          await printerService.connect(settings.ipAddress, settings.port);
-          await printerService.print(combinedBuffer);
-          await printerService.disconnect();
-        } catch (printErr) {
-          console.warn('Tiffin Center 2-print thermal dispatch error:', printErr);
-        }
-      } else if (workflowMode === 'CURRY_POINT') {
-        // Mode 2: Curry Point - Single Main Printer (Customer Bill only, no kitchen ticket)
-        try {
-          const billBuffer = ESCPOSService.buildBill(
-            billNo,
-            tableNo,
-            user?.name || 'Staff',
-            cartItems,
-            brandPayload,
-            orderType,
-            finalPayments
-          );
-          await printerService.connect(settings.ipAddress, settings.port);
-          await printerService.print(billBuffer);
-          await printerService.disconnect();
-        } catch (printErr) {
-          console.warn('Curry Point bill print error:', printErr);
-        }
-      } else {
-        // Mode 1: Restaurant - Dual Printers (Customer Bill on Main, Kitchen KOT on Kitchen)
-        try {
-          const billBuffer = ESCPOSService.buildBill(
-            billNo,
-            tableNo,
-            user?.name || 'Staff',
-            cartItems,
-            brandPayload,
-            orderType,
-            finalPayments
-          );
-          await printerService.connect(settings.ipAddress, settings.port);
-          await printerService.print(billBuffer);
-          await printerService.disconnect();
-        } catch (printErr) {
-          console.warn('Restaurant billing printer error:', printErr);
-        }
+      // 3. Dispatch Thermal Prints in Background (Non-blocking: Cashier never waits for printer timeouts)
+      const dispatchPrints = async () => {
+        const isUsb = settings.printerType === 'USB';
+        const mainTarget = isUsb ? (settings.printerName || 'POS-80') : (settings.ipAddress || '127.0.0.1');
+        const mainPort = settings.port || 9100;
+        const mainType = isUsb ? 'USB' : 'LAN';
 
-        const kitchenIp = (settings.kitchenIpAddress || '').trim();
-        if (kitchenIp) {
-          try {
-            const kotBuffer = ESCPOSService.buildKOT(
+        try {
+          if (workflowMode === 'TIFFIN_CENTER') {
+            const combinedBuffer = ESCPOSService.buildCombinedTiffinPrints(
               billNo,
               tableNo,
               user?.name || 'Staff',
               cartItems,
-              'ORDER SETTLED',
-              orderType
+              brandPayload,
+              orderType,
+              finalPayments
             );
-            await printerService.connect(kitchenIp, settings.kitchenPort || 9100);
-            await printerService.print(kotBuffer);
+            await printerService.connect(mainTarget, mainPort, mainType);
+            await printerService.print(combinedBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
             await printerService.disconnect();
-          } catch (kotErr) {
-            console.warn('Restaurant kitchen printer error:', kotErr);
+          } else if (workflowMode === 'CURRY_POINT') {
+            const billBuffer = ESCPOSService.buildBill(
+              billNo,
+              tableNo,
+              user?.name || 'Staff',
+              cartItems,
+              brandPayload,
+              orderType,
+              finalPayments
+            );
+            await printerService.connect(mainTarget, mainPort, mainType);
+            await printerService.print(billBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
+            await printerService.disconnect();
+          } else {
+            const billBuffer = ESCPOSService.buildBill(
+              billNo,
+              tableNo,
+              user?.name || 'Staff',
+              cartItems,
+              brandPayload,
+              orderType,
+              finalPayments
+            );
+            await printerService.connect(mainTarget, mainPort, mainType);
+            await printerService.print(billBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
+            await printerService.disconnect();
+
+            const kitchenIp = (settings.kitchenIpAddress || '').trim();
+            if (kitchenIp) {
+              try {
+                const kotBuffer = ESCPOSService.buildKOT(
+                  billNo,
+                  tableNo,
+                  user?.name || 'Staff',
+                  cartItems,
+                  'ORDER SETTLED',
+                  orderType
+                );
+                await printerService.connect(kitchenIp, settings.kitchenPort || 9100);
+                await printerService.print(kotBuffer);
+                await printerService.disconnect();
+              } catch (kotErr: any) {
+                console.warn('Kitchen printer background dispatch error:', kotErr);
+                useToastStore.getState().showToast({
+                  type: 'warning',
+                  title: 'Kitchen Ticket Warning',
+                  message: `Bill #${billNo} settled, but kitchen printer did not respond (${kitchenIp}).`,
+                  duration: 6000,
+                });
+              }
+            }
           }
+        } catch (printErr: any) {
+          console.warn('Thermal print background dispatch error:', printErr);
+          useToastStore.getState().showToast({
+            type: 'error',
+            title: 'Print Failed (Saved to Cloud)',
+            message: `Bill #${billNo} recorded, but thermal printer (${settings.ipAddress || 'LAN'}) did not respond: ${printErr?.message || 'offline'}. Check Wi-Fi.`,
+            duration: 7000,
+          });
         }
-      }
+      };
+
+      // Fire-and-forget print job immediately
+      dispatchPrints();
+
+      // Await database write completion in parallel (~150ms)
+      await Promise.all([orderPromise, tablePromise]);
+
+      useToastStore.getState().showToast({
+        type: 'success',
+        title: 'Order Settled',
+        message: `Bill #${billNo} settled successfully.`,
+        duration: 3500,
+      });
 
       clearCart(tableNo);
-      // Fast transition without blocking alert modal
+      // Immediate screen dismissal
       navigation.navigate(Routes.HOME);
     } catch (e: any) {
-      Alert.alert('Checkout Error', e.message);
+      toast.error(e.message, 'Checkout Error');
     } finally {
       setIsSettling(false);
     }
@@ -554,26 +573,32 @@ export const CartScreen = () => {
                       {/* Cash Return Change Calculator (if Cash is selected) */}
                       {selectedMethod === 'CASH' && (
                         <View className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 mb-4">
-                          <View className="flex-row items-center justify-between mb-2">
-                            <Text className="text-slate-400 text-xs font-semibold">Cash Handed by Customer:</Text>
-                            <View className="flex-row gap-1.5">
+                          <View className="mb-2.5">
+                            <Text className="text-slate-400 text-xs font-semibold mb-2">Cash Handed by Customer:</Text>
+                            <View className="flex-row flex-wrap gap-2 mb-2">
                               <TouchableOpacity
                                 onPress={() => setCashTendered(cartTotal.toFixed(0))}
-                                className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700"
+                                className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 active:bg-slate-700"
                               >
-                                <Text className="text-purple-300 text-[10px] font-bold">Exact</Text>
+                                <Text className="text-purple-300 text-xs font-bold">Exact (₹{cartTotal.toFixed(0)})</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => setCashTendered('500')}
-                                className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700"
+                                className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 active:bg-slate-700"
                               >
-                                <Text className="text-slate-300 text-[10px] font-bold">₹500</Text>
+                                <Text className="text-slate-200 text-xs font-bold">₹500</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => setCashTendered('1000')}
-                                className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700"
+                                className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 active:bg-slate-700"
                               >
-                                <Text className="text-slate-300 text-[10px] font-bold">₹1000</Text>
+                                <Text className="text-slate-200 text-xs font-bold">₹1000</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => setCashTendered('2000')}
+                                className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 active:bg-slate-700"
+                              >
+                                <Text className="text-slate-200 text-xs font-bold">₹2000</Text>
                               </TouchableOpacity>
                             </View>
                           </View>

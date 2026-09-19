@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState } from 'react';
 import {
   View,
@@ -32,7 +33,7 @@ export const LoginScreen = () => {
     const cleanPassword = password.trim();
 
     if (!cleanId || !cleanPassword) {
-      Alert.alert('Required', 'Please enter your User ID / Mobile / Email and Password');
+      toast.warning('Please enter your User ID / Mobile / Email and Password', 'Required');
       return;
     }
     setLoading(true);
@@ -75,9 +76,11 @@ export const LoginScreen = () => {
               role: u.role || 'TENANT_SUPER_ADMIN',
               tenantId: u.tenantId || 'vasudha-family-restaurant',
               locationIds: u.locationIds || ['*'],
+              assignedLocationId: u.assignedLocationId || null,
+              lastActiveLocationId: u.lastActiveLocationId || null,
             };
           } else {
-            Alert.alert('Login Failed', 'Incorrect password for this user.');
+            toast.error('Incorrect password for this user.', 'Login Failed');
             setLoading(false);
             return;
           }
@@ -90,10 +93,7 @@ export const LoginScreen = () => {
           firestoreErr.code === 'permission-denied' ||
           firestoreErr.code === 'unavailable'
         ) {
-          Alert.alert(
-            'Firestore Database Not Active',
-            'Cannot reach Cloud Firestore for project "zentiq-b5d40".\n\nPlease ensure you have clicked "Create database" under Firestore Database in the Firebase Console (https://console.firebase.google.com) and allowed read/write rules.'
-          );
+          toast.error('Cannot reach Cloud Firestore for project "zentiq-b5d40". Please ensure Firestore is created and rules allow access.', 'Database Offline');
           setLoading(false);
           return;
         }
@@ -112,7 +112,7 @@ export const LoginScreen = () => {
       }
 
       if (!matchedUser) {
-        Alert.alert('User Not Found', 'No user found with this ID or Mobile. Please check your credentials or create the client in Platform Admin Web.');
+        toast.error('No user found with this ID or Mobile. Please check your credentials.', 'User Not Found');
         setLoading(false);
         return;
       }
@@ -126,10 +126,7 @@ export const LoginScreen = () => {
       if (tenantSnap.exists()) {
         const tData = tenantSnap.data();
         if (tData.status === 'DEACTIVATED' || tData.status === 'SUSPENDED') {
-          Alert.alert(
-            'Account Deactivated',
-            'This restaurant account has been suspended by the platform administrator. All POS access and operations have been stopped. Please contact platform support.'
-          );
+          toast.error('This restaurant account has been suspended by the platform administrator. Please contact support.', 'Account Deactivated');
           setLoading(false);
           return;
         }
@@ -194,19 +191,21 @@ export const LoginScreen = () => {
         locs = [defaultLoc];
       }
       setLocations(locs);
-      // By default, no location is selected so user chooses on start
-        setActiveLocationId(null);
-
+      // Restore user's last selected branch (e.g. hyd branch) or assigned branch
       setUser(matchedUser);
-      if (matchedUser.assignedLocationId) {
+      if (matchedUser.lastActiveLocationId && locs.some(l => l.id === matchedUser.lastActiveLocationId)) {
+        setActiveLocationId(matchedUser.lastActiveLocationId);
+      } else if (matchedUser.assignedLocationId) {
         setActiveLocationId(matchedUser.assignedLocationId);
+      } else {
+        setActiveLocationId(locs[0]?.id || null);
       }
 
       // Start live real-time subscription for instant feature and status enforcement
       subscribeToActiveTenant(targetTenantId);
 
     } catch (err: any) {
-      Alert.alert('Login Error', err.message || 'An unexpected error occurred during login.');
+      toast.error(err.message || 'An unexpected error occurred during login.', 'Login Error');
     } finally {
       setLoading(false);
     }

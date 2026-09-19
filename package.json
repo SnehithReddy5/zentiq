@@ -12,7 +12,8 @@
     "build:ios": "eas build --platform ios --profile preview",
     "electron": "electron electron/main.js",
     "build:windows": "expo export -p web && electron-builder --win",
-    "build:windows:portable": "expo export -p web && electron-builder --win portable"
+    "build:windows:portable": "expo export -p web && electron-builder --win portable",
+    "print-bridge": "node electron/print-bridge.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.15",

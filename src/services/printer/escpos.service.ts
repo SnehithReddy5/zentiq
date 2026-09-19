@@ -14,8 +14,8 @@ export class ESCPOSService {
   static CUT = [0x1D, 0x56, 0x41, 0x10];
   static NEW_LINE = [0x0A];
 
-  // Standard safe printable width for 80mm thermal paper (prevents edge overflow and ghost blank lines)
-  static RECEIPT_WIDTH = 38;
+  // Full 48-column printable width for standard 80mm thermal paper (eliminates ugly right whitespace)
+  static RECEIPT_WIDTH = 48;
 
   private static wrapText(text: string, maxLength: number): string[] {
     const words = (text || '').split(' ');
@@ -40,28 +40,30 @@ export class ESCPOSService {
     return lines.length ? lines : [''];
   }
 
-  // Robust 2-column key-value formatter that never exceeds RECEIPT_WIDTH (38 cols)
+  // Robust 2-column key-value formatter that stretches across full receipt width without wrapping
   private static formatTwoCol(left: string, right: string, width = ESCPOSService.RECEIPT_WIDTH): string {
     const l = (left || '').trim();
     const r = (right || '').trim();
-    const spaceCount = Math.max(1, width - l.length - r.length);
-    return l + ''.padEnd(spaceCount, ' ') + r + '\n';
+    const maxLeftLen = Math.max(1, width - r.length - 1);
+    const cleanL = l.length > maxLeftLen ? l.substring(0, maxLeftLen) : l;
+    const spaceCount = Math.max(1, width - cleanL.length - r.length);
+    return cleanL + ''.padEnd(spaceCount, ' ') + r + '\n';
   }
 
-  // 4-column itemized line: Item (18) + Qty (4) + Price (8) + Amount (8) = 38 cols
-  private static formatRow38(item: string, qty: string, price: string, amount: string): string {
-    const col1 = item.substring(0, 18).padEnd(18, ' ');
-    const col2 = qty.padStart(4, ' ');
-    const col3 = price.padStart(8, ' ');
-    const col4 = amount.padStart(8, ' ');
+  // 4-column itemized line across full 48 columns: Item (22) + Qty (5) + Price (10) + Amount (11) = 48
+  private static formatRow48(item: string, qty: string, price: string, amount: string): string {
+    const col1 = item.substring(0, 22).padEnd(22, ' ');
+    const col2 = qty.padStart(5, ' ');
+    const col3 = price.padStart(10, ' ');
+    const col4 = amount.padStart(11, ' ');
     return `${col1}${col2}${col3}${col4}\n`;
   }
 
-  // 3-column KOT row: Item (20) + Note (12) + Qty (6) = 38 cols
-  private static formatKOTRow38(item: string, note: string, qty: string): string {
-    const col1 = item.substring(0, 20).padEnd(20, ' ');
-    const col2 = note.substring(0, 12).padEnd(12, ' ');
-    const col3 = qty.padStart(6, ' ');
+  // 3-column KOT row across 48 columns: Item (26) + Note (14) + Qty (8) = 48
+  private static formatKOTRow48(item: string, note: string, qty: string): string {
+    const col1 = item.substring(0, 26).padEnd(26, ' ');
+    const col2 = note.substring(0, 14).padEnd(14, ' ');
+    const col3 = qty.padStart(8, ' ');
     return `${col1}${col2}${col3}\n`;
   }
 
@@ -91,43 +93,44 @@ export class ESCPOSService {
 
     const cleanType = (orderType || '').toUpperCase().trim();
     let orderTypeStr = (tableNo && tableNo > 0) ? `Table: ${tableNo}` : (cleanType === 'PICKUP' ? 'Pick Up' : 'Takeaway');
+    const cleanStaff = (captainName || 'Staff').slice(0, 24);
 
     buffer.push(...this.ALIGN_LEFT);
     this.pushSeparatorLine(buffer, '=');
-    buffer.push(...this.stringToBytes(this.formatTwoCol(`KOT #: ${kotNo}`, orderTypeStr)));
-    buffer.push(...this.stringToBytes(this.formatTwoCol(`Time: ${formattedDate}`, `Staff: ${captainName || 'Staff'}`)));
+    buffer.push(...this.stringToBytes(this.formatTwoCol(`KOT #: ${kotNo}`, orderTypeStr, 48)));
+    buffer.push(...this.stringToBytes(this.formatTwoCol(`Time: ${formattedDate}`, `Staff: ${cleanStaff}`, 48)));
     this.pushSeparatorLine(buffer, '-');
 
+    // 48-character KOT header
     buffer.push(...this.BOLD_ON);
-    buffer.push(...this.stringToBytes(this.formatKOTRow38('Item', 'Special Note', 'Qty.')));
+    buffer.push(...this.stringToBytes(this.formatKOTRow48('Item', 'Special Note', 'Qty')));
     buffer.push(...this.BOLD_OFF);
     this.pushSeparatorLine(buffer, '-');
 
     items.forEach(item => {
-      let nameStr = (item.itemName || item.name || '');
+      let nameStr = item.itemName || item.name || '';
       if (item.variantName) {
         nameStr += ` (${item.variantName})`;
       }
-      let wrappedNameLines = this.wrapText(nameStr, 20);
-      let line1Name = wrappedNameLines[0] || '';
-      let note = item.note || '--';
-      let qty = (item.qty || 1).toString();
+      const wrappedNameLines = this.wrapText(nameStr, 26);
+      const line1Name = wrappedNameLines[0] || '';
+      const note = (item.note || '--').substring(0, 14);
+      const qty = (item.qty || 1).toString();
 
-      buffer.push(...this.stringToBytes(this.formatKOTRow38(line1Name, note, qty)));
+      buffer.push(...this.stringToBytes(this.formatKOTRow48(line1Name, note, qty)));
 
       for (let i = 1; i < wrappedNameLines.length; i++) {
-        buffer.push(...this.stringToBytes(wrappedNameLines[i].padEnd(38, ' ') + '\n'));
+        buffer.push(...this.stringToBytes(wrappedNameLines[i].padEnd(48, ' ') + '\n'));
       }
     });
 
     this.pushSeparatorLine(buffer, '-');
 
-    if (specialNote) {
-      buffer.push(...this.stringToBytes(`Note: ${specialNote}\n`));
+    if (specialNote && specialNote.trim()) {
+      buffer.push(...this.stringToBytes(`Note: ${specialNote.trim()}\n`));
       this.pushSeparatorLine(buffer, '-');
     }
 
-    buffer.push(...this.NEW_LINE);
     buffer.push(...this.NEW_LINE);
     buffer.push(...this.NEW_LINE);
     buffer.push(...this.CUT);
@@ -160,7 +163,7 @@ export class ESCPOSService {
     buffer.push(...this.BOLD_OFF);
 
     if (branding?.address) {
-      const wrappedAddress = this.wrapText(branding.address, 34);
+      const wrappedAddress = this.wrapText(branding.address, 42);
       wrappedAddress.forEach(line => buffer.push(...this.stringToBytes(`${line}\n`)));
     }
     if (branding?.phone) {
@@ -170,7 +173,7 @@ export class ESCPOSService {
       buffer.push(...this.stringToBytes(`GSTIN: ${branding.gstin.trim()}\n`));
     }
 
-    // 2. Order Metadata Block (Strict 38 columns, No Overflow)
+    // 2. Order Metadata Block (Full 48 columns with graceful Cashier name handling)
     buffer.push(...this.ALIGN_LEFT);
     this.pushSeparatorLine(buffer, '=');
 
@@ -182,16 +185,19 @@ export class ESCPOSService {
       ? (orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway')
       : `Table: ${tableNo}`;
 
-    // Bill # & Table are placed cleanly at the top of the details
-    buffer.push(...this.BOLD_ON);
-    buffer.push(...this.stringToBytes(this.formatTwoCol(`Bill No: #${billNo}`, rightOrderType)));
-    buffer.push(...this.BOLD_OFF);
-    buffer.push(...this.stringToBytes(this.formatTwoCol(`Date: ${formattedDate} ${formattedTime}`, `Staff: ${cashierName || 'Staff'}`)));
+    const cleanCashier = (cashierName || 'Staff').slice(0, 22);
 
-    // 3. Itemized Grid Header
+    // Row 1: Date/Time (Left) & Order Type / Table (Right)
+    buffer.push(...this.stringToBytes(this.formatTwoCol(`Date: ${formattedDate} ${formattedTime}`, rightOrderType, 48)));
+    // Row 2: Cashier Name (Left) & Bill No (Right)
+    buffer.push(...this.BOLD_ON);
+    buffer.push(...this.stringToBytes(this.formatTwoCol(`Cashier: ${cleanCashier}`, `Bill No: #${billNo}`, 48)));
+    buffer.push(...this.BOLD_OFF);
+
+    // 3. Itemized Grid Header (Full 48 Columns)
     this.pushSeparatorLine(buffer, '-');
     buffer.push(...this.BOLD_ON);
-    buffer.push(...this.stringToBytes(this.formatRow38('Item', 'Qty', 'Price', 'Amount')));
+    buffer.push(...this.stringToBytes(this.formatRow48('Item', 'Qty', 'Price', 'Amount')));
     buffer.push(...this.BOLD_OFF);
     this.pushSeparatorLine(buffer, '-');
 
@@ -206,39 +212,47 @@ export class ESCPOSService {
     let totalQty = 0;
 
     items.forEach(item => {
-      let qty = (item.qty || 1);
-      let price = (item.price || 0);
-      grandTotalRaw += price * qty;
+      const qty = item.qty || 1;
+      const price = Number(item.price) || 0;
+      const lineTotal = price * qty;
+      grandTotalRaw += lineTotal;
       totalQty += qty;
 
-      // Base price computation according to GST mode
-      let basePrice = price;
-      if (gstEnabled && gstType === 'INCLUSIVE' && totalTaxRate > 0) {
-        basePrice = Math.round((price / (1 + totalTaxRate)) * 100) / 100;
-      }
-      let baseAmount = Math.round((basePrice * qty) * 100) / 100;
+      let displayUnitPrice = price;
+      let displayLineTotal = lineTotal;
 
-      let nameStr = (item.itemName || item.name || '');
+      // Reverse calculate base price if GST is INCLUSIVE
+      if (gstEnabled && gstType === 'INCLUSIVE' && totalTaxRate > 0) {
+        displayUnitPrice = Math.round((price / (1 + totalTaxRate)) * 100) / 100;
+        displayLineTotal = Math.round((displayUnitPrice * qty) * 100) / 100;
+      }
+
+      let nameStr = item.itemName || item.name || 'Item';
       if (item.variantName) {
         nameStr += ` (${item.variantName})`;
       }
-      let wrappedNameLines = this.wrapText(nameStr, 18);
+      const wrappedNameLines = this.wrapText(nameStr, 22);
+      const line1Name = wrappedNameLines[0] || '';
 
-      let line1Name = wrappedNameLines[0] || '';
-      let qtyStr = qty.toString();
-      let priceStr = basePrice.toFixed(2);
-      let amtStr = baseAmount.toFixed(2);
-
-      buffer.push(...this.stringToBytes(this.formatRow38(line1Name, qtyStr, priceStr, amtStr)));
+      buffer.push(
+        ...this.stringToBytes(
+          this.formatRow48(
+            line1Name,
+            qty.toString(),
+            displayUnitPrice.toFixed(2),
+            displayLineTotal.toFixed(2)
+          )
+        )
+      );
 
       for (let i = 1; i < wrappedNameLines.length; i++) {
-        buffer.push(...this.stringToBytes(wrappedNameLines[i].padEnd(38, ' ') + '\n'));
+        buffer.push(...this.stringToBytes(wrappedNameLines[i].padEnd(48, ' ') + '\n'));
       }
     });
 
     this.pushSeparatorLine(buffer, '-');
 
-    // 5. Financial Summary & GST Breakdown
+    // 5. Financial Summary & GST Breakdown (Full 48 Columns)
     let subTotal = 0;
     let cgst = 0;
     let sgst = 0;
@@ -246,14 +260,12 @@ export class ESCPOSService {
     let roundOff = 0;
 
     if (!gstEnabled) {
-      // GST Disabled: flat bill with no tax lines
       subTotal = grandTotalRaw;
       finalGrandTotal = grandTotalRaw;
 
-      buffer.push(...this.stringToBytes(this.formatTwoCol('Total Items / Qty:', totalQty.toString())));
-      buffer.push(...this.stringToBytes(this.formatTwoCol('Subtotal:', subTotal.toFixed(2))));
+      buffer.push(...this.stringToBytes(this.formatTwoCol('Total Items / Qty:', totalQty.toString(), 48)));
+      buffer.push(...this.stringToBytes(this.formatTwoCol('Subtotal:', subTotal.toFixed(2), 48)));
     } else if (gstType === 'EXCLUSIVE') {
-      // Exclusive GST: Tax is charged separately on top of subtotal
       subTotal = grandTotalRaw;
       cgst = Math.round((subTotal * (cgstRate / 100)) * 100) / 100;
       sgst = Math.round((subTotal * (sgstRate / 100)) * 100) / 100;
@@ -261,15 +273,14 @@ export class ESCPOSService {
       finalGrandTotal = Math.round(computedTotal);
       roundOff = Math.round((finalGrandTotal - computedTotal) * 100) / 100;
 
-      buffer.push(...this.stringToBytes(this.formatTwoCol('Total Items / Qty:', totalQty.toString())));
-      buffer.push(...this.stringToBytes(this.formatTwoCol('Subtotal:', subTotal.toFixed(2))));
-      buffer.push(...this.stringToBytes(this.formatTwoCol(`CGST (${cgstRate}%):`, cgst.toFixed(2))));
-      buffer.push(...this.stringToBytes(this.formatTwoCol(`SGST (${sgstRate}%):`, sgst.toFixed(2))));
+      buffer.push(...this.stringToBytes(this.formatTwoCol('Total Items / Qty:', totalQty.toString(), 48)));
+      buffer.push(...this.stringToBytes(this.formatTwoCol('Subtotal:', subTotal.toFixed(2), 48)));
+      buffer.push(...this.stringToBytes(this.formatTwoCol(`CGST (${cgstRate}%):`, cgst.toFixed(2), 48)));
+      buffer.push(...this.stringToBytes(this.formatTwoCol(`SGST (${sgstRate}%):`, sgst.toFixed(2), 48)));
       if (roundOff !== 0) {
-        buffer.push(...this.stringToBytes(this.formatTwoCol('Round Off:', (roundOff > 0 ? '+' : '') + roundOff.toFixed(2))));
+        buffer.push(...this.stringToBytes(this.formatTwoCol('Round Off:', (roundOff > 0 ? '+' : '') + roundOff.toFixed(2), 48)));
       }
     } else {
-      // Inclusive GST: Tax is already included in prices (derived backwards)
       finalGrandTotal = grandTotalRaw;
       subTotal = totalTaxRate > 0 ? Math.round((finalGrandTotal / (1 + totalTaxRate)) * 100) / 100 : finalGrandTotal;
       const totalTax = finalGrandTotal - subTotal;
@@ -278,19 +289,19 @@ export class ESCPOSService {
       sgst = Math.round((totalTax - cgst) * 100) / 100;
       roundOff = Math.round((finalGrandTotal - (subTotal + cgst + sgst)) * 100) / 100;
 
-      buffer.push(...this.stringToBytes(this.formatTwoCol('Total Items / Qty:', totalQty.toString())));
-      buffer.push(...this.stringToBytes(this.formatTwoCol('Subtotal (Excl. Tax):', subTotal.toFixed(2))));
-      buffer.push(...this.stringToBytes(this.formatTwoCol(`CGST (${cgstRate}%):`, cgst.toFixed(2))));
-      buffer.push(...this.stringToBytes(this.formatTwoCol(`SGST (${sgstRate}%):`, sgst.toFixed(2))));
+      buffer.push(...this.stringToBytes(this.formatTwoCol('Total Items / Qty:', totalQty.toString(), 48)));
+      buffer.push(...this.stringToBytes(this.formatTwoCol('Subtotal (Excl. Tax):', subTotal.toFixed(2), 48)));
+      buffer.push(...this.stringToBytes(this.formatTwoCol(`CGST (${cgstRate}%):`, cgst.toFixed(2), 48)));
+      buffer.push(...this.stringToBytes(this.formatTwoCol(`SGST (${sgstRate}%):`, sgst.toFixed(2), 48)));
       if (roundOff !== 0) {
-        buffer.push(...this.stringToBytes(this.formatTwoCol('Round Off:', (roundOff > 0 ? '+' : '') + roundOff.toFixed(2))));
+        buffer.push(...this.stringToBytes(this.formatTwoCol('Round Off:', (roundOff > 0 ? '+' : '') + roundOff.toFixed(2), 48)));
       }
     }
 
-    // 6. Grand Total (Bold & Prominent)
+    // 6. Grand Total (Bold & Edge-to-Edge)
     this.pushSeparatorLine(buffer, '=');
     buffer.push(...this.BOLD_ON);
-    buffer.push(...this.stringToBytes(this.formatTwoCol('GRAND TOTAL:', `INR ${finalGrandTotal.toFixed(2)}`)));
+    buffer.push(...this.stringToBytes(this.formatTwoCol('GRAND TOTAL:', `INR ${finalGrandTotal.toFixed(2)}`, 48)));
     buffer.push(...this.BOLD_OFF);
     this.pushSeparatorLine(buffer, '=');
 
@@ -298,7 +309,7 @@ export class ESCPOSService {
     if (payments && payments.length > 0) {
       buffer.push(...this.stringToBytes('Payment Breakdown:\n'));
       payments.forEach((p: any) => {
-        buffer.push(...this.stringToBytes(this.formatTwoCol(`  ${p.method}:`, `INR ${Number(p.amount).toFixed(2)}`)));
+        buffer.push(...this.stringToBytes(this.formatTwoCol(`  ${p.method}:`, `INR ${Number(p.amount).toFixed(2)}`, 48)));
       });
       this.pushSeparatorLine(buffer, '-');
     }
@@ -310,85 +321,12 @@ export class ESCPOSService {
 
     buffer.push(...this.NEW_LINE);
     buffer.push(...this.NEW_LINE);
-    buffer.push(...this.NEW_LINE);
     buffer.push(...this.CUT);
 
     return new Uint8Array(buffer);
   }
 
-  private static stringToBytes(str: string): number[] {
-    const bytes: number[] = [];
-    for (let i = 0; i < str.length; i++) {
-      let code = str.charCodeAt(i);
-      if (code === 8377) {
-        bytes.push(158); // 0x9E: Indian Rupee glyph on thermal firmware
-      } else if (code > 255) {
-        bytes.push(63);  // '?'
-      } else {
-        bytes.push(code);
-      }
-    }
-    return bytes;
-  }
-
-  static buildKitchenToken(
-    billNo: number | string,
-    tableNo: number,
-    cashierName: string,
-    items: any[],
-    orderType: string = 'COUNTER'
-  ): Uint8Array {
-    let buffer: number[] = [];
-
-    buffer.push(...this.INIT);
-    buffer.push(...this.ALIGN_CENTER);
-    buffer.push(...this.BOLD_ON);
-    buffer.push(...this.DOUBLE_HEIGHT);
-    buffer.push(...this.stringToBytes('*** KITCHEN TOKEN ***\n'));
-    buffer.push(...this.NORMAL_SIZE);
-    buffer.push(...this.BOLD_OFF);
-
-    const date = new Date();
-    const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().slice(-2)} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-
-    const cleanType = (orderType || '').toUpperCase().trim();
-    let orderTypeStr = (tableNo && tableNo > 0) ? `Table: ${tableNo}` : (cleanType === 'PICKUP' ? 'Pick Up' : (cleanType === 'COUNTER' ? 'Counter' : 'Takeaway'));
-
-    buffer.push(...this.ALIGN_LEFT);
-    this.pushSeparatorLine(buffer, '=');
-    buffer.push(...this.BOLD_ON);
-    buffer.push(...this.stringToBytes(this.formatTwoCol(`BILL #: ${billNo}`, orderTypeStr)));
-    buffer.push(...this.BOLD_OFF);
-    buffer.push(...this.stringToBytes(this.formatTwoCol(`Time: ${formattedDate}`, `By: ${cashierName || 'Staff'}`)));
-    this.pushSeparatorLine(buffer, '-');
-
-    buffer.push(...this.BOLD_ON);
-    buffer.push(...this.stringToBytes(this.formatTwoCol('ITEMS TO PREPARE', 'QTY')));
-    buffer.push(...this.BOLD_OFF);
-    this.pushSeparatorLine(buffer, '-');
-
-    items.forEach(item => {
-      let nameStr = (item.itemName || item.name || '');
-      if (item.variantName) {
-        nameStr += ` (${item.variantName})`;
-      }
-      const qtyStr = `${item.qty || 1}x`;
-      buffer.push(...this.BOLD_ON);
-      buffer.push(...this.stringToBytes(this.formatTwoCol(nameStr, qtyStr)));
-      buffer.push(...this.BOLD_OFF);
-      if (item.note) {
-        buffer.push(...this.stringToBytes(`  Note: ${item.note}\n`));
-      }
-    });
-
-    this.pushSeparatorLine(buffer, '=');
-    buffer.push(...this.ALIGN_CENTER);
-    buffer.push(...this.stringToBytes('Ready for kitchen pickup\n\n\n'));
-    buffer.push(...this.CUT);
-
-    return new Uint8Array(buffer);
-  }
-
+  // Mode 3: Tiffin Center combined prints (Bill + Kitchen Token slip)
   static buildCombinedTiffinPrints(
     billNo: number | string,
     tableNo: number,
@@ -399,11 +337,56 @@ export class ESCPOSService {
     payments?: any[]
   ): Uint8Array {
     const billBytes = this.buildBill(billNo, tableNo, cashierName, items, branding, orderType, payments);
-    const tokenBytes = this.buildKitchenToken(billNo, tableNo, cashierName, items, orderType);
-    
-    const combined = new Uint8Array(billBytes.length + tokenBytes.length);
+
+    let tokenBuffer: number[] = [];
+    tokenBuffer.push(...this.INIT);
+    tokenBuffer.push(...this.ALIGN_CENTER);
+    tokenBuffer.push(...this.BOLD_ON);
+    tokenBuffer.push(...this.DOUBLE_HEIGHT_WIDTH);
+    tokenBuffer.push(...this.stringToBytes(`TOKEN #${billNo}\n`));
+    tokenBuffer.push(...this.NORMAL_SIZE);
+    tokenBuffer.push(...this.BOLD_OFF);
+
+    const orderTypeLabel = (tableNo && tableNo > 0) ? `Table: ${tableNo}` : (orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway');
+    tokenBuffer.push(...this.stringToBytes(`${orderTypeLabel} • Kitchen Copy\n`));
+    this.pushSeparatorLine(tokenBuffer, '-');
+
+    tokenBuffer.push(...this.ALIGN_LEFT);
+    items.forEach((item: any) => {
+      const q = (item.qty || 1).toString();
+      const n = item.itemName || item.name || 'Item';
+      const v = item.variantName ? ` (${item.variantName})` : '';
+      tokenBuffer.push(...this.BOLD_ON);
+      tokenBuffer.push(...this.stringToBytes(`  ${q}x ${n}${v}\n`));
+      tokenBuffer.push(...this.BOLD_OFF);
+      if (item.note && item.note !== '--') {
+        tokenBuffer.push(...this.stringToBytes(`     Note: ${item.note}\n`));
+      }
+    });
+
+    this.pushSeparatorLine(tokenBuffer, '-');
+    tokenBuffer.push(...this.NEW_LINE);
+    tokenBuffer.push(...this.NEW_LINE);
+    tokenBuffer.push(...this.CUT);
+
+    const combined = new Uint8Array(billBytes.length + tokenBuffer.length);
     combined.set(billBytes, 0);
-    combined.set(tokenBytes, billBytes.length);
+    combined.set(tokenBuffer, billBytes.length);
     return combined;
+  }
+
+  private static stringToBytes(str: string): number[] {
+    const bytes: number[] = [];
+    for (let i = 0; i < str.length; i++) {
+      let code = str.charCodeAt(i);
+      if (code === 8377) { // Rupee Symbol ₹
+        bytes.push(158); // 0x9E Rupee symbol in standard ESC/POS Indian fonts
+      } else if (code > 255) {
+        bytes.push(63); // '?'
+      } else {
+        bytes.push(code);
+      }
+    }
+    return bytes;
   }
 }

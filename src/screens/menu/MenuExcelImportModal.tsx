@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState } from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Download, Upload, CheckCircle2, AlertTriangle, X, FileSpreadsheet } from 'lucide-react-native';
@@ -25,7 +26,7 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
       const parsed = MenuExcelService.parseMenuExcel(templateBuffer, items);
       setParseResult(parsed);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'Parse Error');
     }
   };
 
@@ -38,14 +39,11 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
         tenant?.id,
         activeLocationId || undefined
       );
-      Alert.alert(
-        'Import Successful',
-        `Successfully imported ${parseResult.validItems.length} menu items and variants!`,
-        [{ text: 'OK', onPress: onClose }]
-      );
+      toast.success(`Successfully imported ${parseResult.validItems.length} menu items and variants!`, 'Import Successful');
+      onClose();
       setParseResult(null);
     } catch (e: any) {
-      Alert.alert('Import Failed', e.message);
+      toast.error(e.message, 'Import Failed');
     } finally {
       setIsImporting(false);
     }
@@ -76,10 +74,7 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
             <TouchableOpacity
               className="flex-1 bg-slate-800 p-3.5 rounded-xl border border-slate-700 flex-row items-center justify-center"
               onPress={() => {
-                Alert.alert(
-                  'Excel Template',
-                  'Standard template columns: Category | Menu Item | Variant | Price | Active | SKU'
-                );
+                toast.info('Template columns: Category | Menu Item | Variant | Price | Active | SKU', 'Excel Template');
               }}
             >
               <Download size={18} color="#818CF8" />

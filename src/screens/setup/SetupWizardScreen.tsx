@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -55,11 +56,10 @@ export const SetupWizardScreen = () => {
       await DBServices.updateTenantFeatures(tenant.id, updatedFeatures);
       setFeatures(updatedFeatures);
 
-      Alert.alert('Success', 'Store profile and preferences configured successfully!', [
-        { text: 'Launch POS', onPress: () => navigation.navigate(Routes.HOME) }
-      ]);
+      toast.success('Store profile and preferences configured successfully!', 'Setup Complete');
+      navigation.navigate(Routes.HOME);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'Setup Error');
     }
   };
 

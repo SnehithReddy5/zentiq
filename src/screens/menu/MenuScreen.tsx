@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +8,7 @@ import { useMenuStore } from '../../store/menu.store';
 import { useCartStore } from '../../store/cart.store';
 import { useTableStore } from '../../store/table.store';
 import { usePrinterStore } from '../../store/printer.store';
+import { useToastStore } from '../../store/toast.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
@@ -76,7 +78,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const handleSendToKitchen = async () => {
     if (unsentItems.length === 0) return;
     if (!activeLocationId) {
-      Alert.alert('Branch Required', 'Please select an operating branch on the home screen before dispatching KOT.');
+      toast.warning('Please select an operating branch on home screen first.', 'Branch Required');
       return;
     }
     setIsSendingKOT(true);
@@ -110,7 +112,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       setKotToast(`✓ KOT #${kotNo} dispatched to kitchen (1 ticket)`);
       setTimeout(() => setKotToast(null), 3000);
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      toast.error(err.message, 'Error');
     } finally {
       setIsSendingKOT(false);
     }
@@ -143,10 +145,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     if (item.trackInventory) {
       const avail = getAvailableStock(item);
       if (avail < 1) {
-        Alert.alert(
-          'Insufficient Stock',
-          `Cannot sell more than available stock! Only ${avail.toFixed(2)} ${item.stockUnit || 'kg'} of "${item.name}" remaining.`
-        );
+        toast.warning(`Cannot sell more than available stock! Only ${avail.toFixed(2)} ${item.stockUnit || 'kg'} of "${item.name}" remaining.`, 'Insufficient Stock');
         return;
       }
     }
@@ -164,10 +163,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     if (item.trackInventory) {
       const avail = getAvailableStock(item);
       if (avail < 1) {
-        Alert.alert(
-          'Insufficient Stock',
-          `Cannot sell more than available stock! Only ${avail.toFixed(2)} ${item.stockUnit || 'kg'} of "${item.name}" remaining.`
-        );
+        toast.warning(`Cannot sell more than available stock! Only ${avail.toFixed(2)} ${item.stockUnit || 'kg'} of "${item.name}" remaining.`, 'Insufficient Stock');
         return;
       }
     }
@@ -181,10 +177,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       const deduction = typeof cItem.portionDeduction === 'number' ? cItem.portionDeduction : 1;
       const avail = getAvailableStock(masterItem);
       if (avail < deduction) {
-        Alert.alert(
-          'Insufficient Stock',
-          `Cannot add more! Only ${avail.toFixed(2)} ${masterItem.stockUnit || 'kg'} of "${masterItem.name}" remaining in stock.`
-        );
+        toast.warning(`Cannot add more! Only ${avail.toFixed(2)} ${masterItem.stockUnit || 'kg'} of "${masterItem.name}" remaining in stock.`, 'Insufficient Stock');
         return;
       }
     }
@@ -596,7 +589,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                                 disabled={!canFulfill}
                                 onPress={() => {
                                   if (!canFulfill) {
-                                    Alert.alert('Out of Stock', 'No additional stock available for this variant.');
+                                    toast.warning('No additional stock available for this variant.', 'Out of Stock');
                                     return;
                                   }
                                   updateQuantity(tableNo, variantItemId, vQty + 1);

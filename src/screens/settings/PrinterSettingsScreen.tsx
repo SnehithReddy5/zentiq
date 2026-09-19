@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -5,10 +6,12 @@ import { Header } from '../../components/common/Header';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { usePrinterStore } from '../../store/printer.store';
+import { useTenantStore } from '../../store/tenant.store';
+import { useToastStore } from '../../store/toast.store';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { PrinterWorkflowMode } from '../../types/printer.types';
-import { Printer, CheckCircle2, AlertTriangle, Utensils, Coffee, ShoppingBag } from 'lucide-react-native';
+import { Printer, CheckCircle2, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw } from 'lucide-react-native';
 
 export const PrinterSettingsScreen = () => {
   const insets = useSafeAreaInsets();
@@ -17,14 +20,40 @@ export const PrinterSettingsScreen = () => {
   const [workflowMode, setWorkflowMode] = useState<PrinterWorkflowMode>(
     settings.printerWorkflowMode || 'RESTAURANT'
   );
+  const [printerType, setPrinterType] = useState<'LAN' | 'USB' | 'Bluetooth'>((settings.printerType as any) || 'LAN');
+  const [printerName, setPrinterName] = useState(settings.printerName || '');
+  const [detectedPrinters, setDetectedPrinters] = useState<string[]>([]);
+  const [isLoadingPrinters, setIsLoadingPrinters] = useState(false);
   const [ipAddress, setIpAddress] = useState(settings.ipAddress || '');
   const [port, setPort] = useState(settings.port?.toString() || '9100');
   const [kitchenIpAddress, setKitchenIpAddress] = useState(settings.kitchenIpAddress || '');
   const [kitchenPort, setKitchenPort] = useState(settings.kitchenPort?.toString() || '9100');
 
   // Synchronize state when settings hydrate from persistent storage
+  const refreshWindowsPrinters = async () => {
+    setIsLoadingPrinters(true);
+    try {
+      const list = await (printerService as any).getInstalledPrinters?.();
+      if (Array.isArray(list) && list.length > 0) {
+        setDetectedPrinters(list);
+        if (!printerName) {
+          // If a printer with POS or Receipt is found, pick it by default
+          const thermal = list.find((p: string) => /pos|receipt|thermal|epson|tvs|rp|58|80/i.test(p));
+          if (thermal) setPrinterName(thermal);
+        }
+      }
+    } catch (_) {}
+    setIsLoadingPrinters(false);
+  };
+
+  useEffect(() => {
+    refreshWindowsPrinters();
+  }, []);
+
   useEffect(() => {
     if (settings) {
+      if (settings.printerType) setPrinterType(settings.printerType);
+      if (settings.printerName) setPrinterName(settings.printerName);
       if (settings.ipAddress !== undefined) setIpAddress(settings.ipAddress);
       if (settings.port) setPort(settings.port.toString());
       if (settings.kitchenIpAddress !== undefined) setKitchenIpAddress(settings.kitchenIpAddress);
@@ -38,58 +67,98 @@ export const PrinterSettingsScreen = () => {
   const [isTestingTiffin, setIsTestingTiffin] = useState(false);
   const [testResult, setTestResult] = useState<{ type: string; success: boolean; message: string } | null>(null);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const cleanIp = ipAddress.trim();
-    if (!cleanIp) {
-      Alert.alert('Configuration Error', 'Please enter a valid Billing Printer IP Address.');
+    const cleanName = printerName.trim();
+
+    if (printerType === 'LAN' && !cleanIp) {
+      toast.error('Please enter a valid Billing Printer IP Address for LAN printing.', 'Configuration Error');
+      return;
+    }
+    if (printerType === 'USB' && !cleanName) {
+      toast.error('Please select or enter your USB Thermal Printer Name.', 'Configuration Error');
       return;
     }
 
-    setSettings({
+    const newSettings = {
       ...settings,
+      printerType,
+      printerName: cleanName,
       printerWorkflowMode: workflowMode,
       ipAddress: cleanIp,
       port: parseInt(port, 10) || 9100,
       kitchenIpAddress: kitchenIpAddress.trim(),
       kitchenPort: parseInt(kitchenPort, 10) || 9100,
-    });
+    };
 
-    Alert.alert('Settings Saved', 'Thermal printer configuration has been saved successfully.');
+    setSettings(newSettings);
+
+    // Save to Cloud Firestore so settings survive app reinstallation
+    const { tenant, activeLocationId } = useTenantStore.getState();
+    if (tenant?.id) {
+      await usePrinterStore.getState().saveSettingsToCloud(tenant.id, activeLocationId);
+    }
+
+    useToastStore.getState().showToast({
+      type: 'success',
+      title: 'Printer Saved',
+      message: 'Printer settings saved locally and synced to Cloud.',
+      duration: 3500,
+    });
+    toast.success('Thermal printer configuration has been saved locally and synced to Cloud.', 'Settings Saved');
   };
 
   const testBillingPrinter = async () => {
+    const isUsb = printerType === 'USB';
+    const cleanName = printerName.trim();
     const targetIp = ipAddress.trim();
     const targetPort = parseInt(port, 10) || 9100;
-    if (!targetIp) {
-      Alert.alert('IP Required', 'Please enter a valid IP address for the Billing Printer.');
+
+    if (isUsb && !cleanName) {
+      toast.warning('Please select or enter your USB Printer Name first.', 'Printer Name Required');
+      return;
+    }
+    if (!isUsb && !targetIp) {
+      toast.warning('Please enter a valid IP address for the Billing Printer.', 'IP Required');
       return;
     }
 
     setIsTestingBilling(true);
     setTestResult(null);
     try {
-      await printerService.connect(targetIp, targetPort);
+      if (isUsb) {
+        await printerService.connect(cleanName, 0, 'USB');
+      } else {
+        await printerService.connect(targetIp, targetPort, 'LAN');
+      }
+
       const buffer = ESCPOSService.buildBill(
         'TEST-01',
         1,
         'POS Admin',
-        [{ itemName: 'BILLING PRINTER TEST', price: 100, qty: 1 }],
-        { businessName: 'PRINTER TEST VERIFICATION', displayName: 'PRINTER TEST', receiptHeader: 'PRINTER TEST VERIFICATION', address: 'Local POS LAN', phone: '0000000000', gstin: 'TEST-GSTIN' } as any,
+        [{ itemName: isUsb ? 'USB THERMAL TEST' : 'LAN THERMAL TEST', price: 100, qty: 1 }],
+        { businessName: 'PRINTER TEST VERIFICATION', displayName: 'PRINTER TEST', receiptHeader: 'PRINTER TEST VERIFICATION', address: isUsb ? 'Windows USB Cable' : 'Local LAN', phone: '0000000000', gstin: 'TEST-GSTIN' } as any,
         'DINE_IN',
         [{ method: 'CASH', amount: 100 }]
       );
-      await printerService.print(buffer);
+
+      await printerService.print(buffer, isUsb ? { printerType: 'USB', printerName: cleanName } : { printerType: 'LAN', ip: targetIp, port: targetPort });
       await printerService.disconnect();
+
       setTestResult({
         type: 'billing',
         success: true,
-        message: `Billing printer at ${targetIp}:${targetPort} printed test slip successfully!`
+        message: isUsb
+          ? `USB printer "${cleanName}" printed test receipt successfully!`
+          : `Billing printer at ${targetIp}:${targetPort} printed test slip successfully!`
       });
     } catch (e: any) {
       setTestResult({
         type: 'billing',
         success: false,
-        message: `Connection failed to Billing printer at ${targetIp}:${targetPort} (${e.message})`
+        message: isUsb
+          ? `Failed printing to USB printer "${cleanName}": ${e.message}`
+          : `Connection failed to Billing printer at ${targetIp}:${targetPort} (${e.message})`
       });
     } finally {
       setIsTestingBilling(false);
@@ -100,7 +169,7 @@ export const PrinterSettingsScreen = () => {
     const targetIp = (kitchenIpAddress || ipAddress).trim();
     const targetPort = parseInt(kitchenPort || port, 10) || 9100;
     if (!targetIp) {
-      Alert.alert('IP Required', 'Please enter a valid IP address for the Kitchen KOT Printer.');
+      toast.warning('Please enter a valid IP address for the Kitchen KOT Printer.', 'IP Required');
       return;
     }
 
@@ -138,7 +207,7 @@ export const PrinterSettingsScreen = () => {
     const targetIp = ipAddress.trim();
     const targetPort = parseInt(port, 10) || 9100;
     if (!targetIp) {
-      Alert.alert('IP Required', 'Please enter a valid IP address for the Counter Printer.');
+      toast.warning('Please enter a valid IP address for the Counter Printer.', 'IP Required');
       return;
     }
 
@@ -325,31 +394,123 @@ export const PrinterSettingsScreen = () => {
                 {workflowMode === 'RESTAURANT' ? 'Billing Counter Printer' : 'Main Counter Printer (Single)'}
               </Text>
             </View>
+            <View className="bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20">
+              <Text className="text-indigo-400 font-black text-[10px]">
+                {printerType === 'USB' ? 'USB MODE' : 'NETWORK LAN'}
+              </Text>
+            </View>
           </View>
 
-          <Input
-            label="IP Address"
-            placeholder="e.g. 192.168.1.50"
-            value={ipAddress}
-            onChangeText={setIpAddress}
-            keyboardType="numeric"
-          />
-          <Input
-            label="Port (Standard: 9100)"
-            placeholder="9100"
-            value={port}
-            onChangeText={setPort}
-            keyboardType="numeric"
-          />
+          {/* Connection Type Switcher */}
+          <Text className="text-slate-300 font-bold text-xs mb-2">Connection Type</Text>
+          <View className="flex-row bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-4">
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setPrinterType('LAN')}
+              className={`flex-1 py-2 rounded-xl flex-row items-center justify-center ${
+                printerType === 'LAN' ? 'bg-[#5D3FD3]' : ''
+              }`}
+            >
+              <Wifi size={14} color={printerType === 'LAN' ? '#FFF' : '#94A3B8'} />
+              <Text className={`text-xs font-black ml-1.5 ${printerType === 'LAN' ? 'text-white' : 'text-slate-400'}`}>
+                LAN / Wi-Fi (IP)
+              </Text>
+            </TouchableOpacity>
 
-          <Button
-            title="Test Counter Printer"
-            variant="secondary"
-            onPress={testBillingPrinter}
-            isLoading={isTestingBilling}
-            size="sm"
-            className="mt-1"
-          />
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setPrinterType('USB')}
+              className={`flex-1 py-2 rounded-xl flex-row items-center justify-center ${
+                printerType === 'USB' ? 'bg-indigo-600' : ''
+              }`}
+            >
+              <Usb size={14} color={printerType === 'USB' ? '#FFF' : '#94A3B8'} />
+              <Text className={`text-xs font-black ml-1.5 ${printerType === 'USB' ? 'text-white' : 'text-slate-400'}`}>
+                USB (Windows Cable)
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {printerType === 'USB' ? (
+            <View className="mb-2">
+              <View className="flex-row items-center justify-between mb-2">
+                <Text className="text-slate-300 font-bold text-xs">Installed Windows Printers</Text>
+                <TouchableOpacity
+                  onPress={refreshWindowsPrinters}
+                  className="flex-row items-center bg-white/5 px-2 py-1 rounded-lg border border-white/10 active:bg-white/10"
+                >
+                  <RefreshCw size={11} color="#818CF8" />
+                  <Text className="text-indigo-400 text-[10px] font-bold ml-1">Scan Printers</Text>
+                </TouchableOpacity>
+              </View>
+
+              {detectedPrinters.length > 0 ? (
+                <View className="flex-row flex-wrap gap-1.5 mb-3">
+                  {detectedPrinters.map(p => (
+                    <TouchableOpacity
+                      key={p}
+                      onPress={() => setPrinterName(p)}
+                      className={`px-2.5 py-1.5 rounded-xl border ${
+                        printerName === p
+                          ? 'bg-indigo-600 border-indigo-400'
+                          : 'bg-slate-800/80 border-slate-700'
+                      }`}
+                    >
+                      <Text className={`text-xs font-bold ${printerName === p ? 'text-white' : 'text-slate-300'}`}>
+                        {p}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <Text className="text-slate-400 text-xs mb-3 italic">
+                  No printers detected. Plug in your USB printer or install driver.
+                </Text>
+              )}
+
+              <Input
+                label="Selected USB Printer Name"
+                placeholder="e.g. POS-80 or EPSON TM-T82"
+                value={printerName}
+                onChangeText={setPrinterName}
+              />
+
+              <Button
+                title="Test USB Printer"
+                variant="secondary"
+                onPress={testBillingPrinter}
+                isLoading={isTestingBilling}
+                size="sm"
+                className="mt-1"
+              />
+            </View>
+          ) : (
+            <View>
+              <Input
+                label="IP Address"
+                placeholder="e.g. 192.168.1.50"
+                value={ipAddress}
+                onChangeText={setIpAddress}
+                keyboardType="numeric"
+              />
+              <Input
+                label="Port (Standard: 9100)"
+                placeholder="9100"
+                value={port}
+                onChangeText={setPort}
+                keyboardType="numeric"
+              />
+
+              <Button
+                title="Test Counter Printer"
+                variant="secondary"
+                onPress={testBillingPrinter}
+                isLoading={isTestingBilling}
+                size="sm"
+                className="mt-1"
+              />
+            </View>
+          )}
         </View>
 
         {/* 3. Kitchen Thermal KOT Printer (Only visible when RESTAURANT mode is active) */}

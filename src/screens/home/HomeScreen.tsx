@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import { MenuScreen } from '../menu/MenuScreen';
 import React, { useState, useEffect } from 'react';
 import {
@@ -158,12 +159,12 @@ export const HomeScreen = () => {
 
   const handleAcceptOnlineOrder = (orderId: string) => {
     setOnlineOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PREPARING' } : o));
-    Alert.alert('KOT Dispatched', 'Online order accepted! KOT sent to kitchen printer.');
+    toast.success('Online order accepted! KOT sent to kitchen printer.', 'KOT Dispatched');
   };
 
   const handleMarkOrderReady = (orderId: string) => {
     setOnlineOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'READY' } : o));
-    Alert.alert('Rider Notified', 'Order marked ready! Delivery rider notified for pickup.');
+    toast.info('Order marked ready! Delivery rider notified for pickup.', 'Rider Notified');
   };
 
   const isDirectMenuMode = features.dineInEnabled === false && features.pickupEnabled === false;

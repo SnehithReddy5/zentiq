@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -51,12 +52,12 @@ export const UserManagementScreen = () => {
 
   const handleSave = async () => {
     if (!name.trim() || !mobile.trim()) {
-      Alert.alert('Required Fields', 'Name and mobile/ID are required.');
+      toast.warning('Name and mobile/ID are required.', 'Required');
       return;
     }
 
     if (!editingUserId && !password.trim()) {
-      Alert.alert('Password Required', 'Please enter a password for this new staff member.');
+      toast.warning('Please enter a password for this new staff member.', 'Password Required');
       return;
     }
 
@@ -75,7 +76,7 @@ export const UserManagementScreen = () => {
         }
 
         await DBServices.updateUser(editingUserId, updates, tenant?.id);
-        Alert.alert('Success', 'Staff member details updated successfully!');
+        toast.success('Staff member details updated successfully!');
       } else {
         // Create new staff
         await DBServices.addUser({
@@ -87,12 +88,12 @@ export const UserManagementScreen = () => {
           locationIds: selectedLocId ? [selectedLocId] : ['*'],
           assignedLocationId: selectedLocId !== '*' ? selectedLocId : null,
         }, tenant?.id);
-        Alert.alert('Success', 'Staff member created successfully!');
+        toast.success('Staff member created successfully!');
       }
 
       setModalOpen(false);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'User Management Error');
     }
   };
 

@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,7 +34,7 @@ export const TablesScreen = () => {
       const nextNo = tables.length > 0 ? Math.max(...tables.map(t => t.tableNo)) + 1 : 1;
       await DBServices.addTable(nextNo, tenant?.id, activeLocationId || undefined);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'Error');
     } finally {
       setIsAdding(false);
     }
@@ -53,7 +54,7 @@ export const TablesScreen = () => {
             try {
               await DBServices.deleteTable(item.id, tenant?.id, activeLocationId || undefined);
             } catch (err: any) {
-              Alert.alert('Error', err.message);
+              toast.error(err.message, 'Failed');
             }
           },
         },

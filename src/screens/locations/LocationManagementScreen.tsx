@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,7 +25,7 @@ export const LocationManagementScreen = () => {
 
   const handleRequestLocation = async () => {
     if (!newLocName.trim() || !newLocAddress.trim()) {
-      Alert.alert('Required Fields', 'Location Name and Address are required.');
+      toast.warning('Location Name and Address are required.', 'Required');
       return;
     }
 
@@ -42,12 +43,9 @@ export const LocationManagementScreen = () => {
       setNewLocPhone('');
       setModalOpen(false);
 
-      Alert.alert(
-        'Request Submitted',
-        'Your branch request has been sent to platform administration for licensing approval.'
-      );
+      toast.success('Your branch request has been sent to platform administration for licensing approval.', 'Request Submitted');
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'Location Error');
     } finally {
       setIsSubmitting(false);
     }
@@ -95,11 +93,11 @@ export const LocationManagementScreen = () => {
             <TouchableOpacity
               onPress={() => {
                 if (isDisabled) {
-                  Alert.alert('Branch Disabled', 'This branch has been disabled by platform administration and cannot be accessed.');
+                  toast.error('This branch has been disabled by platform administration.', 'Branch Disabled');
                   return;
                 }
                 setActiveLocationId(item.id);
-                Alert.alert('Active Branch Updated', `Device switched to ${item.name} successfully!`);
+                toast.success(`Device switched to ${item.name} successfully!`, 'Active Branch Updated');
               }}
               className={`p-4 rounded-2xl mb-3 border ${
                 isDisabled

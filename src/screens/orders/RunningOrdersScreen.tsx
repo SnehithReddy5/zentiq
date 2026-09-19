@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, Modal, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -116,19 +117,20 @@ export const RunningOrdersScreen = () => {
 
   // Reprint Bill handler
   const handleReprintBill = async (order: any) => {
-    const targetIp = settings.ipAddress?.trim();
+    const isUsb = settings.printerType === 'USB';
+    const mainTarget = isUsb ? (settings.printerName || 'POS-80') : settings.ipAddress?.trim();
     const targetPort = settings.port || 9100;
-    if (!targetIp) {
-      Alert.alert(
-        'Billing Printer Required',
-        'Please enter your Billing Printer IP in Settings -> Thermal Printers first.'
+    if (!mainTarget) {
+      toast.warning(
+        isUsb ? 'Please select your USB Printer in Settings -> Thermal Printers first.' : 'Please enter your Billing Printer IP in Settings -> Thermal Printers first.',
+        'Billing Printer Required'
       );
       return;
     }
 
     setIsReprinting(true);
     try {
-      await printerService.connect(targetIp, targetPort);
+      await printerService.connect(mainTarget, targetPort, isUsb ? 'USB' : 'LAN');
       const buffer = ESCPOSService.buildBill(
         order.orderNumber || order.kotNo || order.id.slice(0, 6),
         order.tableNo || 0,
@@ -145,7 +147,7 @@ export const RunningOrdersScreen = () => {
       setToastMessage(`Receipt for Bill #${order.orderNumber || order.kotNo || order.id.slice(0, 6)} reprinted!`);
       setTimeout(() => setToastMessage(null), 3500);
     } catch (e: any) {
-      Alert.alert('Printer Error', `Could not connect to billing printer at ${targetIp}: ${e.message}`);
+      toast.error(`Could not connect to billing printer at ${mainTarget}: ${e.message}`, 'Printer Error');
     } finally {
       setIsReprinting(false);
     }
@@ -156,7 +158,7 @@ export const RunningOrdersScreen = () => {
     const targetIp = (settings.kitchenIpAddress || settings.ipAddress)?.trim();
     const targetPort = settings.kitchenPort || settings.port || 9100;
     if (!targetIp) {
-      Alert.alert('Kitchen Printer Required', 'Please configure Kitchen Printer IP in Settings first.');
+      toast.warning('Please configure Kitchen Printer IP in Settings first.', 'Kitchen Printer Required');
       return;
     }
 
@@ -176,7 +178,7 @@ export const RunningOrdersScreen = () => {
       setToastMessage(`Kitchen KOT reprinted successfully!`);
       setTimeout(() => setToastMessage(null), 3500);
     } catch (e: any) {
-      Alert.alert('Kitchen Printer Error', `Failed to print KOT: ${e.message}`);
+      toast.error(`Failed to print KOT: ${e.message}`, 'Kitchen Printer Error');
     } finally {
       setIsReprintingKitchen(false);
     }
@@ -199,7 +201,7 @@ export const RunningOrdersScreen = () => {
               setToastMessage('Order deleted successfully');
               setTimeout(() => setToastMessage(null), 3000);
             } catch (e: any) {
-              Alert.alert('Error', `Could not delete order: ${e.message}`);
+              toast.error(`Could not delete order: ${e.message}`, 'Delete Error');
             }
           }
         }
@@ -338,33 +340,40 @@ export const RunningOrdersScreen = () => {
             <View className="mb-4">
               {/* Comprehensive Analytics Dashboard Header */}
               <View className="bg-slate-900 border border-slate-800 p-4 rounded-3xl mb-3 shadow-md">
-                <View className="flex-row items-center justify-between mb-3">
-                  <View>
+                <View className="flex-row items-center justify-between mb-3 gap-2">
+                  <View className="flex-1 mr-2">
                     <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">Total Sales Revenue</Text>
-                    <Text className="text-2xl font-black text-emerald-400 mt-0.5">₹{stats.totalRevenue.toFixed(2)}</Text>
+                    <Text className="text-2xl font-black text-emerald-400 mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
+                      ₹{stats.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
                   </View>
-                  <View className="items-end">
+                  <View className="items-end shrink-0 max-w-[45%]">
                     <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">Average Order</Text>
-                    <Text className="text-xl font-black text-indigo-300 mt-0.5">₹{stats.averageOrderValue.toFixed(2)}</Text>
+                    <Text className="text-xl font-black text-indigo-300 mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
+                      ₹{stats.averageOrderValue.toFixed(2)}
+                    </Text>
                   </View>
                 </View>
 
-                <View className="flex-row gap-2 pt-3 border-t border-slate-800 justify-between">
-                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 items-center border border-slate-800">
-                    <Text className="text-slate-400 text-[10px]">Total Orders</Text>
+                {/* Stat Tiles with auto-wrap and safe font scaling */}
+                <View className="flex-row flex-wrap gap-2 pt-3 border-t border-slate-800">
+                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 min-w-[70px] items-center border border-slate-800">
+                    <Text className="text-slate-400 text-[10px] uppercase font-bold" numberOfLines={1}>Orders</Text>
                     <Text className="text-white font-black text-sm mt-0.5">{stats.totalOrdersCount}</Text>
                   </View>
-                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 items-center border border-slate-800">
-                    <Text className="text-slate-400 text-[10px]">Dine In</Text>
+                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 min-w-[70px] items-center border border-slate-800">
+                    <Text className="text-slate-400 text-[10px] uppercase font-bold" numberOfLines={1}>Dine In</Text>
                     <Text className="text-purple-300 font-black text-sm mt-0.5">{stats.dineInCount}</Text>
                   </View>
-                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 items-center border border-slate-800">
-                    <Text className="text-slate-400 text-[10px]">Pick Up</Text>
+                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 min-w-[70px] items-center border border-slate-800">
+                    <Text className="text-slate-400 text-[10px] uppercase font-bold" numberOfLines={1}>Pick Up</Text>
                     <Text className="text-blue-300 font-black text-sm mt-0.5">{stats.pickupCount}</Text>
                   </View>
-                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 items-center border border-slate-800">
-                    <Text className="text-slate-400 text-[10px]">Highest Order</Text>
-                    <Text className="text-amber-300 font-black text-sm mt-0.5">₹{stats.highestOrderAmount.toFixed(0)}</Text>
+                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 min-w-[105px] items-center border border-slate-800">
+                    <Text className="text-slate-400 text-[10px] uppercase font-bold" numberOfLines={1}>Highest Sale</Text>
+                    <Text className="text-amber-300 font-black text-sm mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
+                      ₹{stats.highestOrderAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -390,8 +399,8 @@ export const RunningOrdersScreen = () => {
               >
                 <View>
                   {/* Header Row: Table/Type pill, KOT, Status, and Total */}
-                  <View className="flex-row items-center justify-between mb-2">
-                    <View className="flex-row items-center flex-wrap gap-1.5">
+                  <View className="flex-row items-start justify-between mb-2">
+                    <View className="flex-1 mr-2 flex-row items-center flex-wrap gap-1.5">
                       <Text className="text-white font-black text-base">
                         {item.tableNo ? (`Table ${item.tableNo}`) : (item.orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway')}
                       </Text>
@@ -411,7 +420,7 @@ export const RunningOrdersScreen = () => {
                       </View>
                     </View>
 
-                    <Text className="text-emerald-400 font-black text-lg">
+                    <Text className="text-emerald-400 font-black text-lg shrink-0" numberOfLines={1}>
                       ₹{Number(item.totalAmount || 0).toFixed(0)}
                     </Text>
                   </View>
@@ -504,14 +513,20 @@ export const RunningOrdersScreen = () => {
                   </Text>
                   <Text className="text-xs text-slate-400 font-medium">{formatOrderDate(selectedOrder.createdAt)}</Text>
                 </View>
-                <View className="flex-row items-center border-t border-slate-800 pt-3 mt-1 justify-between">
-                  <View className="flex-row items-center">
-                    <Text className="text-xs text-slate-400 font-medium">Captain/Cashier:</Text>
-                    <Text className="text-xs font-bold text-white ml-1.5">{selectedOrder.captainName || 'Staff'}</Text>
+                <View className="flex-row items-center border-t border-slate-800 pt-3 mt-1 justify-between flex-wrap gap-2">
+                  <View className="flex-row items-center flex-1 min-w-[140px] mr-2">
+                    <Text className="text-xs text-slate-400 font-medium shrink-0">Staff:</Text>
+                    <Text className="text-xs font-bold text-white ml-1.5 flex-1" numberOfLines={1}>
+                      {selectedOrder.captainName || 'Staff'}
+                    </Text>
                   </View>
-                  <View className="flex-row items-center">
+                  <View className="flex-row items-center shrink-0">
                     <Text className="text-xs text-slate-400 font-medium">Status:</Text>
-                    <Text className="text-xs font-black text-emerald-400 ml-1.5 uppercase">{selectedOrder.status || 'Settled'}</Text>
+                    <View className="ml-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30">
+                      <Text className="text-xs font-black text-emerald-400 uppercase">
+                        {selectedOrder.status || 'COMPLETED'}
+                      </Text>
+                    </View>
                   </View>
                 </View>
                 {selectedOrder.locationName && (

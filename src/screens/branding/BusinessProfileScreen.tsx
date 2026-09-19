@@ -1,3 +1,4 @@
+import { toast } from '../../utils/toast';
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Alert, Switch, TouchableOpacity, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -104,7 +105,7 @@ export const BusinessProfileScreen = () => {
     const clean = newCustomMethodName.trim();
     if (!clean) return;
     if (customMethods.map(m => m.toLowerCase()).includes(clean.toLowerCase())) {
-      Alert.alert('Duplicate', 'This payment method already exists.');
+      toast.warning('This payment method already exists.', 'Duplicate');
       return;
     }
     setCustomMethods([...customMethods, clean]);
@@ -156,9 +157,9 @@ export const BusinessProfileScreen = () => {
       await DBServices.updateTenantFeatures(tenant.id, featuresPayload);
       setFeatures({ ...features, ...featuresPayload });
 
-      Alert.alert('Settings Saved', 'Store settings and payment preferences updated successfully!');
+      toast.success('Store settings and payment preferences updated successfully!', 'Settings Saved');
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      toast.error(e.message, 'Save Error');
     } finally {
       setIsSaving(false);
     }
