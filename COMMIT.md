@@ -173,3 +173,31 @@ feat: 1-tap checkout, remove kot blocking popup, expand cart panel and add print
 - **Direct Menu Landing When Dine-In and Pick-Up Are Disabled**:
   - In `HomeScreen.tsx`, when both `features.dineInEnabled` and `features.pickupEnabled` are disabled, the Home landing screen automatically presents the Menu ordering interface directly (`isDirectHome={true}`).
   - Cashiers at fast counters, curry points, or tiffin centers can instantly select categories, add items to cart, and checkout without navigating through table selection.
+
+### 14. Cross-Platform Thermal Printing, Windows Operations & Real-Time Sync, and Variant Management
+- **Thermal ESC/POS Printing on Android (Hermes Buffer Fix)**:
+  - Fixed "Property Buffer doesn't exist" crash in `printer.service.ts` when running on Android with Hermes engine.
+  - Raw byte buffers are now passed directly as `Uint8Array` to `react-native-tcp-socket` without calling `Buffer.from(data)`.
+  - Added a 400ms buffer drain safety delay in `disconnect()` before sending TCP FIN/RST packet, ensuring printers don't truncate the end of customer receipts and KOTs.
+- **Thermal Printing on Windows (Native Electron TCP Bridge)**:
+  - Created `electron/preload.js` exposing `window.electronPrinter.printRaw(ip, port, data)`.
+  - Implemented native Node.js `net.Socket` raw thermal printing in `electron/main.js` with socket timeout and error handling.
+  - Added local `POST /api/print` proxy on `127.0.0.1` so both Electron desktop client and browser sessions can print directly to thermal LAN printers on port 9100.
+  - `printer.service.ts` dynamically routes print jobs to the Windows native print bridge when running on Windows.
+- **Real-Time Cross-Platform Firebase Data Synchronization**:
+  - Moved `subscribeToActiveTenant` from `LoginScreen.tsx` to top-level `RootNavigator.tsx`.
+  - Already-authenticated sessions on Android, iOS, and Windows now immediately mount real-time Firebase `onSnapshot` listeners on app launch.
+  - Changes made on Windows (e.g. disabling tables, editing GST, toggling operating modes) immediately sync across Android and iOS in real-time without requiring logout/login.
+- **Windows Menu & Category Deletion Fix**:
+  - Replaced unsupported `react-native-web` multi-button `Alert.alert` dialogs with a universal cross-platform confirmation modal in `MenuManagementScreen.tsx`.
+  - Deleting menu items and categories now works 100% reliably on Windows, Android, and iOS.
+- **Variant Quantity Controls & Clear Stock Deduction Explanation**:
+  - In `cart.store.ts`, `updateQuantity` now automatically removes an item when quantity reaches <= 0, fixing the bug where items were stuck at quantity 1.
+  - In `MenuScreen.tsx`, enhanced the `+ Options` modal with interactive `[-]` `[qty]` `[+]` controls so variants can be added, decremented, or removed directly within the options modal.
+  - In `MenuManagementScreen.tsx`, added explicit column headers (`Size Name` | `Price (₹)` | `Deducts (kg/unit)`) and an explanatory banner detailing how raw inventory (e.g. 10 kg chicken) gets deducted per portion.
+- **Floor Tables Hidden on Home When Disabled**:
+  - Wrapped "Floor Tables Quick Access" in `HomeScreen.tsx` with `features.tablesEnabled !== false && features.dineInEnabled !== false`.
+  - Table matrices and floor plans are completely hidden on Windows and mobile when tables or dine-in are disabled.
+- **Running Orders Direct Modal Flow**:
+  - Removed downward inline accordion expansion in `RunningOrdersScreen.tsx`.
+  - Tapping an order card directly opens the full-fidelity Order Details screen/modal with complete itemized breakdown, invoice details, and prominent thermal reprint buttons.

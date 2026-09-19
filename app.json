@@ -27,7 +27,7 @@
       "backgroundColor": "#090D1A"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/icon.png"
     },
     "updates": {
       "enabled": false,
@@ -44,6 +44,11 @@
         "projectId": "9090b988-350b-4e74-8177-9a43ad1ffd3d"
       }
     },
-    "owner": "snehith0890"
+    "owner": "snehith0890",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#090D1A"
+    }
   }
 }

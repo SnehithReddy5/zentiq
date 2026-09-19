@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Header } from '../../components/common/Header';
@@ -17,10 +17,21 @@ export const PrinterSettingsScreen = () => {
   const [workflowMode, setWorkflowMode] = useState<PrinterWorkflowMode>(
     settings.printerWorkflowMode || 'RESTAURANT'
   );
-  const [ipAddress, setIpAddress] = useState(settings.ipAddress || '192.168.1.100');
+  const [ipAddress, setIpAddress] = useState(settings.ipAddress || '');
   const [port, setPort] = useState(settings.port?.toString() || '9100');
-  const [kitchenIpAddress, setKitchenIpAddress] = useState(settings.kitchenIpAddress || '192.168.1.101');
+  const [kitchenIpAddress, setKitchenIpAddress] = useState(settings.kitchenIpAddress || '');
   const [kitchenPort, setKitchenPort] = useState(settings.kitchenPort?.toString() || '9100');
+
+  // Synchronize state when settings hydrate from persistent storage
+  useEffect(() => {
+    if (settings) {
+      if (settings.ipAddress !== undefined) setIpAddress(settings.ipAddress);
+      if (settings.port) setPort(settings.port.toString());
+      if (settings.kitchenIpAddress !== undefined) setKitchenIpAddress(settings.kitchenIpAddress);
+      if (settings.kitchenPort) setKitchenPort(settings.kitchenPort.toString());
+      if (settings.printerWorkflowMode) setWorkflowMode(settings.printerWorkflowMode);
+    }
+  }, [settings]);
 
   const [isTestingBilling, setIsTestingBilling] = useState(false);
   const [isTestingKitchen, setIsTestingKitchen] = useState(false);
@@ -318,7 +329,7 @@ export const PrinterSettingsScreen = () => {
 
           <Input
             label="IP Address"
-            placeholder="e.g. 192.168.1.100"
+            placeholder="e.g. 192.168.1.50"
             value={ipAddress}
             onChangeText={setIpAddress}
             keyboardType="numeric"
@@ -353,7 +364,7 @@ export const PrinterSettingsScreen = () => {
 
             <Input
               label="Kitchen IP Address"
-              placeholder="e.g. 192.168.1.101"
+              placeholder="e.g. 192.168.1.51"
               value={kitchenIpAddress}
               onChangeText={setKitchenIpAddress}
               keyboardType="numeric"

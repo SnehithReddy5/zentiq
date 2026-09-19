@@ -50,7 +50,6 @@ export const RunningOrdersScreen = () => {
   const [selectedOrderTypeFilter, setSelectedOrderTypeFilter] = useState<'ALL' | 'DINE_IN' | 'PICKUP' | 'TAKEAWAY'>('ALL');
 
   // Modal & Reprint states
-  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [isReprinting, setIsReprinting] = useState(false);
   const [isReprintingKitchen, setIsReprintingKitchen] = useState(false);
@@ -371,13 +370,12 @@ export const RunningOrdersScreen = () => {
               </View>
 
               <Text className="text-[11px] text-slate-500 italic ml-1">
-                Tip: Tap an order to expand all items and details, or tap View Full Details for modal reprint.
+                Tip: Tap any order to view full bill details and reprint receipts.
               </Text>
             </View>
           )}
           renderItem={({ item }: any) => {
             const isRunning = item.status === 'running' || item.status === 'RUNNING';
-            const isExpanded = expandedOrderId === item.id;
             const itemsList = item.items || [];
             const displayedItems = itemsList.slice(0, 2);
             const remainingCount = itemsList.length - displayedItems.length;
@@ -386,39 +384,39 @@ export const RunningOrdersScreen = () => {
             return (
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={() => setExpandedOrderId(isExpanded ? null : item.id)}
-                className="bg-slate-900 border border-slate-800 p-4 rounded-3xl m-1.5 justify-between shadow-sm hover:border-slate-700"
+                onPress={() => setSelectedOrder(item)}
+                className="bg-slate-900 border border-slate-800 p-4 rounded-3xl m-1.5 justify-between shadow-sm hover:border-slate-700 active:bg-slate-850"
                 style={{ flex: 1 / ordersGridColumns }}
               >
-                {/* Header Row: Table/Type pill, KOT, Status, and Total */}
-                <View className="flex-row items-center justify-between mb-2">
-                  <View className="flex-row items-center flex-wrap gap-1.5">
-                    <Text className="text-white font-black text-base">
-                      {item.tableNo ? (`Table ${item.tableNo}`) : (item.orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway')}
-                    </Text>
-                    <View className="bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30">
-                      <Text className="text-indigo-300 text-[10px] font-bold">
-                        {orderBillNo}
+                <View>
+                  {/* Header Row: Table/Type pill, KOT, Status, and Total */}
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center flex-wrap gap-1.5">
+                      <Text className="text-white font-black text-base">
+                        {item.tableNo ? (`Table ${item.tableNo}`) : (item.orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway')}
                       </Text>
-                    </View>
-                    <View className={`px-2 py-0.5 rounded border ${
-                      isRunning ? 'bg-amber-500/20 border-amber-500/30' : 'bg-emerald-500/20 border-emerald-500/30'
-                    }`}>
-                      <Text className={`text-[10px] font-bold ${
-                        isRunning ? 'text-amber-300' : 'text-emerald-300'
+                      <View className="bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30">
+                        <Text className="text-indigo-300 text-[10px] font-bold">
+                          {orderBillNo}
+                        </Text>
+                      </View>
+                      <View className={`px-2 py-0.5 rounded border ${
+                        isRunning ? 'bg-amber-500/20 border-amber-500/30' : 'bg-emerald-500/20 border-emerald-500/30'
                       }`}>
-                        {isRunning ? 'RUNNING' : 'SETTLED'}
-                      </Text>
+                        <Text className={`text-[10px] font-bold ${
+                          isRunning ? 'text-amber-300' : 'text-emerald-300'
+                        }`}>
+                          {isRunning ? 'RUNNING' : 'SETTLED'}
+                        </Text>
+                      </View>
                     </View>
+
+                    <Text className="text-emerald-400 font-black text-lg">
+                      ₹{Number(item.totalAmount || 0).toFixed(0)}
+                    </Text>
                   </View>
 
-                  <Text className="text-emerald-400 font-black text-lg">
-                    ₹{Number(item.totalAmount || 0).toFixed(0)}
-                  </Text>
-                </View>
-
-                {/* Collapsed Preview: First 2 items + more items indicator */}
-                {!isExpanded && (
+                  {/* Items Summary Preview */}
                   <View className="mb-2">
                     {displayedItems.map((it: any, idx: number) => (
                       <Text key={idx} className="text-slate-300 text-xs py-0.5" numberOfLines={1}>
@@ -430,116 +428,17 @@ export const RunningOrdersScreen = () => {
                       <Text className="text-[11px] text-indigo-400 font-bold mt-0.5">+ {remainingCount} more items</Text>
                     )}
                   </View>
-                )}
+                </View>
 
-                {/* EXPANDED FULL ORDER BREAKDOWN ACCORDION */}
-                {isExpanded && (
-                  <View className="mt-2 pt-3 border-t border-slate-800">
-                    <Text className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-2">Order Items Breakdown:</Text>
-                    {itemsList.map((it: any, idx: number) => {
-                      const lineTotal = (it.price || 0) * (it.qty || 1);
-                      return (
-                        <View key={idx} className="flex-row justify-between items-start py-1.5 border-b border-slate-850">
-                          <View className="flex-1 mr-2">
-                            <Text className="text-white text-xs font-bold">
-                              <Text className="text-purple-400 font-black">{it.qty || 1}x</Text> {it.itemName || it.name}
-                            </Text>
-                            {it.variantName && (
-                              <Text className="text-indigo-300 text-[10px]">Variant: {it.variantName}</Text>
-                            )}
-                            {it.note && (
-                              <Text className="text-amber-400/80 text-[10px] italic">Note: {it.note}</Text>
-                            )}
-                          </View>
-                          <View className="items-end">
-                            <Text className="text-slate-200 text-xs font-bold">₹{lineTotal.toFixed(2)}</Text>
-                            <Text className="text-slate-500 text-[10px]">₹{Number(it.price || 0).toFixed(0)} each</Text>
-                          </View>
-                        </View>
-                      );
-                    })}
-
-                    {/* Special Note if any */}
-                    {item.specialNote && (
-                      <View className="bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-xl my-2">
-                        <Text className="text-amber-300 text-[10px] font-bold uppercase">Special Instruction</Text>
-                        <Text className="text-amber-200 text-xs mt-0.5">{item.specialNote}</Text>
-                      </View>
-                    )}
-
-                    {/* Payment breakdown */}
-                    <View className="bg-slate-950/80 p-2.5 rounded-2xl border border-slate-800 my-2.5">
-                      <View className="flex-row justify-between py-0.5">
-                        <Text className="text-slate-400 text-xs">Total Items Qty:</Text>
-                        <Text className="text-white text-xs font-bold">
-                          {itemsList.reduce((s: number, i: any) => s + (i.qty || 1), 0)}
-                        </Text>
-                      </View>
-                      <View className="flex-row justify-between py-0.5">
-                        <Text className="text-slate-400 text-xs">Grand Total Paid:</Text>
-                        <Text className="text-emerald-400 text-sm font-black">₹{Number(item.totalAmount || 0).toFixed(2)}</Text>
-                      </View>
-                      {item.payments && item.payments.length > 0 ? (
-                        <View className="mt-1 pt-1 border-t border-slate-800">
-                          {item.payments.map((p: any, pIdx: number) => (
-                            <View key={pIdx} className="flex-row justify-between py-0.5">
-                              <Text className="text-slate-400 text-[11px]">{p.method}</Text>
-                              <Text className="text-slate-300 text-[11px] font-bold">₹{Number(p.amount).toFixed(2)}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : null}
-                    </View>
-
-                    {/* Quick Reprint Actions directly on Expanded Card */}
-                    <View className="flex-row gap-2 mt-2">
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleReprintBill(item);
-                        }}
-                        disabled={isReprinting}
-                        className="flex-1 bg-emerald-600/25 border border-emerald-500/50 py-2.5 px-2 rounded-xl flex-row items-center justify-center active:opacity-80"
-                      >
-                        <Printer size={13} color="#34D399" />
-                        <Text className="text-emerald-300 font-bold text-xs ml-1.5">Reprint Bill</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleReprintKitchenKOT(item);
-                        }}
-                        disabled={isReprintingKitchen}
-                        className="flex-1 bg-amber-600/25 border border-amber-500/50 py-2.5 px-2 rounded-xl flex-row items-center justify-center active:opacity-80"
-                      >
-                        <Utensils size={13} color="#FBBF24" />
-                        <Text className="text-amber-300 font-bold text-xs ml-1.5">Reprint KOT</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          setSelectedOrder(item);
-                        }}
-                        className="bg-indigo-600/30 border border-indigo-500/40 p-2.5 rounded-xl items-center justify-center"
-                      >
-                        <Receipt size={14} color="#818CF8" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-
-                {/* Footer Row: Timestamp, Cashier, and Expand Indicator */}
+                {/* Footer Row: Timestamp, Cashier, and Tap to Open */}
                 <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-slate-800/80">
                   <Text className="text-slate-400 text-[10px]">
                     {formatOrderDate(item.createdAt)} • By {item.captainName || 'Staff'}
                   </Text>
                   <View className="flex-row items-center gap-1">
                     <Text className="text-[10px] text-indigo-300 font-bold">
-                      {isExpanded ? 'Collapse' : 'Tap to expand'}
+                      Details ➜
                     </Text>
-                    {isExpanded ? <ChevronUp size={14} color="#818CF8" /> : <ChevronDown size={14} color="#818CF8" />}
                   </View>
                 </View>
               </TouchableOpacity>

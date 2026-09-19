@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -27,7 +27,16 @@ const CustomDarkTheme = {
 
 export const RootNavigator = () => {
   const { user, logout } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant, subscribeToActiveTenant } = useTenantStore();
+
+  // Establish continuous real-time Firebase listeners on app startup across Android, iOS & Windows
+  useEffect(() => {
+    const targetTenantId = user?.tenantId || tenant?.id;
+    if (targetTenantId) {
+      const unsub = subscribeToActiveTenant(targetTenantId);
+      return () => unsub();
+    }
+  }, [user?.tenantId, tenant?.id]);
 
   const isDeactivated = tenant?.status === 'DEACTIVATED' || tenant?.status === 'SUSPENDED';
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -215,20 +216,57 @@ export const LoginScreen = () => {
     <SafeAreaView className="flex-1 bg-[#090D1A]">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 justify-center px-6"
+        style={{ flex: 1, width: '100%', justifyContent: 'center' }}
       >
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} keyboardShouldPersistTaps="handled">
-          <View className="items-center mb-8">
-            <View className="w-20 h-20 bg-gradient-to-tr from-[#5D3FD3] to-[#8B5CF6] rounded-3xl items-center justify-center mb-4 shadow-xl shadow-purple-500/30">
-              <Utensils size={36} color="white" />
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 24,
+            paddingVertical: 32,
+          }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Top Brand Header - Strictly Centered */}
+          <View style={{ width: '100%', maxWidth: 440, alignItems: 'center', justifyContent: 'center', marginBottom: 28 }}>
+            <View
+              style={{
+                width: 96,
+                height: 96,
+                borderRadius: 24,
+                backgroundColor: '#1E1B4B',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 16,
+                shadowColor: '#8B5CF6',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.35,
+                shadowRadius: 16,
+                elevation: 10,
+              }}
+            >
+              <Image
+                source={require('../../../assets/logo-optimized.png')}
+                style={{ width: 96, height: 96, borderRadius: 24 }}
+                resizeMode="contain"
+                fadeDuration={0}
+              />
             </View>
-            <Text className="text-3xl font-black text-white tracking-wider">ZENTIQ POS</Text>
-            <Text className="text-indigo-400 text-xs font-bold uppercase tracking-widest mt-1.5">
+
+            <Text style={{ textAlign: 'center' }} className="text-3xl font-black text-white tracking-wider">
+              ZENTIQ POS
+            </Text>
+            <Text style={{ textAlign: 'center' }} className="text-indigo-400 text-xs font-bold uppercase tracking-widest mt-1.5">
               Multi-Tenant Cloud Platform
             </Text>
           </View>
 
-          <View className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-2xl backdrop-blur-xl max-w-md mx-auto w-full">
+          {/* Form Card - Max 440px Centered */}
+          <View
+            style={{ width: '100%', maxWidth: 440, alignSelf: 'center' }}
+            className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-2xl backdrop-blur-xl"
+          >
             <Text className="text-white text-base font-semibold text-center mb-6">Sign in to your restaurant</Text>
 
             <Input
@@ -263,12 +301,15 @@ export const LoginScreen = () => {
             />
           </View>
 
-          <View className="mt-8 items-center">
+          {/* Footer - Centered */}
+          <View style={{ width: '100%', maxWidth: 440, alignItems: 'center', justifyContent: 'center' }} className="mt-8">
             <View className="flex-row items-center bg-slate-800/50 px-3.5 py-1.5 rounded-full border border-slate-750">
               <Sparkles size={14} color="#818CF8" />
               <Text className="text-slate-400 text-xs ml-1.5 font-mono">Demo: admin / admin</Text>
             </View>
-            <Text className="text-slate-600 text-[11px] mt-4">Zentiq POS v1.0.0 • Connected to Live Cloud</Text>
+            <Text style={{ textAlign: 'center' }} className="text-slate-600 text-[11px] mt-4">
+              Zentiq POS v1.0.0 • Connected to Live Cloud
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

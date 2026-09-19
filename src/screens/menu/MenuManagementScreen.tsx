@@ -46,6 +46,7 @@ export const MenuManagementScreen = () => {
   const [restockTargetItem, setRestockTargetItem] = useState<MenuItem | null>(null);
   const [restockAmount, setRestockAmount] = useState('');
   const [isRestocking, setIsRestocking] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'item' | 'category'; id: string; name: string; extraWarning?: string } | null>(null);
 
   useEffect(() => {
     const unsub = subscribeToMenu();
@@ -271,26 +272,12 @@ export const MenuManagementScreen = () => {
   
   const confirmDeleteCategory = (cat: { id: string; name: string }) => {
     const itemCount = items.filter(i => i.categoryId === cat.id).length;
-    Alert.alert(
-      'Delete Category',
-      `Are you sure you want to delete category "${cat.name}"?${itemCount > 0 ? ` This will also remove ${itemCount} item(s) in this category.` : ''}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete Category',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await DBServices.deleteMenuCategory(cat.id, tenant?.id, activeLocationId || undefined);
-              setActiveCategory('all');
-              setCategoryModalOpen(false);
-            } catch (err: any) {
-              Alert.alert('Error', err.message);
-            }
-          },
-        },
-      ]
-    );
+    setDeleteTarget({
+      type: 'category',
+      id: cat.id,
+      name: cat.name,
+      extraWarning: itemCount > 0 ? `This will also delete ${itemCount} item(s) in this category.` : undefined
+    });
   };
 
   const handleSaveCategory = async () => {

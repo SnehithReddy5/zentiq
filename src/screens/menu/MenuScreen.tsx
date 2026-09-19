@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Search, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package } from 'lucide-react-native';
+import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package } from 'lucide-react-native';
 import { useMenuStore } from '../../store/menu.store';
 import { useCartStore } from '../../store/cart.store';
 import { useTableStore } from '../../store/table.store';
@@ -531,69 +531,116 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       </View>
 
       {/* Variant Selection Modal */}
-      {selectedItemForVariants && (
-        <Modal visible={true} transparent animationType="slide">
-          <View className="flex-1 justify-center items-center bg-black/75 p-4">
-            <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-sm">
-              <Text className="text-white font-black text-lg mb-1">{selectedItemForVariants.name}</Text>
-              <Text className="text-slate-400 text-xs mb-4">Select an option:</Text>
+        {selectedItemForVariants && (
+          <Modal visible={true} transparent animationType="slide">
+            <View className="flex-1 justify-center items-center bg-black/75 p-4">
+              <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-sm shadow-2xl">
+                <View className="flex-row justify-between items-center pb-3 mb-3 border-b border-slate-800">
+                  <View className="flex-1 mr-2">
+                    <Text className="text-white font-black text-lg">{selectedItemForVariants.name}</Text>
+                    <Text className="text-slate-400 text-xs">Select portion size & quantity:</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setSelectedItemForVariants(null)} className="p-1.5 bg-slate-800 rounded-full">
+                    <X size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
 
-              <View className="space-y-2 mb-4">
-                {(() => {
-                  const avail = getAvailableStock(selectedItemForVariants);
-                  return selectedItemForVariants.variants?.map(v => {
-                    const deduction = typeof v.portionDeduction === 'number' ? v.portionDeduction : 1;
-                    const canFulfill = !selectedItemForVariants.trackInventory || (avail >= deduction);
+                <View className="mb-4">
+                  {(() => {
+                    const avail = getAvailableStock(selectedItemForVariants);
+                    return selectedItemForVariants.variants?.map(v => {
+                      const deduction = typeof v.portionDeduction === 'number' ? v.portionDeduction : 1;
+                      const canFulfill = !selectedItemForVariants.trackInventory || (avail >= deduction);
+                      const variantItemId = `${selectedItemForVariants.id}_${v.name}`;
+                      const inCart = cartItems.find(i => i.itemId === variantItemId);
+                      const vQty = inCart ? inCart.qty : 0;
 
-                    return (
-                      <TouchableOpacity
-                        key={v.id}
-                        disabled={!canFulfill}
-                        onPress={() => {
-                          addItem(tableNo, {
-                            itemId: `${selectedItemForVariants.id}_${v.name}`,
-                            baseItemId: selectedItemForVariants.id,
-                            itemName: `${selectedItemForVariants.name} (${v.name})`,
-                            price: v.price,
-                            qty: 1,
-                            variantName: v.name,
-                            portionDeduction: deduction,
-                          });
-                          setSelectedItemForVariants(null);
-                        }}
-                        className={`flex-row justify-between items-center p-3 rounded-xl border ${
-                          canFulfill
-                            ? 'bg-slate-800/80 border-slate-700 hover:border-indigo-500'
-                            : 'bg-slate-900 border-slate-800 opacity-40'
-                        }`}
-                      >
-                        <View className="flex-1 mr-2">
-                          <Text className="text-white font-semibold text-xs">{v.name}</Text>
-                          {selectedItemForVariants.trackInventory && (
-                            <Text className="text-slate-400 text-[10px] mt-0.5">
-                              Deducts: {deduction} {selectedItemForVariants.stockUnit || 'kg'}
-                            </Text>
+                      return (
+                        <View
+                          key={v.id}
+                          className={`flex-row justify-between items-center p-3 rounded-2xl border mb-2.5 ${
+                            vQty > 0
+                              ? 'bg-purple-950/20 border-purple-500/40'
+                              : canFulfill
+                              ? 'bg-slate-800/80 border-slate-700'
+                              : 'bg-slate-900 border-slate-800 opacity-40'
+                          }`}
+                        >
+                          <View className="flex-1 mr-2">
+                            <Text className="text-white font-bold text-sm">{v.name}</Text>
+                            <Text className="text-indigo-400 font-bold text-xs mt-0.5">₹{v.price}</Text>
+                            {selectedItemForVariants.trackInventory && (
+                              <Text className="text-slate-400 text-[10px] mt-0.5">
+                                Deducts: {deduction} {selectedItemForVariants.stockUnit || 'kg'}
+                              </Text>
+                            )}
+                          </View>
+
+                          {vQty > 0 ? (
+                            <View className="flex-row items-center bg-slate-900 rounded-xl p-1 border border-purple-500/40">
+                              <TouchableOpacity
+                                className="w-8 h-8 rounded-lg bg-slate-800 items-center justify-center active:opacity-80"
+                                onPress={() => {
+                                  if (vQty > 1) {
+                                    updateQuantity(tableNo, variantItemId, vQty - 1);
+                                  } else {
+                                    removeItem(tableNo, variantItemId);
+                                  }
+                                }}
+                              >
+                                <Text className="text-white font-bold text-base">-</Text>
+                              </TouchableOpacity>
+                              <Text className="w-8 text-center text-white font-black text-sm">{vQty}</Text>
+                              <TouchableOpacity
+                                className="w-8 h-8 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-80"
+                                disabled={!canFulfill}
+                                onPress={() => {
+                                  if (!canFulfill) {
+                                    Alert.alert('Out of Stock', 'No additional stock available for this variant.');
+                                    return;
+                                  }
+                                  updateQuantity(tableNo, variantItemId, vQty + 1);
+                                }}
+                              >
+                                <Text className="text-white font-bold text-base">+</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            <TouchableOpacity
+                              disabled={!canFulfill}
+                              onPress={() => {
+                                addItem(tableNo, {
+                                  itemId: variantItemId,
+                                  baseItemId: selectedItemForVariants.id,
+                                  itemName: `${selectedItemForVariants.name} (${v.name})`,
+                                  price: v.price,
+                                  qty: 1,
+                                  variantName: v.name,
+                                  portionDeduction: deduction,
+                                });
+                              }}
+                              className={`px-3.5 py-2 rounded-xl ${
+                                canFulfill ? 'bg-[#5D3FD3]' : 'bg-slate-800'
+                              }`}
+                            >
+                              <Text className={`font-bold text-xs ${canFulfill ? 'text-white' : 'text-slate-400'}`}>
+                                {canFulfill ? '+ Add' : 'Out of Stock'}
+                              </Text>
+                            </TouchableOpacity>
                           )}
                         </View>
-                        <View className="items-end">
-                          <Text className="text-indigo-400 font-bold text-xs">₹{v.price}</Text>
-                          {!canFulfill && (
-                            <Text className="text-rose-400 text-[10px] font-bold">Out of Stock</Text>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  });
-                })()}
+                      );
+                    });
+                  })()}
+                </View>
+
+                <Button title="Done" onPress={() => setSelectedItemForVariants(null)} />
               </View>
-
-              <Button title="Cancel" variant="secondary" onPress={() => setSelectedItemForVariants(null)} />
             </View>
-          </View>
-        </Modal>
-      )}
-    
-      {/* Mobile Floating Bottom Cart Bar (Fixed clean layout) */}
+          </Modal>
+        )}
+      
+        {/* Mobile Floating Bottom Cart Bar (Fixed clean layout) */}
       {!isSplitView && cartItemCount > 0 && (
         <View
           className="absolute bottom-0 left-0 right-0 bg-[#0F172A]/98 border-t border-slate-800 px-4 pt-3 shadow-2xl backdrop-blur-md"

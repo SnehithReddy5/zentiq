@@ -551,8 +551,9 @@ export const HomeScreen = () => {
                   )}
                 </View>
 
-                {/* Live Interactive Floor & Table Quick Hub */}
-                <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-6 shadow-md">
+                {/* Live Interactive Floor & Table Quick Hub (Only shown when dining tables are enabled) */}
+                  {features.tablesEnabled !== false && features.dineInEnabled !== false && (
+                  <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-6 shadow-md">
                   <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
                     <View className="flex-row items-center">
                       <LayoutGrid size={18} color="#818CF8" />
@@ -623,9 +624,10 @@ export const HomeScreen = () => {
                     </View>
                   )}
                 </View>
-              </View>
+                  )}
+                </View>
 
-              {/* Right Column (40%): Aggregators & Hardware Station */}
+                {/* Right Column (40%): Aggregators & Hardware Station */}
               <View className="w-[400px]">
                 <View className="flex-row items-center justify-between mb-3">
                   <View className="flex-row items-center">

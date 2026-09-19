@@ -129,7 +129,13 @@ export const useCartStore = create<CartState>()(
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
         const tableCart = currentCarts[tableNo] || [];
-        const newItems = tableCart.map(i => i.itemId === itemId ? { ...i, qty } : i);
+        // If quantity is 0 or negative, automatically remove the item from the cart
+        let newItems: CartItem[];
+        if (qty <= 0) {
+          newItems = tableCart.filter(i => i.itemId !== itemId);
+        } else {
+          newItems = tableCart.map(i => i.itemId === itemId ? { ...i, qty } : i);
+        }
         set({
           carts: {
             ...currentCarts,

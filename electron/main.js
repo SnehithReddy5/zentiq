@@ -1,10 +1,73 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 
 let mainWindow;
 let serverInstance = null;
+
+// Native TCP RAW ESC/POS Socket Print Function
+function printToNetworkPrinter(ip, port, dataArray) {
+  return new Promise((resolve, reject) => {
+    if (!ip) {
+      return reject(new Error('Printer IP address is required'));
+    }
+    const targetPort = parseInt(port, 10) || 9100;
+    const socket = new net.Socket();
+    let isFinished = false;
+
+    socket.setTimeout(8000);
+
+    socket.connect(targetPort, ip, () => {
+      const buffer = Buffer.from(dataArray);
+      socket.write(buffer, (err) => {
+        if (err) {
+          if (!isFinished) {
+            isFinished = true;
+            socket.destroy();
+            reject(err);
+          }
+        } else {
+          // Pause 400ms to allow printer microcontroller to drain buffer before closing
+          setTimeout(() => {
+            if (!isFinished) {
+              isFinished = true;
+              socket.end();
+              resolve({ success: true });
+            }
+          }, 400);
+        }
+      });
+    });
+
+    socket.on('error', (err) => {
+      if (!isFinished) {
+        isFinished = true;
+        socket.destroy();
+        reject(err);
+      }
+    });
+
+    socket.on('timeout', () => {
+      if (!isFinished) {
+        isFinished = true;
+        socket.destroy();
+        reject(new Error('Connection timed out connecting to printer at ' + ip + ':' + targetPort));
+      }
+    });
+  });
+}
+
+// IPC Handler for window.electronPrinter.printRaw
+ipcMain.handle('print-raw', async (event, { ip, port, data }) => {
+  try {
+    const res = await printToNetworkPrinter(ip, port, data);
+    return res;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
 
 // MIME types dictionary for Expo web bundle assets
 const MIME_TYPES = {
@@ -26,11 +89,41 @@ const MIME_TYPES = {
   '.wasm': 'application/wasm'
 };
 
-// Starts a lightweight localhost HTTP server to serve dist/ bundle without file:/// protocol issues
+// Starts a lightweight localhost HTTP server to serve dist/ bundle and handle /api/print
 function startLocalServer(distDir) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
+      // CORS headers for all responses
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+
       let reqPath = decodeURI(req.url.split('?')[0]);
+
+      // HTTP Endpoint for Raw TCP Thermal Print dispatch
+      if (req.method === 'POST' && reqPath === '/api/print') {
+        let body = [];
+        req.on('data', chunk => body.push(chunk));
+        req.on('end', async () => {
+          try {
+            const payload = JSON.parse(Buffer.concat(body).toString());
+            const result = await printToNetworkPrinter(payload.ip, payload.port, payload.data);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+          } catch (printErr) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: printErr.message }));
+          }
+        });
+        return;
+      }
+
       if (reqPath === '/' || reqPath === '') {
         reqPath = '/index.html';
       }
@@ -54,7 +147,6 @@ function startLocalServer(distDir) {
             res.writeHead(200, {
               'Content-Type': contentType,
               'Cache-Control': 'no-cache',
-              'Access-Control-Allow-Origin': '*'
             });
             res.end(content);
           }
@@ -85,6 +177,7 @@ async function createWindow() {
     backgroundColor: '#090D1A',
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
