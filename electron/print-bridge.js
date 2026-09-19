@@ -11,7 +11,7 @@ const PORT = 9123;
 function getWindowsPrinters() {
   return new Promise((resolve) => {
     try {
-      const cmd = 'powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | ForEach-Object { $_.Name }"';
+      const cmd = 'powershell -NoProfile -Command "Get-CimInstance Win32_Printer | Select-Object -ExpandProperty Name"';
       exec(cmd, { encoding: 'utf8', timeout: 5000 }, (err, stdout) => {
         if (err || !stdout) {
           resolve([]);
