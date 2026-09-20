@@ -66,8 +66,11 @@ export const RunningOrdersScreen = () => {
     return () => unsub();
   }, [tenant?.id, selectedLocationId]);
 
-  // Filtered orders list
+  // Filtered orders list with comprehensive intelligent search
   const filteredOrders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const cleanQ = q.replace(/^#/, '').trim();
+
     return orders.filter(o => {
       // Order type filter
       if (selectedOrderTypeFilter === 'DINE_IN' && (!o.tableNo || o.orderType === 'PICKUP' || o.orderType === 'TAKEAWAY')) {
@@ -80,10 +83,66 @@ export const RunningOrdersScreen = () => {
         return false;
       }
 
-      // Search query filter
-      if (!search.trim()) return true;
-      const searchTarget = `${o.kotNo || ''} ${o.orderNumber || ''} ${o.tableNo || ''} ${o.captainName || ''} ${o.orderType || ''} ${o.locationName || ''}`;
-      return searchTarget.toLowerCase().includes(search.toLowerCase());
+      // If search query is empty, match all
+      if (!q) return true;
+
+      // 1. Bill #, Order #, KOT #, and ID
+      const billNo = String(o.orderNumber || '');
+      const kotNo = String(o.kotNo || '');
+      const id = String(o.id || '').toLowerCase();
+      if (
+        billNo.includes(cleanQ) ||
+        `#${billNo}`.includes(q) ||
+        kotNo.includes(cleanQ) ||
+        `kot-${kotNo}`.includes(q) ||
+        `kot ${kotNo}`.includes(q) ||
+        `#${kotNo}`.includes(q) ||
+        id.includes(q)
+      ) {
+        return true;
+      }
+
+      // 2. Table #
+      const tableNo = String(o.tableNo || '');
+      if (
+        (o.tableNo && tableNo === cleanQ) ||
+        `table ${tableNo}`.toLowerCase().includes(q) ||
+        `tbl ${tableNo}`.toLowerCase().includes(q) ||
+        `t${tableNo}`.toLowerCase().includes(q)
+      ) {
+        return true;
+      }
+
+      // 3. Captain / Cashier name
+      if (o.captainName && o.captainName.toLowerCase().includes(q)) {
+        return true;
+      }
+
+      // 4. Food items ordered (item name, variant name)
+      if (o.items && Array.isArray(o.items)) {
+        const hasItem = o.items.some((it: any) => {
+          const name = String(it.itemName || it.name || '').toLowerCase();
+          const variant = String(it.variantName || '').toLowerCase();
+          return name.includes(q) || variant.includes(q);
+        });
+        if (hasItem) return true;
+      }
+
+      // 5. Payment method
+      if (o.paymentMethod && String(o.paymentMethod).toLowerCase().includes(q)) {
+        return true;
+      }
+      if (o.payments && Array.isArray(o.payments)) {
+        const hasPayment = o.payments.some((p: any) => String(p.method || '').toLowerCase().includes(q));
+        if (hasPayment) return true;
+      }
+
+      // 6. Branch / Location
+      if (o.locationName && o.locationName.toLowerCase().includes(q)) {
+        return true;
+      }
+
+      return false;
     });
   }, [orders, search, selectedOrderTypeFilter]);
 
@@ -237,8 +296,17 @@ export const RunningOrdersScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-[#090D1A]">
       <Header
-        title="Orders History & Settlements"
+        title="Orders History"
         subtitle={`${filteredOrders.length} Completed / Running Orders`}
+        rightElement={
+          <TouchableOpacity
+            onPress={() => setDownloadModalOpen(true)}
+            className="bg-emerald-600 px-3 py-1.5 rounded-xl flex-row items-center active:bg-emerald-700 shadow-md shadow-emerald-600/30"
+          >
+            <FileSpreadsheet size={15} color="white" />
+            <Text className="text-white font-bold text-xs ml-1.5">Download Summary</Text>
+          </TouchableOpacity>
+        }
       />
 
       {/* Floating Success Toast */}
@@ -255,89 +323,80 @@ export const RunningOrdersScreen = () => {
       )}
 
       {/* Top Filter & Search Bar */}
-      <View className="bg-slate-900 border-b border-slate-800 px-4 py-3">
+      <View className="bg-slate-900 border-b border-slate-800 px-4 py-3 gap-2.5">
         {/* Branch Selector Pill if Multi-Branch */}
         {locations.length > 1 && (
-          <View className="mb-2.5">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-1.5">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-1.5 pb-0.5">
+            <TouchableOpacity
+              onPress={() => setSelectedLocationId('ALL')}
+              className={`px-3 py-1 rounded-full border ${
+                selectedLocationId === 'ALL'
+                  ? 'bg-[#5D3FD3] border-purple-500'
+                  : 'bg-slate-800 border-slate-700'
+              }`}
+            >
+              <Text className={`text-xs font-bold ${selectedLocationId === 'ALL' ? 'text-white' : 'text-slate-400'}`}>
+                All Branches
+              </Text>
+            </TouchableOpacity>
+
+            {locations.map(loc => (
               <TouchableOpacity
-                onPress={() => setSelectedLocationId('ALL')}
+                key={loc.id}
+                onPress={() => setSelectedLocationId(loc.id)}
                 className={`px-3 py-1 rounded-full border ${
-                  selectedLocationId === 'ALL'
+                  selectedLocationId === loc.id
                     ? 'bg-[#5D3FD3] border-purple-500'
                     : 'bg-slate-800 border-slate-700'
                 }`}
               >
-                <Text className={`text-xs font-bold ${selectedLocationId === 'ALL' ? 'text-white' : 'text-slate-400'}`}>
-                  All Branches
-                </Text>
-              </TouchableOpacity>
-
-              {locations.map(loc => (
-                <TouchableOpacity
-                  key={loc.id}
-                  onPress={() => setSelectedLocationId(loc.id)}
-                  className={`px-3 py-1 rounded-full border ${
-                    selectedLocationId === loc.id
-                      ? 'bg-[#5D3FD3] border-purple-500'
-                      : 'bg-slate-800 border-slate-700'
-                  }`}
-                >
-                  <Text className={`text-xs font-bold ${selectedLocationId === loc.id ? 'text-white' : 'text-slate-400'}`}>
-                    {loc.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        <View className="flex-row gap-2 items-center">
-          {/* Search Box */}
-          <View className="flex-1 flex-row items-center bg-slate-950 border border-slate-800 rounded-2xl px-3 py-2">
-            <Search size={16} color="#64748B" />
-            <TextInput
-              placeholder="Search by Bill #, KOT #, Table, or Cashier..."
-              placeholderTextColor="#64748B"
-              value={search}
-              onChangeText={setSearch}
-              className="flex-1 text-white text-xs ml-2 py-0"
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch('')}>
-                <X size={14} color="#64748B" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Quick Filter: All / Dine In / Pickup */}
-          <View className="flex-row bg-slate-950 p-1 rounded-2xl border border-slate-800">
-            {(['ALL', 'DINE_IN', 'PICKUP'] as const).map(f => (
-              <TouchableOpacity
-                key={f}
-                onPress={() => setSelectedOrderTypeFilter(f)}
-                className={`px-2.5 py-1.5 rounded-xl ${
-                  selectedOrderTypeFilter === f ? 'bg-[#5D3FD3]' : 'bg-transparent'
-                }`}
-              >
-                <Text className={`text-[11px] font-bold ${
-                  selectedOrderTypeFilter === f ? 'text-white' : 'text-slate-400'
-                }`}>
-                  {f === 'ALL' ? 'All' : f === 'DINE_IN' ? 'Dine In' : 'Pick Up'}
+                <Text className={`text-xs font-bold ${selectedLocationId === loc.id ? 'text-white' : 'text-slate-400'}`}>
+                  {loc.name}
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
+        )}
 
-          {/* Download Summary Button */}
-          <TouchableOpacity
-            onPress={() => setDownloadModalOpen(true)}
-            className="bg-emerald-600/15 border border-emerald-500/30 px-3 py-2 rounded-2xl flex-row items-center active:bg-emerald-600/25"
-          >
-            <FileSpreadsheet size={15} color="#34D399" />
-            <Text className="text-emerald-400 font-bold text-xs ml-1.5">Download Summary</Text>
-          </TouchableOpacity>
+        {/* Full-Width Search Input */}
+        <View className="flex-row items-center bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5">
+          <Search size={16} color="#94A3B8" />
+          <TextInput
+            placeholder="Search by Bill #, KOT #, Table, Item, or Cashier..."
+            placeholderTextColor="#64748B"
+            value={search}
+            onChangeText={setSearch}
+            className="flex-1 text-white text-xs ml-2 py-0"
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <X size={15} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Order Type Filter Pills (Horizontal Scroll - Never overflows to the right) */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-1.5">
+          {(['ALL', 'DINE_IN', 'PICKUP', 'TAKEAWAY'] as const).map(f => (
+            <TouchableOpacity
+              key={f}
+              onPress={() => setSelectedOrderTypeFilter(f)}
+              className={`px-3.5 py-1.5 rounded-full border ${
+                selectedOrderTypeFilter === f
+                  ? 'bg-[#5D3FD3] border-purple-500'
+                  : 'bg-slate-950 border-slate-800'
+              }`}
+            >
+              <Text className={`text-xs font-bold ${
+                selectedOrderTypeFilter === f ? 'text-white' : 'text-slate-400'
+              }`}>
+                {f === 'ALL' ? 'All Orders' : f === 'DINE_IN' ? 'Dine In' : f === 'PICKUP' ? 'Pick Up' : 'Takeaway'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Orders List with Analytics Header */}
@@ -362,48 +421,66 @@ export const RunningOrdersScreen = () => {
           ListHeaderComponent={() => (
             <View className="mb-4">
               {/* Comprehensive Analytics Dashboard Header */}
-              <View className="bg-slate-900 border border-slate-800 p-4 rounded-3xl mb-3 shadow-md">
-                <View className="flex-row items-center justify-between mb-3 gap-2">
-                  <View className="flex-1 mr-2">
-                    <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">Total Sales Revenue</Text>
-                    <Text className="text-2xl font-black text-emerald-400 mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
+              <View className="bg-slate-900 border border-slate-800/80 rounded-3xl p-4 mb-3 shadow-lg">
+                {/* Revenue & Avg Order Row */}
+                <View className="flex-row items-center justify-between pb-3.5 border-b border-slate-800/80">
+                  <View className="flex-1 mr-3">
+                    <View className="flex-row items-center mb-1">
+                      <View className="w-2 h-2 rounded-full bg-emerald-400 mr-1.5" />
+                      <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+                        Total Sales Revenue
+                      </Text>
+                    </View>
+                    <Text className="text-2xl font-black text-emerald-400" numberOfLines={1}>
                       ₹{stats.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </Text>
                   </View>
-                  <View className="items-end shrink-0 max-w-[45%] flex-row items-center gap-2">
-                    <View className="items-end">
-                      <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">Average Order</Text>
-                      <Text className="text-xl font-black text-indigo-300 mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
-                        ₹{stats.averageOrderValue.toFixed(2)}
+
+                  <View className="items-end shrink-0">
+                    <View className="flex-row items-center mb-1">
+                      <View className="w-2 h-2 rounded-full bg-indigo-400 mr-1.5" />
+                      <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+                        Average Order
                       </Text>
                     </View>
-                    <TouchableOpacity
-                      onPress={() => setDownloadModalOpen(true)}
-                      className="bg-emerald-600/20 border border-emerald-500/40 p-2.5 rounded-2xl items-center justify-center active:bg-emerald-600/35 ml-1"
-                      accessibilityLabel="Download Vasudha Order Summary Excel"
-                    >
-                      <Download size={18} color="#34D399" />
-                    </TouchableOpacity>
+                    <Text className="text-xl font-black text-indigo-300" numberOfLines={1}>
+                      ₹{stats.averageOrderValue.toFixed(2)}
+                    </Text>
                   </View>
                 </View>
 
-                {/* Stat Tiles with auto-wrap and safe font scaling */}
-                <View className="flex-row flex-wrap gap-2 pt-3 border-t border-slate-800">
-                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 min-w-[70px] items-center border border-slate-800">
-                    <Text className="text-slate-400 text-[10px] uppercase font-bold" numberOfLines={1}>Orders</Text>
-                    <Text className="text-white font-black text-sm mt-0.5">{stats.totalOrdersCount}</Text>
+                {/* 4 Stat Tiles Grid (Clean 2x2 on phone / 4-across on desktop) */}
+                <View className="flex-row flex-wrap gap-2 pt-3">
+                  <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Orders</Text>
+                      <Receipt size={13} color="#818CF8" />
+                    </View>
+                    <Text className="text-white font-black text-base mt-1">{stats.totalOrdersCount}</Text>
                   </View>
-                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 min-w-[70px] items-center border border-slate-800">
-                    <Text className="text-slate-400 text-[10px] uppercase font-bold" numberOfLines={1}>Dine In</Text>
-                    <Text className="text-purple-300 font-black text-sm mt-0.5">{stats.dineInCount}</Text>
+
+                  <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Dine In</Text>
+                      <Utensils size={13} color="#C084FC" />
+                    </View>
+                    <Text className="text-purple-300 font-black text-base mt-1">{stats.dineInCount}</Text>
                   </View>
-                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 min-w-[70px] items-center border border-slate-800">
-                    <Text className="text-slate-400 text-[10px] uppercase font-bold" numberOfLines={1}>Pick Up</Text>
-                    <Text className="text-blue-300 font-black text-sm mt-0.5">{stats.pickupCount}</Text>
+
+                  <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Pick Up</Text>
+                      <ShoppingBag size={13} color="#60A5FA" />
+                    </View>
+                    <Text className="text-blue-300 font-black text-base mt-1">{stats.pickupCount}</Text>
                   </View>
-                  <View className="bg-slate-950/70 px-3 py-2 rounded-2xl flex-1 min-w-[105px] items-center border border-slate-800">
-                    <Text className="text-slate-400 text-[10px] uppercase font-bold" numberOfLines={1}>Highest Sale</Text>
-                    <Text className="text-amber-300 font-black text-sm mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
+
+                  <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Peak Order</Text>
+                      <TrendingUp size={13} color="#FBBF24" />
+                    </View>
+                    <Text className="text-amber-300 font-black text-base mt-1" numberOfLines={1}>
                       ₹{stats.highestOrderAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </Text>
                   </View>
