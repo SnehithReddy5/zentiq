@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ShoppingBag,
   TrendingUp,
+  TrendingDown,
   Award,
   Clock,
   Printer,
@@ -152,15 +153,31 @@ export const RunningOrdersScreen = () => {
     const totalRevenue = filteredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
     const averageOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0;
 
-    let highestOrderAmount = 0;
+    let highestOrderAmount = -Infinity;
+    let highestOrderId = '';
     let highestOrderKOT = 'None';
-    filteredOrders.forEach(o => {
-      const amt = Number(o.totalAmount) || 0;
-      if (amt > highestOrderAmount) {
-        highestOrderAmount = amt;
-        highestOrderKOT = o.orderNumber ? `#${o.orderNumber}` : (o.kotNo ? `KOT #${o.kotNo}` : `#${o.id.slice(0, 5)}`);
-      }
-    });
+    let lowestOrderAmount = Infinity;
+    let lowestOrderId = '';
+    let lowestOrderKOT = 'None';
+
+    if (filteredOrders.length > 0) {
+      filteredOrders.forEach(o => {
+        const amt = Number(o.totalAmount) || 0;
+        if (amt > highestOrderAmount) {
+          highestOrderAmount = amt;
+          highestOrderId = o.id;
+          highestOrderKOT = o.orderNumber ? `#${o.orderNumber}` : (o.kotNo ? `KOT #${o.kotNo}` : `#${o.id.slice(0, 5)}`);
+        }
+        if (amt < lowestOrderAmount) {
+          lowestOrderAmount = amt;
+          lowestOrderId = o.id;
+          lowestOrderKOT = o.orderNumber ? `#${o.orderNumber}` : (o.kotNo ? `KOT #${o.kotNo}` : `#${o.id.slice(0, 5)}`);
+        }
+      });
+    } else {
+      highestOrderAmount = 0;
+      lowestOrderAmount = 0;
+    }
 
     const dineInCount = filteredOrders.filter(o => o.tableNo && o.orderType !== 'PICKUP' && o.orderType !== 'TAKEAWAY').length;
     const pickupCount = filteredOrders.filter(o => o.orderType === 'PICKUP').length;
@@ -170,8 +187,12 @@ export const RunningOrdersScreen = () => {
       totalOrdersCount,
       totalRevenue,
       averageOrderValue,
-      highestOrderAmount,
+      highestOrderAmount: highestOrderAmount === -Infinity ? 0 : highestOrderAmount,
+      highestOrderId,
       highestOrderKOT,
+      lowestOrderAmount: lowestOrderAmount === Infinity ? 0 : lowestOrderAmount,
+      lowestOrderId,
+      lowestOrderKOT,
       dineInCount,
       pickupCount,
       takeawayCount
@@ -449,40 +470,56 @@ export const RunningOrdersScreen = () => {
                   </View>
                 </View>
 
-                {/* 4 Stat Tiles Grid (Clean 2x2 on phone / 4-across on desktop) */}
+                {/* Stat Tiles Grid with Top & Least Highlights */}
                 <View className="flex-row flex-wrap gap-2 pt-3">
                   <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
                     <View className="flex-row items-center justify-between">
-                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Orders</Text>
+                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Orders (Dine/Pick)</Text>
                       <Receipt size={13} color="#818CF8" />
                     </View>
-                    <Text className="text-white font-black text-base mt-1">{stats.totalOrdersCount}</Text>
+                    <Text className="text-white font-black text-base mt-1">
+                      {stats.totalOrdersCount} <Text className="text-xs text-slate-400 font-normal">({stats.dineInCount}D / {stats.pickupCount}P)</Text>
+                    </Text>
                   </View>
 
                   <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
                     <View className="flex-row items-center justify-between">
-                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Dine In</Text>
+                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Avg Bill Value</Text>
                       <Utensils size={13} color="#C084FC" />
                     </View>
-                    <Text className="text-purple-300 font-black text-base mt-1">{stats.dineInCount}</Text>
+                    <Text className="text-purple-300 font-black text-base mt-1">₹{stats.averageOrderValue.toFixed(0)}</Text>
                   </View>
 
-                  <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                  {/* Top Order Highlight Tile */}
+                  <View className="bg-emerald-950/30 border border-emerald-500/40 p-2.5 rounded-2xl flex-1 min-w-[130px]">
                     <View className="flex-row items-center justify-between">
-                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Pick Up</Text>
-                      <ShoppingBag size={13} color="#60A5FA" />
+                      <Text className="text-emerald-400 text-[10px] font-black uppercase tracking-wide">Top Order (Peak 🟢)</Text>
+                      <TrendingUp size={13} color="#34D399" />
                     </View>
-                    <Text className="text-blue-300 font-black text-base mt-1">{stats.pickupCount}</Text>
+                    <View className="flex-row items-baseline gap-1 mt-1">
+                      <Text className="text-emerald-300 font-black text-base" numberOfLines={1}>
+                        ₹{stats.highestOrderAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </Text>
+                      {stats.highestOrderKOT !== 'None' && (
+                        <Text className="text-emerald-400/80 text-[10px] font-bold">{stats.highestOrderKOT}</Text>
+                      )}
+                    </View>
                   </View>
 
-                  <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                  {/* Least Order Highlight Tile */}
+                  <View className="bg-rose-950/30 border border-rose-500/40 p-2.5 rounded-2xl flex-1 min-w-[130px]">
                     <View className="flex-row items-center justify-between">
-                      <Text className="text-slate-400 text-[10px] font-bold uppercase">Peak Order</Text>
-                      <TrendingUp size={13} color="#FBBF24" />
+                      <Text className="text-rose-400 text-[10px] font-black uppercase tracking-wide">Least Order (Min 🔴)</Text>
+                      <TrendingDown size={13} color="#F43F5E" />
                     </View>
-                    <Text className="text-amber-300 font-black text-base mt-1" numberOfLines={1}>
-                      ₹{stats.highestOrderAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                    </Text>
+                    <View className="flex-row items-baseline gap-1 mt-1">
+                      <Text className="text-rose-300 font-black text-base" numberOfLines={1}>
+                        ₹{stats.lowestOrderAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </Text>
+                      {stats.lowestOrderKOT !== 'None' && (
+                        <Text className="text-rose-400/80 text-[10px] font-bold">{stats.lowestOrderKOT}</Text>
+                      )}
+                    </View>
                   </View>
                 </View>
               </View>
@@ -499,14 +536,38 @@ export const RunningOrdersScreen = () => {
             const remainingCount = itemsList.length - displayedItems.length;
             const orderBillNo = item.orderNumber ? `#${item.orderNumber}` : (item.kotNo ? `#${item.kotNo}` : `#${item.id.slice(0, 6)}`);
 
+            // Highlight top and least orders
+            const isHighest = filteredOrders.length > 1 && item.id === stats.highestOrderId;
+            const isLowest = filteredOrders.length > 1 && item.id === stats.lowestOrderId && stats.highestOrderId !== stats.lowestOrderId;
+
             return (
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => setSelectedOrder(item)}
-                className="bg-slate-900 border border-slate-800 p-4 rounded-3xl m-1.5 justify-between shadow-sm hover:border-slate-700 active:bg-slate-850"
+                className={`p-4 rounded-3xl m-1.5 justify-between shadow-sm active:bg-slate-850 ${
+                  isHighest
+                    ? 'bg-slate-900 border-2 border-emerald-500 shadow-lg shadow-emerald-500/20'
+                    : isLowest
+                    ? 'bg-slate-900 border-2 border-rose-500 shadow-lg shadow-rose-500/20'
+                    : 'bg-slate-900 border border-slate-800 hover:border-slate-700'
+                }`}
                 style={{ flex: 1 / ordersGridColumns }}
               >
                 <View>
+                  {/* Top & Least Badges */}
+                  {isHighest && (
+                    <View className="flex-row items-center mb-2 self-start bg-emerald-500/20 border border-emerald-500/50 px-2 py-0.5 rounded-full">
+                      <TrendingUp size={11} color="#34D399" />
+                      <Text className="text-emerald-300 font-black text-[10px] ml-1 tracking-wide">TOP ORDER (PEAK 🟢)</Text>
+                    </View>
+                  )}
+                  {isLowest && (
+                    <View className="flex-row items-center mb-2 self-start bg-rose-500/20 border border-rose-500/50 px-2 py-0.5 rounded-full">
+                      <TrendingDown size={11} color="#F43F5E" />
+                      <Text className="text-rose-300 font-black text-[10px] ml-1 tracking-wide">LEAST ORDER (MIN 🔴)</Text>
+                    </View>
+                  )}
+
                   {/* Header Row: Table/Type pill, KOT, Status, and Total */}
                   <View className="flex-row items-start justify-between mb-2">
                     <View className="flex-1 mr-2 flex-row items-center flex-wrap gap-1.5">
@@ -529,7 +590,9 @@ export const RunningOrdersScreen = () => {
                       </View>
                     </View>
 
-                    <Text className="text-emerald-400 font-black text-lg shrink-0" numberOfLines={1}>
+                    <Text className={`font-black text-lg shrink-0 ${
+                      isHighest ? 'text-emerald-300' : isLowest ? 'text-rose-300' : 'text-emerald-400'
+                    }`} numberOfLines={1}>
                       ₹{Number(item.totalAmount || 0).toFixed(0)}
                     </Text>
                   </View>
@@ -614,6 +677,30 @@ export const RunningOrdersScreen = () => {
             </View>
 
             <ScrollView className="flex-1 px-4 py-4" contentContainerStyle={{ paddingBottom: 60 }}>
+              {/* Top & Least Order Callout Banners in Modal */}
+              {selectedOrder.id === stats.highestOrderId && filteredOrders.length > 1 && (
+                <View className="bg-emerald-500/15 border-2 border-emerald-500/40 p-3.5 rounded-2xl mb-4 flex-row items-center">
+                  <TrendingUp size={20} color="#34D399" />
+                  <View className="ml-3 flex-1">
+                    <Text className="text-emerald-300 font-black text-xs uppercase tracking-wide">🟢 TOP ORDER (PEAK SALE)</Text>
+                    <Text className="text-emerald-400/80 text-[11px] mt-0.5">
+                      Highest-value bill in this view (₹${Number(selectedOrder.totalAmount || 0).toFixed(2)})
+                    </Text>
+                  </View>
+                </View>
+              )}
+              {selectedOrder.id === stats.lowestOrderId && filteredOrders.length > 1 && stats.highestOrderId !== stats.lowestOrderId && (
+                <View className="bg-rose-500/15 border-2 border-rose-500/40 p-3.5 rounded-2xl mb-4 flex-row items-center">
+                  <TrendingDown size={20} color="#F43F5E" />
+                  <View className="ml-3 flex-1">
+                    <Text className="text-rose-300 font-black text-xs uppercase tracking-wide">🔴 LEAST ORDER (MIN SALE)</Text>
+                    <Text className="text-rose-400/80 text-[11px] mt-0.5">
+                      Lowest-value bill in this view (₹${Number(selectedOrder.totalAmount || 0).toFixed(2)})
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               {/* Order Info Card */}
               <View className="bg-slate-900 p-5 rounded-3xl border border-slate-800 shadow-sm mb-4">
                 <View className="flex-row justify-between items-center mb-3">

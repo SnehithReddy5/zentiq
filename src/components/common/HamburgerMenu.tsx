@@ -188,6 +188,14 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
 
           {/* Logout Footer */}
           <View className="pt-4 border-t border-slate-800">
+            {/* App Version Row */}
+            <View className="flex-row items-center justify-between px-2 pb-3 mb-1">
+              <Text className="text-slate-500 text-xs font-medium">App Version</Text>
+              <View className="bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700/60">
+                <Text className="text-indigo-400 text-xs font-bold font-mono">v1.3.0</Text>
+              </View>
+            </View>
+
             <TouchableOpacity
               onPress={() => {
                 onClose();
