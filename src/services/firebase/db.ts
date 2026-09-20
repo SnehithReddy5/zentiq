@@ -218,18 +218,29 @@ export const DBServices = {
   },
 
   async deleteMenuCategory(id: string, tenantId?: string, locationId?: string): Promise<void> {
-    const itemsCol = (tenantId && locationId)
-      ? collection(db, 'tenants', tenantId, 'locations', locationId, 'menuItems')
-      : collection(db, 'menuItems');
-    const q = query(itemsCol, where('categoryId', '==', id));
-    const snapshot = await getDocs(q);
-    const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
-    await Promise.all(deletePromises);
+    // 1. Delete all items associated with this category
+    try {
+      const itemsCol = (tenantId && locationId)
+        ? collection(db, 'tenants', tenantId, 'locations', locationId, 'menuItems')
+        : collection(db, 'menuItems');
+      const q = query(itemsCol, where('categoryId', '==', id));
+      const snapshot = await getDocs(q);
+      const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(deletePromises);
+    } catch (itemErr) {
+      console.warn('Could not delete associated items (or none found):', itemErr);
+    }
 
-    const catRef = (tenantId && locationId)
-      ? doc(db, 'tenants', tenantId, 'locations', locationId, 'menuCategories', id)
-      : doc(db, 'menuCategories', id);
-    await deleteDoc(catRef);
+    // 2. Delete the category document across all possible paths (location, tenant, root)
+    const deletionAttempts: Promise<any>[] = [];
+    if (tenantId && locationId) {
+      deletionAttempts.push(deleteDoc(doc(db, 'tenants', tenantId, 'locations', locationId, 'menuCategories', id)).catch(() => {}));
+    }
+    if (tenantId) {
+      deletionAttempts.push(deleteDoc(doc(db, 'tenants', tenantId, 'menuCategories', id)).catch(() => {}));
+    }
+    deletionAttempts.push(deleteDoc(doc(db, 'menuCategories', id)).catch(() => {}));
+    await Promise.all(deletionAttempts);
   },
 
   async addMenuItem(item: Omit<MenuItem, 'id'>, tenantId?: string, locationId?: string): Promise<void> {

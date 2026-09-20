@@ -20,6 +20,7 @@ export const MenuManagementScreen = () => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isCategoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [isManageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [isItemModalOpen, setItemModalOpen] = useState(false);
   const [isExcelModalOpen, setExcelModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
@@ -300,13 +301,7 @@ export const MenuManagementScreen = () => {
   // Save Category (Create or Update)
   
   const confirmDeleteCategory = (cat: { id: string; name: string }) => {
-    const itemCount = items.filter(i => i.categoryId === cat.id).length;
-    setDeleteTarget({
-      type: 'category',
-      id: cat.id,
-      name: cat.name,
-      extraWarning: itemCount > 0 ? `This will also delete ${itemCount} item(s) in this category.` : undefined
-    });
+    setCategoryToDelete({ id: cat.id, name: cat.name });
   };
 
   const handleSaveCategory = async () => {
@@ -456,10 +451,18 @@ export const MenuManagementScreen = () => {
               setCatName('');
               setCategoryModalOpen(true);
             }}
-            className="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 flex-row items-center mr-4"
+            className="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 flex-row items-center mr-2 active:bg-slate-700"
           >
             <Plus size={13} color="#818CF8" />
             <Text className="text-indigo-300 text-xs font-bold ml-1">+ Category</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setManageCategoriesOpen(true)}
+            className="px-3 py-1.5 rounded-full bg-purple-900/30 border border-purple-500/40 flex-row items-center mr-4 active:bg-purple-900/50"
+          >
+            <Layers size={13} color="#C084FC" />
+            <Text className="text-purple-300 text-xs font-bold ml-1">Manage All Categories</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -917,7 +920,12 @@ export const MenuManagementScreen = () => {
               />
               {editingCategoryId && (
                 <TouchableOpacity
-                  onPress={() => setCategoryToDelete({ id: editingCategoryId, name: catName })}
+                  onPress={() => {
+                    const idToDelete = editingCategoryId;
+                    const nameToDelete = catName;
+                    setCategoryModalOpen(false);
+                    setCategoryToDelete({ id: idToDelete, name: nameToDelete });
+                  }}
                   className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex-row items-center justify-center mt-3 active:bg-rose-500/25"
                 >
                   <Trash2 size={16} color="#F43F5E" />
@@ -1010,6 +1018,101 @@ export const MenuManagementScreen = () => {
                     <Text className="text-white font-bold text-sm">Delete All</Text>
                   )}
                 </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      
+      {/* Manage Categories Full List Modal */}
+      {isManageCategoriesOpen && (
+        <Modal transparent animationType="fade" visible={isManageCategoriesOpen} onRequestClose={() => setManageCategoriesOpen(false)}>
+          <View className="flex-1 bg-black/80 items-center justify-center p-4">
+            <View className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+              <View className="p-5 border-b border-slate-800 flex-row items-center justify-between bg-slate-950/60">
+                <View className="flex-row items-center">
+                  <View className="w-10 h-10 rounded-2xl bg-purple-500/15 border border-purple-500/30 items-center justify-center mr-3">
+                    <Layers size={20} color="#C084FC" />
+                  </View>
+                  <View>
+                    <Text className="text-white font-black text-base">Menu Categories</Text>
+                    <Text className="text-slate-400 text-xs">{categories.length} total categories</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setManageCategoriesOpen(false)} className="p-2 rounded-xl bg-slate-800">
+                  <X size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView className="p-4 max-h-[400px]" showsVerticalScrollIndicator={false}>
+                {categories.length === 0 ? (
+                  <View className="py-8 items-center justify-center">
+                    <Text className="text-slate-400 text-xs">No categories created yet.</Text>
+                  </View>
+                ) : (
+                  categories.map((cat) => {
+                    const catItemsCount = items.filter((i) => i.categoryId === cat.id).length;
+                    return (
+                      <View
+                        key={cat.id}
+                        className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-3.5 mb-2.5 flex-row items-center justify-between"
+                      >
+                        <View className="flex-1 mr-3">
+                          <Text className="text-white font-bold text-sm">{cat.name}</Text>
+                          <Text className="text-slate-400 text-xs mt-0.5">
+                            {catItemsCount} {catItemsCount === 1 ? 'menu item' : 'menu items'}
+                          </Text>
+                        </View>
+
+                        <View className="flex-row items-center gap-2">
+                          <TouchableOpacity
+                            onPress={() => {
+                              setManageCategoriesOpen(false);
+                              setEditingCategoryId(cat.id);
+                              setCatName(cat.name);
+                              setCategoryModalOpen(true);
+                            }}
+                            className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 active:bg-slate-700"
+                            accessibilityLabel="Edit category"
+                          >
+                            <Pencil size={15} color="#818CF8" />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => {
+                              setManageCategoriesOpen(false);
+                              setCategoryToDelete({ id: cat.id, name: cat.name });
+                            }}
+                            className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 active:bg-rose-500/30"
+                            accessibilityLabel="Delete category"
+                          >
+                            <Trash2 size={15} color="#F43F5E" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+
+              <View className="p-4 border-t border-slate-800 bg-slate-950/80 flex-row gap-2">
+                <Button
+                  title="Close"
+                  variant="secondary"
+                  onPress={() => setManageCategoriesOpen(false)}
+                  className="flex-1"
+                />
+                <Button
+                  title="+ New Category"
+                  onPress={() => {
+                    setManageCategoriesOpen(false);
+                    setEditingCategoryId(null);
+                    setCatName('');
+                    setCategoryModalOpen(true);
+                  }}
+                  className="flex-1"
+                />
               </View>
             </View>
           </View>
