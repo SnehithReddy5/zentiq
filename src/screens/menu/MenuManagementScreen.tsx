@@ -1,6 +1,6 @@
 import { toast } from '../../utils/toast';
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView, TextInput } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check, Package, Scale, Layers } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
@@ -22,6 +22,9 @@ export const MenuManagementScreen = () => {
   const [isCategoryModalOpen, setCategoryModalOpen] = useState(false);
   const [isItemModalOpen, setItemModalOpen] = useState(false);
   const [isExcelModalOpen, setExcelModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Category Add / Edit State
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
@@ -171,6 +174,37 @@ export const MenuManagementScreen = () => {
       toast.error(err.message, 'Restock Error');
     } finally {
       setIsRestocking(false);
+    }
+  };
+
+
+  const handleConfirmDeleteItem = async () => {
+    if (!itemToDelete) return;
+    setIsDeleting(true);
+    try {
+      await DBServices.deleteMenuItem(itemToDelete.id, tenant?.id, activeLocationId || undefined);
+      toast.success(`"${itemToDelete.name}" deleted from menu.`, 'Item Deleted');
+      setItemToDelete(null);
+    } catch (err: any) {
+      toast.error(err.message, 'Delete Failed');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    setIsDeleting(true);
+    try {
+      await DBServices.deleteMenuCategory(categoryToDelete.id, tenant?.id, activeLocationId || undefined);
+      toast.success(`Category "${categoryToDelete.name}" and its items deleted.`, 'Category Deleted');
+      setCategoryToDelete(null);
+      setCategoryModalOpen(false);
+      setActiveCategory('all');
+    } catch (err: any) {
+      toast.error(err.message, 'Delete Failed');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -470,17 +504,8 @@ export const MenuManagementScreen = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => {
-                  Alert.alert('Delete Item', `Delete "${item.name}" from menu?`, [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Delete',
-                      style: 'destructive',
-                      onPress: () => DBServices.deleteMenuItem(item.id, tenant?.id, activeLocationId || undefined),
-                    },
-                  ]);
-                }}
-                className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20"
+                onPress={() => setItemToDelete(item)}
+                className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 active:bg-rose-500/30"
               >
                 <Trash2 size={15} color="#F43F5E" />
               </TouchableOpacity>
@@ -890,6 +915,16 @@ export const MenuManagementScreen = () => {
                 value={catName}
                 onChangeText={setCatName}
               />
+              {editingCategoryId && (
+                <TouchableOpacity
+                  onPress={() => setCategoryToDelete({ id: editingCategoryId, name: catName })}
+                  className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex-row items-center justify-center mt-3 active:bg-rose-500/25"
+                >
+                  <Trash2 size={16} color="#F43F5E" />
+                  <Text className="text-rose-400 font-bold text-xs ml-2">Delete This Category</Text>
+                </TouchableOpacity>
+              )}
+
               <View className="flex-row gap-2 mt-4">
                 <Button
                   title="Cancel"
@@ -902,6 +937,79 @@ export const MenuManagementScreen = () => {
                   onPress={handleSaveCategory}
                   className="flex-1"
                 />
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      
+      {/* Delete Item Confirmation Modal (Windows & Mobile universal) */}
+      {itemToDelete && (
+        <Modal transparent animationType="fade" visible={true} onRequestClose={() => setItemToDelete(null)}>
+          <View className="flex-1 bg-black/80 items-center justify-center p-4">
+            <View className="bg-slate-900 border border-slate-800 p-6 rounded-3xl w-full max-w-sm">
+              <View className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 items-center justify-center mb-4 self-center">
+                <Trash2 size={24} color="#F43F5E" />
+              </View>
+              <Text className="text-white font-black text-lg text-center mb-1">Delete Menu Item?</Text>
+              <Text className="text-slate-400 text-xs text-center mb-6 leading-relaxed">
+                Are you sure you want to permanently delete <Text className="text-white font-bold">"{itemToDelete.name}"</Text> from the menu? This action cannot be undone.
+              </Text>
+              <View className="flex-row gap-2">
+                <Button
+                  title="Cancel"
+                  variant="secondary"
+                  onPress={() => setItemToDelete(null)}
+                  className="flex-1"
+                />
+                <TouchableOpacity
+                  onPress={handleConfirmDeleteItem}
+                  disabled={isDeleting}
+                  className="flex-1 py-3 bg-rose-600 rounded-2xl items-center justify-center active:bg-rose-700"
+                >
+                  {isDeleting ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text className="text-white font-bold text-sm">Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Delete Category Confirmation Modal (Windows & Mobile universal) */}
+      {categoryToDelete && (
+        <Modal transparent animationType="fade" visible={true} onRequestClose={() => setCategoryToDelete(null)}>
+          <View className="flex-1 bg-black/80 items-center justify-center p-4">
+            <View className="bg-slate-900 border border-slate-800 p-6 rounded-3xl w-full max-w-sm">
+              <View className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 items-center justify-center mb-4 self-center">
+                <Trash2 size={24} color="#F43F5E" />
+              </View>
+              <Text className="text-white font-black text-lg text-center mb-1">Delete Category?</Text>
+              <Text className="text-slate-400 text-xs text-center mb-6 leading-relaxed">
+                Are you sure you want to delete category <Text className="text-white font-bold">"{categoryToDelete.name}"</Text> and all menu items inside it?
+              </Text>
+              <View className="flex-row gap-2">
+                <Button
+                  title="Cancel"
+                  variant="secondary"
+                  onPress={() => setCategoryToDelete(null)}
+                  className="flex-1"
+                />
+                <TouchableOpacity
+                  onPress={handleConfirmDeleteCategory}
+                  disabled={isDeleting}
+                  className="flex-1 py-3 bg-rose-600 rounded-2xl items-center justify-center active:bg-rose-700"
+                >
+                  {isDeleting ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text className="text-white font-bold text-sm">Delete All</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
           </View>

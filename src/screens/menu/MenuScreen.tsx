@@ -38,6 +38,9 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const { categories, items, subscribeToMenu } = useMenuStore();
   const { tenant, activeLocationId, features } = useTenantStore();
   const paymentsEnabled = features.paymentsEnabled !== false;
+  const { settings: printerSettings } = usePrinterStore();
+  const rawWorkflowMode = printerSettings.printerWorkflowMode || 'DUAL_PRINTER';
+  const isDualPrinterMode = rawWorkflowMode === 'DUAL_PRINTER' || rawWorkflowMode === 'RESTAURANT';
   const { carts, addItem, removeItem, updateQuantity, markAsSent, clearCart } = useCartStore();
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
@@ -99,18 +102,48 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         orderType
       );
 
-      // Attempt LAN Thermal Print
-      try {
-        await printerService.connect(settings.kitchenIpAddress, settings.kitchenPort);
-        await printerService.print(buffer);
-        await printerService.disconnect();
-      } catch (printErr) {
-        console.warn('Thermal print warning (simulated/offline):', printErr);
+      // Route print to Kitchen Printer (supports both USB & LAN with main printer fallback)
+      const isKitchenUsb = settings.kitchenPrinterType === 'USB';
+      const kitchenTarget = isKitchenUsb
+        ? (settings.kitchenPrinterName || settings.printerName || 'POS-80')
+        : (settings.kitchenIpAddress?.trim() || (settings.printerType === 'LAN' ? settings.ipAddress?.trim() : ''));
+      const kitchenPort = settings.kitchenPort || settings.port || 9100;
+      const kitchenType = isKitchenUsb ? 'USB' : 'LAN';
+
+      let printSuccess = false;
+      let printErrorMsg = '';
+
+      if (kitchenTarget) {
+        try {
+          await printerService.connect(kitchenTarget, kitchenPort, kitchenType);
+          await printerService.print(
+            buffer,
+            isKitchenUsb
+              ? { printerType: 'USB', printerName: kitchenTarget }
+              : { printerType: 'LAN', ip: kitchenTarget, port: kitchenPort }
+          );
+          await printerService.disconnect();
+          printSuccess = true;
+        } catch (printErr: any) {
+          console.warn('Kitchen thermal print error:', printErr);
+          printErrorMsg = printErr.message || 'Printer error';
+        }
+      } else {
+        printErrorMsg = 'Kitchen printer not set. Go to Settings -> Thermal Printers to set IP or USB.';
       }
 
       markAsSent(tableNo);
-      setKotToast(`✓ KOT #${kotNo} dispatched to kitchen (1 ticket)`);
-      setTimeout(() => setKotToast(null), 3000);
+      if (printSuccess) {
+        toast.success(`✓ KOT #${kotNo} printed to kitchen!`, 'KOT Sent');
+        setKotToast(`✓ KOT #${kotNo} printed to kitchen`);
+      } else {
+        toast.warning(
+          `KOT #${kotNo} saved, but kitchen printer failed: ${printErrorMsg}`,
+          'Printer Offline'
+        );
+        setKotToast(`KOT #${kotNo} saved (Printer offline)`);
+      }
+      setTimeout(() => setKotToast(null), 3500);
     } catch (err: any) {
       toast.error(err.message, 'Error');
     } finally {
@@ -346,7 +379,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         </View>
 
         <View className="flex-row gap-2">
-          {unsentItems.length > 0 && (
+          {isDualPrinterMode && unsentItems.length > 0 && (
             <Button
               title={`Send KOT (${unsentItems.reduce((s, i) => s + i.qty, 0)} items)`}
               variant="secondary"
@@ -660,7 +693,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
           {/* Action Buttons Row: Equal width side-by-side or full width */}
           <View className="flex-row gap-2">
-            {unsentItems.length > 0 ? (
+            {isDualPrinterMode && unsentItems.length > 0 ? (
               <>
                 <TouchableOpacity
                   onPress={handleSendToKitchen}

@@ -17,17 +17,31 @@ export const PrinterSettingsScreen = () => {
   const insets = useSafeAreaInsets();
   const { settings, setSettings } = usePrinterStore();
 
+  const [paperWidth, setPaperWidth] = useState<'80mm_48' | '80mm_42' | '58mm_32'>(settings.paperWidth || '80mm_48');
   const [workflowMode, setWorkflowMode] = useState<PrinterWorkflowMode>(
-    settings.printerWorkflowMode || 'RESTAURANT'
+    settings.printerWorkflowMode || 'DUAL_PRINTER'
   );
+
+  // Counter / Billing Printer State
   const [printerType, setPrinterType] = useState<'LAN' | 'USB' | 'Bluetooth'>((settings.printerType as any) || 'LAN');
   const [printerName, setPrinterName] = useState(settings.printerName || '');
-  const [detectedPrinters, setDetectedPrinters] = useState<string[]>([]);
-  const [isLoadingPrinters, setIsLoadingPrinters] = useState(false);
   const [ipAddress, setIpAddress] = useState(settings.ipAddress || '');
   const [port, setPort] = useState(settings.port?.toString() || '9100');
+
+  // Kitchen KOT Printer State (Used in Dual Printer Mode)
+  const [kitchenPrinterType, setKitchenPrinterType] = useState<'LAN' | 'USB'>((settings.kitchenPrinterType as any) || 'LAN');
+  const [kitchenPrinterName, setKitchenPrinterName] = useState(settings.kitchenPrinterName || '');
   const [kitchenIpAddress, setKitchenIpAddress] = useState(settings.kitchenIpAddress || '');
   const [kitchenPort, setKitchenPort] = useState(settings.kitchenPort?.toString() || '9100');
+
+  // Windows Detected USB Printers
+  const [detectedPrinters, setDetectedPrinters] = useState<string[]>([]);
+  const [isLoadingPrinters, setIsLoadingPrinters] = useState(false);
+
+  // Mode helpers
+  const isDualMode = workflowMode === 'DUAL_PRINTER' || workflowMode === 'RESTAURANT';
+  const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
+  const isSingleBillMode = workflowMode === 'SINGLE_BILL_ONLY' || workflowMode === 'CURRY_POINT';
 
   // Synchronize state when settings hydrate from persistent storage
   const refreshWindowsPrinters = async () => {
@@ -37,8 +51,7 @@ export const PrinterSettingsScreen = () => {
       if (Array.isArray(list) && list.length > 0) {
         setDetectedPrinters(list);
         if (!printerName) {
-          // If a printer with POS or Receipt is found, pick it by default
-          const thermal = list.find((p: string) => /pos|receipt|thermal|epson|tvs|rp|58|80/i.test(p));
+          const thermal = list.find((p: string) => /pos|receipt|thermal|epson|tvs|rp|gobbler|58|80/i.test(p));
           if (thermal) setPrinterName(thermal);
         }
       }
@@ -56,9 +69,12 @@ export const PrinterSettingsScreen = () => {
       if (settings.printerName) setPrinterName(settings.printerName);
       if (settings.ipAddress !== undefined) setIpAddress(settings.ipAddress);
       if (settings.port) setPort(settings.port.toString());
+      if (settings.kitchenPrinterType) setKitchenPrinterType(settings.kitchenPrinterType);
+      if (settings.kitchenPrinterName) setKitchenPrinterName(settings.kitchenPrinterName);
       if (settings.kitchenIpAddress !== undefined) setKitchenIpAddress(settings.kitchenIpAddress);
       if (settings.kitchenPort) setKitchenPort(settings.kitchenPort.toString());
       if (settings.printerWorkflowMode) setWorkflowMode(settings.printerWorkflowMode);
+      if (settings.paperWidth) setPaperWidth(settings.paperWidth);
     }
   }, [settings]);
 
@@ -70,14 +86,26 @@ export const PrinterSettingsScreen = () => {
   const handleSave = async () => {
     const cleanIp = ipAddress.trim();
     const cleanName = printerName.trim();
+    const cleanKitchenIp = kitchenIpAddress.trim();
+    const cleanKitchenName = kitchenPrinterName.trim();
 
     if (printerType === 'LAN' && !cleanIp) {
-      toast.error('Please enter a valid Billing Printer IP Address for LAN printing.', 'Configuration Error');
+      toast.error('Please enter a valid Billing Counter Printer IP Address.', 'Configuration Error');
       return;
     }
     if (printerType === 'USB' && !cleanName) {
-      toast.error('Please select or enter your USB Thermal Printer Name.', 'Configuration Error');
+      toast.error('Please select or enter your Counter USB Thermal Printer Name.', 'Configuration Error');
       return;
+    }
+
+    if (isDualMode) {
+      if (kitchenPrinterType === 'LAN' && !cleanKitchenIp) {
+        toast.warning('Kitchen IP is empty. Please enter Kitchen Printer IP (or select USB).', 'Kitchen IP Recommended');
+      }
+      if (kitchenPrinterType === 'USB' && !cleanKitchenName) {
+        toast.error('Please select or enter your Kitchen USB Printer Name.', 'Configuration Error');
+        return;
+      }
     }
 
     const newSettings = {
@@ -85,9 +113,12 @@ export const PrinterSettingsScreen = () => {
       printerType,
       printerName: cleanName,
       printerWorkflowMode: workflowMode,
+      paperWidth,
       ipAddress: cleanIp,
       port: parseInt(port, 10) || 9100,
-      kitchenIpAddress: kitchenIpAddress.trim(),
+      kitchenPrinterType,
+      kitchenPrinterName: cleanKitchenName,
+      kitchenIpAddress: cleanKitchenIp,
       kitchenPort: parseInt(kitchenPort, 10) || 9100,
     };
 
@@ -101,11 +132,13 @@ export const PrinterSettingsScreen = () => {
 
     useToastStore.getState().showToast({
       type: 'success',
-      title: 'Printer Saved',
-      message: 'Printer settings saved locally and synced to Cloud.',
+      title: 'Printer Settings Saved',
+      message: isDualMode
+        ? 'Dual Printer configured (Counter Bill + Kitchen KOT).'
+        : 'Single Printer configured successfully.',
       duration: 3500,
     });
-    toast.success('Thermal printer configuration has been saved locally and synced to Cloud.', 'Settings Saved');
+    toast.success('Thermal printer configuration has been saved and synced.', 'Settings Saved');
   };
 
   const testBillingPrinter = async () => {
@@ -115,11 +148,11 @@ export const PrinterSettingsScreen = () => {
     const targetPort = parseInt(port, 10) || 9100;
 
     if (isUsb && !cleanName) {
-      toast.warning('Please select or enter your USB Printer Name first.', 'Printer Name Required');
+      toast.warning('Please select or enter your Counter USB Printer Name first.', 'Printer Name Required');
       return;
     }
     if (!isUsb && !targetIp) {
-      toast.warning('Please enter a valid IP address for the Billing Printer.', 'IP Required');
+      toast.warning('Please enter a valid IP address for the Counter Printer.', 'IP Required');
       return;
     }
 
@@ -136,8 +169,8 @@ export const PrinterSettingsScreen = () => {
         'TEST-01',
         1,
         'POS Admin',
-        [{ itemName: isUsb ? 'USB THERMAL TEST' : 'LAN THERMAL TEST', price: 100, qty: 1 }],
-        { businessName: 'PRINTER TEST VERIFICATION', displayName: 'PRINTER TEST', receiptHeader: 'PRINTER TEST VERIFICATION', address: isUsb ? 'Windows USB Cable' : 'Local LAN', phone: '0000000000', gstin: 'TEST-GSTIN' } as any,
+        [{ itemName: isUsb ? 'USB COUNTER TEST' : 'LAN COUNTER TEST', price: 100, qty: 1 }],
+        { businessName: 'COUNTER PRINTER TEST', displayName: 'COUNTER TEST', receiptHeader: 'COUNTER BILL VERIFICATION', address: isUsb ? 'Windows USB Cable' : 'Local LAN', phone: '0000000000', gstin: 'TEST-GSTIN' } as any,
         'DINE_IN',
         [{ method: 'CASH', amount: 100 }]
       );
@@ -149,26 +182,38 @@ export const PrinterSettingsScreen = () => {
         type: 'billing',
         success: true,
         message: isUsb
-          ? `USB printer "${cleanName}" printed test receipt successfully!`
-          : `Billing printer at ${targetIp}:${targetPort} printed test slip successfully!`
+          ? `Counter USB printer "${cleanName}" printed test receipt successfully!`
+          : `Counter printer at ${targetIp}:${targetPort} printed test slip successfully!`
       });
+      toast.success(
+        isUsb ? `Counter USB printer "${cleanName}" printed!` : `Counter printer at ${targetIp}:${targetPort} printed!`,
+        'Counter Print Success'
+      );
     } catch (e: any) {
       setTestResult({
         type: 'billing',
         success: false,
         message: isUsb
-          ? `Failed printing to USB printer "${cleanName}": ${e.message}`
-          : `Connection failed to Billing printer at ${targetIp}:${targetPort} (${e.message})`
+          ? `Failed printing to Counter USB printer "${cleanName}": ${e.message}`
+          : `Connection failed to Counter printer at ${targetIp}:${targetPort} (${e.message})`
       });
+      toast.error(e.message, 'Counter Print Failed');
     } finally {
       setIsTestingBilling(false);
     }
   };
 
   const testKitchenPrinter = async () => {
+    const isKitchenUsb = kitchenPrinterType === 'USB';
+    const cleanKitchenName = kitchenPrinterName.trim();
     const targetIp = (kitchenIpAddress || ipAddress).trim();
     const targetPort = parseInt(kitchenPort || port, 10) || 9100;
-    if (!targetIp) {
+
+    if (isKitchenUsb && !cleanKitchenName) {
+      toast.warning('Please select or enter your Kitchen USB Printer Name first.', 'Printer Name Required');
+      return;
+    }
+    if (!isKitchenUsb && !targetIp) {
       toast.warning('Please enter a valid IP address for the Kitchen KOT Printer.', 'IP Required');
       return;
     }
@@ -176,70 +221,112 @@ export const PrinterSettingsScreen = () => {
     setIsTestingKitchen(true);
     setTestResult(null);
     try {
-      await printerService.connect(targetIp, targetPort);
+      if (isKitchenUsb) {
+        await printerService.connect(cleanKitchenName, 0, 'USB');
+      } else {
+        await printerService.connect(targetIp, targetPort, 'LAN');
+      }
+
       const buffer = ESCPOSService.buildKOT(
         'KOT-TEST',
         0,
         'POS Admin',
-        [{ itemName: 'KITCHEN KOT TEST SLIP', qty: 1, note: 'HOT KITCHEN KOT' }],
+        [{ itemName: 'KITCHEN KOT TEST SLIP', qty: 1, note: isKitchenUsb ? 'KITCHEN USB PRINTER' : 'KITCHEN LAN PRINTER' }],
         'Kitchen Printer Online & Verified!',
         'DINE_IN'
       );
-      await printerService.print(buffer);
+
+      await printerService.print(
+        buffer,
+        isKitchenUsb
+          ? { printerType: 'USB', printerName: cleanKitchenName }
+          : { printerType: 'LAN', ip: targetIp, port: targetPort }
+      );
       await printerService.disconnect();
+
       setTestResult({
         type: 'kitchen',
         success: true,
-        message: `Kitchen KOT printer at ${targetIp}:${targetPort} printed test ticket successfully!`
+        message: isKitchenUsb
+          ? `Kitchen USB printer "${cleanKitchenName}" printed test ticket successfully!`
+          : `Kitchen KOT printer at ${targetIp}:${targetPort} printed test ticket successfully!`
       });
+      toast.success(
+        isKitchenUsb
+          ? `Kitchen USB printer "${cleanKitchenName}" printed!`
+          : `Kitchen KOT printer at ${targetIp}:${targetPort} printed!`,
+        'Kitchen Print Success'
+      );
     } catch (e: any) {
       setTestResult({
         type: 'kitchen',
         success: false,
-        message: `Connection failed to Kitchen printer at ${targetIp}:${targetPort} (${e.message})`
+        message: isKitchenUsb
+          ? `Failed printing to Kitchen USB printer "${cleanKitchenName}": ${e.message}`
+          : `Connection failed to Kitchen printer at ${targetIp}:${targetPort} (${e.message})`
       });
+      toast.error(e.message, 'Kitchen Print Failed');
     } finally {
       setIsTestingKitchen(false);
     }
   };
 
   const testTiffinTwoPrints = async () => {
+    const isUsb = printerType === 'USB';
+    const cleanName = printerName.trim();
     const targetIp = ipAddress.trim();
     const targetPort = parseInt(port, 10) || 9100;
-    if (!targetIp) {
-      toast.warning('Please enter a valid IP address for the Counter Printer.', 'IP Required');
+
+    if (isUsb && !cleanName) {
+      toast.warning('Please select or enter your USB Printer Name first.', 'Printer Name Required');
+      return;
+    }
+    if (!isUsb && !targetIp) {
+      toast.warning('Please enter a valid IP address for the Printer.', 'IP Required');
       return;
     }
 
     setIsTestingTiffin(true);
     setTestResult(null);
     try {
-      await printerService.connect(targetIp, targetPort);
-      const buffer = ESCPOSService.buildCombinedTiffinPrints(
-        'TIFFIN-01',
+      if (isUsb) {
+        await printerService.connect(cleanName, 0, 'USB');
+      } else {
+        await printerService.connect(targetIp, targetPort, 'LAN');
+      }
+
+      const combinedBuffer = ESCPOSService.buildCombinedTiffinPrints(
+        'TIF-101',
         0,
-        'POS Admin',
+        'Cashier',
         [
-          { itemName: 'Masala Dosa', price: 60, qty: 2 },
-          { itemName: 'Filter Coffee', price: 20, qty: 1 }
+          { itemName: 'Idli (2 Pcs)', price: 40, qty: 2 },
+          { itemName: 'Masala Dosa', price: 60, qty: 1 }
         ],
-        { businessName: 'TIFFIN CENTER TEST', displayName: 'TIFFIN TEST', receiptHeader: 'TIFFIN CENTER TEST', address: 'Counter 1', phone: '0000000000' } as any,
-        'COUNTER',
-        [{ method: 'UPI', amount: 140 }]
+        { businessName: 'VASUDHA TIFFIN CENTER', displayName: 'VASUDHA', receiptHeader: 'QUICK SERVICE TOKEN', address: 'Main Road', phone: '9876543210' } as any,
+        'PICKUP',
+        [{ method: 'CASH', amount: 140 }]
       );
-      await printerService.print(buffer);
+
+      await printerService.print(
+        combinedBuffer,
+        isUsb ? { printerType: 'USB', printerName: cleanName } : { printerType: 'LAN', ip: targetIp, port: targetPort }
+      );
       await printerService.disconnect();
+
       setTestResult({
         type: 'tiffin',
         success: true,
-        message: `Tiffin Mode 2-Print test successful! (Printed Customer Bill, cut, then printed Kitchen Copy).`
+        message: `Combined 2-Print test successful! (Customer Bill + Kitchen Slip printed together).`
       });
+      toast.success('Printed Customer Bill + Kitchen Slip sequentially!', 'Combined Test Passed');
     } catch (e: any) {
       setTestResult({
         type: 'tiffin',
         success: false,
-        message: `Tiffin test failed on ${targetIp}:${targetPort} (${e.message})`
+        message: `Combined print test failed: ${e.message}`
       });
+      toast.error(e.message, 'Print Failed');
     } finally {
       setIsTestingTiffin(false);
     }
@@ -247,151 +334,174 @@ export const PrinterSettingsScreen = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-[#090D1A]">
-      <Header title="Thermal Printers" subtitle="Print Workflow Modes & RAW ESC/POS Setup" />
+      <Header
+        title="Thermal Printers & Workflow"
+        subtitle="Configure Cash Counter Bill & Kitchen KOT Printers"
+      />
 
       <ScrollView
-        className="flex-1"
         contentContainerStyle={{
-          padding: 20,
-          paddingBottom: Math.max(insets.bottom + 40, 60),
-          maxWidth: 800,
-          alignSelf: "center",
-          width: "100%"
+          padding: 16,
+          paddingBottom: Math.max(insets.bottom + 48, 64),
+          maxWidth: 900,
+          alignSelf: 'center',
+          width: '100%',
         }}
-        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {/* Test Result Live Banner */}
+        {/* Test Result Alert Banner */}
         {testResult && (
-          <View className={`p-3.5 rounded-2xl mb-4 border flex-row items-center justify-between ${
-            testResult.success
-              ? 'bg-emerald-500/15 border-emerald-500/30'
-              : 'bg-rose-500/15 border-rose-500/30'
-          }`}>
-            <View className="flex-row items-center flex-1 mr-2">
-              {testResult.success ? (
-                <CheckCircle2 size={18} color="#34D399" />
-              ) : (
-                <AlertTriangle size={18} color="#FB7185" />
-              )}
-              <Text className={`text-xs font-bold ml-2 ${
-                testResult.success ? 'text-emerald-300' : 'text-rose-300'
-              }`}>
-                {testResult.message}
+          <View
+            className={`p-4 rounded-2xl mb-4 border flex-row items-center ${
+              testResult.success
+                ? 'bg-emerald-500/10 border-emerald-500/30'
+                : 'bg-rose-500/10 border-rose-500/30'
+            }`}
+          >
+            {testResult.success ? (
+              <CheckCircle2 size={20} color="#10B981" />
+            ) : (
+              <AlertTriangle size={20} color="#F43F5E" />
+            )}
+            <View className="ml-3 flex-1">
+              <Text
+                className={`font-black text-xs uppercase ${
+                  testResult.success ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {testResult.success ? 'Print Job Dispatched' : 'Printer Error'}
               </Text>
+              <Text className="text-white text-xs mt-0.5">{testResult.message}</Text>
             </View>
-            <TouchableOpacity onPress={() => setTestResult(null)}>
-              <Text className="text-slate-400 text-xs font-bold">Dismiss</Text>
-            </TouchableOpacity>
           </View>
         )}
 
-        {/* 1. PRINTER WORKFLOW MODE SELECTOR (3 WAYS) */}
+        {/* 1. Workflow Operational Mode */}
         <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-          <Text className="text-white font-black text-base mb-1">Select Print Workflow Mode</Text>
+          <View className="flex-row items-center mb-1">
+            <Utensils size={18} color="#A78BFA" />
+            <Text className="text-white font-black text-base ml-2">Printing Operational Mode</Text>
+          </View>
           <Text className="text-slate-400 text-xs mb-4">
-            Choose how receipts and kitchen tickets should be routed in your business:
+            Choose how customer receipts and kitchen tickets should be routed:
           </Text>
 
-          <View className="gap-3">
-            {/* Mode 1: Restaurant */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setWorkflowMode('RESTAURANT')}
-              className={`p-4 rounded-2xl border flex-row items-start ${
-                workflowMode === 'RESTAURANT'
-                  ? 'bg-indigo-500/15 border-indigo-500 shadow-md shadow-indigo-500/20'
-                  : 'bg-slate-850/70 border-slate-800'
-              }`}
-            >
-              <View className={`w-10 h-10 rounded-xl items-center justify-center mr-3 mt-0.5 ${
-                workflowMode === 'RESTAURANT' ? 'bg-[#5D3FD3]' : 'bg-slate-800'
-              }`}>
-                <Utensils size={20} color="white" />
+          {/* Mode 1: Dual Printer */}
+          <TouchableOpacity
+            onPress={() => setWorkflowMode('DUAL_PRINTER')}
+            className={`p-4 rounded-2xl border mb-3 ${
+              isDualMode
+                ? 'bg-purple-900/20 border-purple-500/60'
+                : 'bg-slate-950/60 border-slate-800'
+            }`}
+          >
+            <View className="flex-row items-center justify-between mb-1">
+              <View className="flex-row items-center">
+                <View className={`w-3 h-3 rounded-full mr-2 ${isDualMode ? 'bg-[#5D3FD3]' : 'bg-slate-800'}`} />
+                <Text className="text-white font-bold text-sm">1. Dual Printer (Counter Bill + Kitchen KOT)</Text>
               </View>
-              <View className="flex-1">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-white font-bold text-sm">1. Restaurant Mode</Text>
-                  {workflowMode === 'RESTAURANT' && (
-                    <View className="bg-[#5D3FD3] px-2 py-0.5 rounded-full">
-                      <Text className="text-white text-[10px] font-bold">Active</Text>
-                    </View>
-                  )}
+              {isDualMode && (
+                <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                  <Text className="text-purple-300 font-bold text-[10px]">ACTIVE</Text>
                 </View>
-                <Text className="text-slate-400 text-xs mt-1 leading-4">
-                  Dual Printers: Main counter printer for Customer Bill + Dedicated Kitchen printer for KOT tickets.
-                </Text>
-              </View>
-            </TouchableOpacity>
+              )}
+            </View>
+            <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
+              Cash counter prints Customer Bill upon settlement. Separate Kitchen printer receives KOT tickets via <Text className="text-purple-300 font-bold">"Send KOT"</Text> button.
+            </Text>
+          </TouchableOpacity>
 
-            {/* Mode 2: Curry Point */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setWorkflowMode('CURRY_POINT')}
-              className={`p-4 rounded-2xl border flex-row items-start ${
-                workflowMode === 'CURRY_POINT'
-                  ? 'bg-amber-500/15 border-amber-500 shadow-md shadow-amber-500/20'
-                  : 'bg-slate-850/70 border-slate-800'
-              }`}
-            >
-              <View className={`w-10 h-10 rounded-xl items-center justify-center mr-3 mt-0.5 ${
-                workflowMode === 'CURRY_POINT' ? 'bg-amber-600' : 'bg-slate-800'
-              }`}>
-                <ShoppingBag size={20} color="white" />
+          {/* Mode 2: Single Combined */}
+          <TouchableOpacity
+            onPress={() => setWorkflowMode('SINGLE_COMBINED')}
+            className={`p-4 rounded-2xl border mb-3 ${
+              isCombinedMode
+                ? 'bg-emerald-950/30 border-emerald-500/60'
+                : 'bg-slate-950/60 border-slate-800'
+            }`}
+          >
+            <View className="flex-row items-center justify-between mb-1">
+              <View className="flex-row items-center">
+                <View className={`w-3 h-3 rounded-full mr-2 ${isCombinedMode ? 'bg-emerald-600' : 'bg-slate-800'}`} />
+                <Text className="text-white font-bold text-sm">2. Single Printer (Bill + Kitchen Slip Together)</Text>
               </View>
-              <View className="flex-1">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-white font-bold text-sm">2. Curry Point Mode</Text>
-                  {workflowMode === 'CURRY_POINT' && (
-                    <View className="bg-amber-500 px-2 py-0.5 rounded-full">
-                      <Text className="text-slate-900 text-[10px] font-black">Active</Text>
-                    </View>
-                  )}
+              {isCombinedMode && (
+                <View className="bg-emerald-500/20 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                  <Text className="text-emerald-300 font-bold text-[10px]">ACTIVE</Text>
                 </View>
-                <Text className="text-slate-400 text-xs mt-1 leading-4">
-                  Single Printer: Main counter printer only. Prints Customer Bill at payment; no kitchen copy.
-                </Text>
-              </View>
-            </TouchableOpacity>
+              )}
+            </View>
+            <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
+              1 printer prints Customer Bill and Kitchen Slip one after the other on payment. <Text className="text-slate-300 font-semibold">"Send KOT" button is hidden.</Text>
+            </Text>
+          </TouchableOpacity>
 
-            {/* Mode 3: Tiffin Center */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setWorkflowMode('TIFFIN_CENTER')}
-              className={`p-4 rounded-2xl border flex-row items-start ${
-                workflowMode === 'TIFFIN_CENTER'
-                  ? 'bg-emerald-500/15 border-emerald-500 shadow-md shadow-emerald-500/20'
-                  : 'bg-slate-850/70 border-slate-800'
-              }`}
-            >
-              <View className={`w-10 h-10 rounded-xl items-center justify-center mr-3 mt-0.5 ${
-                workflowMode === 'TIFFIN_CENTER' ? 'bg-emerald-600' : 'bg-slate-800'
-              }`}>
-                <Coffee size={20} color="white" />
+          {/* Mode 3: Single Bill Only */}
+          <TouchableOpacity
+            onPress={() => setWorkflowMode('SINGLE_BILL_ONLY')}
+            className={`p-4 rounded-2xl border ${
+              isSingleBillMode
+                ? 'bg-amber-950/30 border-amber-500/60'
+                : 'bg-slate-950/60 border-slate-800'
+            }`}
+          >
+            <View className="flex-row items-center justify-between mb-1">
+              <View className="flex-row items-center">
+                <View className={`w-3 h-3 rounded-full mr-2 ${isSingleBillMode ? 'bg-amber-600' : 'bg-slate-800'}`} />
+                <Text className="text-white font-bold text-sm">3. Single Printer (Bill Only - Quick Service)</Text>
               </View>
-              <View className="flex-1">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-white font-bold text-sm">3. Tiffin Center Mode</Text>
-                  {workflowMode === 'TIFFIN_CENTER' && (
-                    <View className="bg-emerald-500 px-2 py-0.5 rounded-full">
-                      <Text className="text-slate-900 text-[10px] font-black">Active</Text>
-                    </View>
-                  )}
+              {isSingleBillMode && (
+                <View className="bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                  <Text className="text-amber-300 font-bold text-[10px]">ACTIVE</Text>
                 </View>
-                <Text className="text-slate-400 text-xs mt-1 leading-4">
-                  1 Printer, 2 Prints: Prints Customer Bill, cuts paper, then prints a compact Kitchen Copy with Bill # and items for preparation counter.
+              )}
+            </View>
+            <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
+              1 printer prints Customer Bill only. No kitchen tickets, and <Text className="text-slate-300 font-semibold">"Send KOT" button is hidden.</Text>
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Paper Roll Width Configuration */}
+        <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
+          <Text className="text-white font-black text-sm mb-1">Thermal Receipt Roll Width</Text>
+          <Text className="text-slate-400 text-xs mb-3">
+            Sets the printable character column count to ensure receipts fill the roll edge-to-edge:
+          </Text>
+          <View className="flex-row bg-slate-950 p-1 rounded-2xl border border-slate-800">
+            {[
+              { id: '80mm_48', label: '80mm Wide (48 Cols)' },
+              { id: '80mm_42', label: '80mm Standard (42 Cols)' },
+              { id: '58mm_32', label: '58mm Compact (32 Cols)' }
+            ].map((p) => (
+              <TouchableOpacity
+                key={p.id}
+                onPress={() => setPaperWidth(p.id as any)}
+                className={`flex-1 py-2 rounded-xl items-center ${
+                  paperWidth === p.id ? 'bg-[#5D3FD3]' : 'bg-transparent'
+                }`}
+              >
+                <Text className={`text-[11px] font-bold ${
+                  paperWidth === p.id ? 'text-white' : 'text-slate-400'
+                }`}>
+                  {p.label}
                 </Text>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
-        {/* 2. Main Counter Thermal Printer (Used by all modes) */}
+        {/* 2. Billing Counter Printer (Used by all modes) */}
         <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
           <View className="flex-row items-center justify-between mb-3 pb-2 border-b border-slate-800">
             <View className="flex-row items-center">
               <Printer size={18} color="#818CF8" />
               <Text className="text-white font-black text-base ml-2">
-                {workflowMode === 'RESTAURANT' ? 'Billing Counter Printer' : 'Main Counter Printer (Single)'}
+                {isDualMode
+                  ? '1. Billing Counter Printer (Customer Bill)'
+                  : isCombinedMode
+                  ? 'Main Counter Printer (Combined Bill + Kitchen Slip)'
+                  : 'Main Counter Printer (Bill Only)'}
               </Text>
             </View>
             <View className="bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20">
@@ -402,7 +512,7 @@ export const PrinterSettingsScreen = () => {
           </View>
 
           {/* Connection Type Switcher */}
-          <Text className="text-slate-300 font-bold text-xs mb-2">Connection Type</Text>
+          <Text className="text-slate-300 font-bold text-xs mb-2">Connection Interface</Text>
           <View className="flex-row bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-4">
             <TouchableOpacity
               activeOpacity={0.8}
@@ -445,38 +555,61 @@ export const PrinterSettingsScreen = () => {
               </View>
 
               {detectedPrinters.length > 0 ? (
-                <View className="flex-row flex-wrap gap-1.5 mb-3">
-                  {detectedPrinters.map(p => (
-                    <TouchableOpacity
-                      key={p}
-                      onPress={() => setPrinterName(p)}
-                      className={`px-2.5 py-1.5 rounded-xl border ${
-                        printerName === p
-                          ? 'bg-indigo-600 border-indigo-400'
-                          : 'bg-slate-800/80 border-slate-700'
-                      }`}
-                    >
-                      <Text className={`text-xs font-bold ${printerName === p ? 'text-white' : 'text-slate-300'}`}>
-                        {p}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                <View className="bg-slate-950 rounded-2xl p-2 border border-slate-800 mb-3">
+                  {detectedPrinters.map((name) => {
+                    const isSelected = printerName === name;
+                    return (
+                      <TouchableOpacity
+                        key={name}
+                        onPress={() => setPrinterName(name)}
+                        className={`flex-row items-center justify-between p-2.5 rounded-xl mb-1 ${
+                          isSelected ? 'bg-indigo-600/20 border border-indigo-500/30' : 'bg-transparent'
+                        }`}
+                      >
+                        <View className="flex-row items-center flex-1 mr-2">
+                          <Printer size={15} color={isSelected ? '#818CF8' : '#64748B'} />
+                          <Text className={`text-xs ml-2 font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                            {name}
+                          </Text>
+                        </View>
+                        {isSelected && <CheckCircle2 size={16} color="#818CF8" />}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               ) : (
-                <Text className="text-slate-400 text-xs mb-3 italic">
-                  No printers detected. Plug in your USB printer or install driver.
-                </Text>
+                <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 mb-3">
+                  <Text className="text-slate-400 text-xs">
+                    {isLoadingPrinters ? 'Scanning printers on Windows...' : 'No printers detected. Ensure USB thermal printer is plugged in and turned ON.'}
+                  </Text>
+                </View>
               )}
+
+              {/* Quick Presets for Windows */}
+              <View className="flex-row gap-2 mb-3">
+                <TouchableOpacity
+                  onPress={() => setPrinterName('POS-80')}
+                  className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl active:bg-white/10"
+                >
+                  <Text className="text-indigo-300 font-bold text-[11px]">Set: POS-80</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setPrinterName('Gobbler 80mm')}
+                  className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl active:bg-white/10"
+                >
+                  <Text className="text-indigo-300 font-bold text-[11px]">Set: Gobbler 80mm</Text>
+                </TouchableOpacity>
+              </View>
 
               <Input
                 label="Selected USB Printer Name"
-                placeholder="e.g. POS-80 or EPSON TM-T82"
+                placeholder="e.g. POS-80, Thermal USB Printer, Gobbler"
                 value={printerName}
                 onChangeText={setPrinterName}
               />
 
               <Button
-                title="Test USB Printer"
+                title="Test Counter Bill Printer"
                 variant="secondary"
                 onPress={testBillingPrinter}
                 isLoading={isTestingBilling}
@@ -485,9 +618,9 @@ export const PrinterSettingsScreen = () => {
               />
             </View>
           ) : (
-            <View>
+            <View className="mb-2">
               <Input
-                label="IP Address"
+                label="Billing Counter IP Address"
                 placeholder="e.g. 192.168.1.50"
                 value={ipAddress}
                 onChangeText={setIpAddress}
@@ -502,7 +635,7 @@ export const PrinterSettingsScreen = () => {
               />
 
               <Button
-                title="Test Counter Printer"
+                title="Test Counter Bill Printer"
                 variant="secondary"
                 onPress={testBillingPrinter}
                 isLoading={isTestingBilling}
@@ -513,39 +646,126 @@ export const PrinterSettingsScreen = () => {
           )}
         </View>
 
-        {/* 3. Kitchen Thermal KOT Printer (Only visible when RESTAURANT mode is active) */}
-        {workflowMode === 'RESTAURANT' && (
+        {/* 3. Kitchen Thermal KOT Printer (Only visible when Dual Printer mode is active) */}
+        {isDualMode && (
           <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
             <View className="flex-row items-center justify-between mb-3 pb-2 border-b border-slate-800">
               <View className="flex-row items-center">
                 <Printer size={18} color="#F59E0B" />
-                <Text className="text-white font-black text-base ml-2">Kitchen Thermal KOT Printer</Text>
+                <Text className="text-white font-black text-base ml-2">2. Kitchen Thermal KOT Printer</Text>
+              </View>
+              <View className="bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                <Text className="text-amber-400 font-black text-[10px]">
+                  {kitchenPrinterType === 'USB' ? 'USB KITCHEN' : 'NETWORK LAN KITCHEN'}
+                </Text>
               </View>
             </View>
 
-            <Input
-              label="Kitchen IP Address"
-              placeholder="e.g. 192.168.1.51"
-              value={kitchenIpAddress}
-              onChangeText={setKitchenIpAddress}
-              keyboardType="numeric"
-            />
-            <Input
-              label="Port (Standard: 9100)"
-              placeholder="9100"
-              value={kitchenPort}
-              onChangeText={setKitchenPort}
-              keyboardType="numeric"
-            />
+            {/* Kitchen Connection Type Switcher */}
+            <Text className="text-slate-300 font-bold text-xs mb-2">Kitchen Connection Interface</Text>
+            <View className="flex-row bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-4">
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setKitchenPrinterType('LAN')}
+                className={`flex-1 py-2 rounded-xl flex-row items-center justify-center ${
+                  kitchenPrinterType === 'LAN' ? 'bg-[#5D3FD3]' : ''
+                }`}
+              >
+                <Wifi size={14} color={kitchenPrinterType === 'LAN' ? '#FFF' : '#94A3B8'} />
+                <Text className={`text-xs font-black ml-1.5 ${kitchenPrinterType === 'LAN' ? 'text-white' : 'text-slate-400'}`}>
+                  LAN / Wi-Fi (IP)
+                </Text>
+              </TouchableOpacity>
 
-            <Button
-              title="Test Kitchen KOT Printer"
-              variant="secondary"
-              onPress={testKitchenPrinter}
-              isLoading={isTestingKitchen}
-              size="sm"
-              className="mt-1"
-            />
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setKitchenPrinterType('USB')}
+                className={`flex-1 py-2 rounded-xl flex-row items-center justify-center ${
+                  kitchenPrinterType === 'USB' ? 'bg-amber-600' : ''
+                }`}
+              >
+                <Usb size={14} color={kitchenPrinterType === 'USB' ? '#FFF' : '#94A3B8'} />
+                <Text className={`text-xs font-black ml-1.5 ${kitchenPrinterType === 'USB' ? 'text-white' : 'text-slate-400'}`}>
+                  USB (Windows Cable)
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {kitchenPrinterType === 'USB' ? (
+              <View className="mb-2">
+                <Text className="text-slate-300 font-bold text-xs mb-2">Select Kitchen USB Printer</Text>
+                {detectedPrinters.length > 0 ? (
+                  <View className="bg-slate-950 rounded-2xl p-2 border border-slate-800 mb-3">
+                    {detectedPrinters.map((name) => {
+                      const isSelected = kitchenPrinterName === name;
+                      return (
+                        <TouchableOpacity
+                          key={name}
+                          onPress={() => setKitchenPrinterName(name)}
+                          className={`flex-row items-center justify-between p-2.5 rounded-xl mb-1 ${
+                            isSelected ? 'bg-amber-600/20 border border-amber-500/30' : 'bg-transparent'
+                          }`}
+                        >
+                          <View className="flex-row items-center flex-1 mr-2">
+                            <Printer size={15} color={isSelected ? '#F59E0B' : '#64748B'} />
+                            <Text className={`text-xs ml-2 font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                              {name}
+                            </Text>
+                          </View>
+                          {isSelected && <CheckCircle2 size={16} color="#F59E0B" />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 mb-3">
+                    <Text className="text-slate-400 text-xs">No USB printers detected.</Text>
+                  </View>
+                )}
+
+                <Input
+                  label="Kitchen USB Printer Name"
+                  placeholder="e.g. Kitchen-POS, POS-80"
+                  value={kitchenPrinterName}
+                  onChangeText={setKitchenPrinterName}
+                />
+
+                <Button
+                  title="Test Kitchen KOT Printer"
+                  variant="secondary"
+                  onPress={testKitchenPrinter}
+                  isLoading={isTestingKitchen}
+                  size="sm"
+                  className="mt-1"
+                />
+              </View>
+            ) : (
+              <View className="mb-2">
+                <Input
+                  label="Kitchen IP Address"
+                  placeholder="e.g. 192.168.1.51"
+                  value={kitchenIpAddress}
+                  onChangeText={setKitchenIpAddress}
+                  keyboardType="numeric"
+                />
+                <Input
+                  label="Port (Standard: 9100)"
+                  placeholder="9100"
+                  value={kitchenPort}
+                  onChangeText={setKitchenPort}
+                  keyboardType="numeric"
+                />
+
+                <Button
+                  title="Test Kitchen KOT Printer"
+                  variant="secondary"
+                  onPress={testKitchenPrinter}
+                  isLoading={isTestingKitchen}
+                  size="sm"
+                  className="mt-1"
+                />
+              </View>
+            )}
           </View>
         )}
 
@@ -564,7 +784,7 @@ export const PrinterSettingsScreen = () => {
             Test print dispatch matching your active profile ({workflowMode}):
           </Text>
 
-          {workflowMode === 'RESTAURANT' && (
+          {isDualMode && (
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={testBillingPrinter}
@@ -576,8 +796,10 @@ export const PrinterSettingsScreen = () => {
                 ) : (
                   <>
                     <Printer size={16} color="#818CF8" />
-                    <Text className="text-indigo-300 font-bold text-xs mt-1">Test Billing</Text>
-                    <Text className="text-slate-400 text-[10px] mt-0.5">{ipAddress || 'Not set'}</Text>
+                    <Text className="text-indigo-300 font-bold text-xs mt-1">Test Counter Bill</Text>
+                    <Text className="text-slate-400 text-[10px] mt-0.5" numberOfLines={1}>
+                      {printerType === 'USB' ? (printerName || 'USB') : (ipAddress || 'Not set')}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -592,15 +814,17 @@ export const PrinterSettingsScreen = () => {
                 ) : (
                   <>
                     <Printer size={16} color="#F59E0B" />
-                    <Text className="text-amber-300 font-bold text-xs mt-1">Test Kitchen</Text>
-                    <Text className="text-slate-400 text-[10px] mt-0.5">{kitchenIpAddress || 'Not set'}</Text>
+                    <Text className="text-amber-300 font-bold text-xs mt-1">Test Kitchen KOT</Text>
+                    <Text className="text-slate-400 text-[10px] mt-0.5" numberOfLines={1}>
+                      {kitchenPrinterType === 'USB' ? (kitchenPrinterName || 'USB') : (kitchenIpAddress || 'Not set')}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
             </View>
           )}
 
-          {workflowMode === 'CURRY_POINT' && (
+          {isSingleBillMode && (
             <TouchableOpacity
               onPress={testBillingPrinter}
               disabled={isTestingBilling}
@@ -612,13 +836,15 @@ export const PrinterSettingsScreen = () => {
                 <>
                   <Printer size={16} color="#F59E0B" />
                   <Text className="text-amber-300 font-bold text-xs mt-1">Test Counter Bill Print</Text>
-                  <Text className="text-slate-400 text-[10px] mt-0.5">{ipAddress}:{port}</Text>
+                  <Text className="text-slate-400 text-[10px] mt-0.5">
+                    {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
           )}
 
-          {workflowMode === 'TIFFIN_CENTER' && (
+          {isCombinedMode && (
             <TouchableOpacity
               onPress={testTiffinTwoPrints}
               disabled={isTestingTiffin}
@@ -629,8 +855,10 @@ export const PrinterSettingsScreen = () => {
               ) : (
                 <>
                   <Coffee size={16} color="#34D399" />
-                  <Text className="text-emerald-300 font-bold text-xs mt-1">Test 2-Print Slip (Bill + Kitchen Token)</Text>
-                  <Text className="text-slate-400 text-[10px] mt-0.5">{ipAddress}:{port}</Text>
+                  <Text className="text-emerald-300 font-bold text-xs mt-1">Test 2-Print Slip (Bill + Kitchen Slip)</Text>
+                  <Text className="text-slate-400 text-[10px] mt-0.5">
+                    {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>

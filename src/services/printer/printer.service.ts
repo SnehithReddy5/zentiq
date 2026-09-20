@@ -166,16 +166,12 @@ export class PrinterService {
         }
       };
 
-      setTimeout(() => {
-        try {
-          clientInstance.once('close', cleanup);
-          clientInstance.once('error', cleanup);
-          clientInstance.end();
-          setTimeout(cleanup, 800);
-        } catch (err) {
-          cleanup();
-        }
-      }, 400);
+      try {
+        clientInstance.end();
+        clientInstance.destroy();
+      } catch (_) {}
+      this.client = null;
+      resolve();
     });
   }
 }

@@ -1,7 +1,13 @@
 import type { TenantBranding } from '../../types/tenant.types';
 
 export class ESCPOSService {
-  static INIT = [0x1B, 0x40];
+  static INIT = [
+    0x1B, 0x40,             // ESC @: Initialize printer
+    0x1D, 0x4C, 0x00, 0x00, // GS L 0 0: Set left margin to 0 dots (removes unwanted left indentation)
+    0x1D, 0x57, 0x40, 0x02, // GS W 576 dots: Set printable area to full 80mm width (eliminates right empty space)
+    0x1B, 0x20, 0x00,       // ESC SP 0: Character spacing 0
+    0x1B, 0x4D, 0x00        // ESC M 0: Select Font A (12x24 dots standard)
+  ];
   static ALIGN_LEFT = [0x1B, 0x61, 0x00];
   static ALIGN_CENTER = [0x1B, 0x61, 0x01];
   static ALIGN_RIGHT = [0x1B, 0x61, 0x02];

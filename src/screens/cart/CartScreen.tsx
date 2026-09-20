@@ -137,12 +137,17 @@ export const CartScreen = () => {
         await DBServices.updateTableStatusByNo(tableNo, 'running', tenant?.id, activeLocationId || undefined);
       }
 
-      // 3. Print Kitchen KOT
-      const targetIp = (settings.kitchenIpAddress || settings.ipAddress)?.trim();
-      const targetPort = settings.kitchenPort || settings.port || 9100;
-      if (targetIp) {
+      // 3. Print Kitchen KOT (supports both USB & LAN Kitchen printers)
+      const isKitchenUsb = settings.kitchenPrinterType === 'USB';
+      const kitchenTarget = isKitchenUsb
+        ? (settings.kitchenPrinterName || settings.printerName || 'POS-80')
+        : (settings.kitchenIpAddress?.trim() || (settings.printerType === 'LAN' ? settings.ipAddress?.trim() : ''));
+      const kitchenPort = settings.kitchenPort || settings.port || 9100;
+      const kitchenType = isKitchenUsb ? 'USB' : 'LAN';
+
+      if (kitchenTarget) {
         try {
-          await printerService.connect(targetIp, targetPort);
+          await printerService.connect(kitchenTarget, kitchenPort, kitchenType);
           const buffer = ESCPOSService.buildKOT(
             kotNo,
             tableNo,
@@ -151,7 +156,12 @@ export const CartScreen = () => {
             'KOT DISPATCH (NO PAYMENT)',
             orderType
           );
-          await printerService.print(buffer);
+          await printerService.print(
+            buffer,
+            isKitchenUsb
+              ? { printerType: 'USB', printerName: kitchenTarget }
+              : { printerType: 'LAN', ip: kitchenTarget, port: kitchenPort }
+          );
           await printerService.disconnect();
         } catch (printErr: any) {
           console.warn('Printer warning in KOT mode:', printErr.message);
@@ -161,7 +171,10 @@ export const CartScreen = () => {
       // 4. Clear cart and return
       clearCart(tableNo);
       toast.success(`KOT #${kotNo} printed and sent to kitchen!`, 'KOT Dispatched');
-      navigation.navigate(Routes.HOME);
+      navigation.reset({
+        index: 0,
+        routes: [{ name: Routes.HOME }],
+      });
     } catch (e: any) {
       toast.error(e.message, 'Settlement Error');
     } finally {
@@ -265,8 +278,14 @@ export const CartScreen = () => {
         const mainPort = settings.port || 9100;
         const mainType = isUsb ? 'USB' : 'LAN';
 
+        // Check configured mode
+        const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
+        const isSingleBillMode = workflowMode === 'SINGLE_BILL_ONLY' || workflowMode === 'CURRY_POINT';
+        const isDualMode = workflowMode === 'DUAL_PRINTER' || workflowMode === 'RESTAURANT' || (!isCombinedMode && !isSingleBillMode);
+
         try {
-          if (workflowMode === 'TIFFIN_CENTER') {
+          if (isCombinedMode) {
+            // SINGLE PRINTER: Customer Bill + Kitchen Slip together in 1 combined fast buffer
             const combinedBuffer = ESCPOSService.buildCombinedTiffinPrints(
               billNo,
               tableNo,
@@ -279,20 +298,9 @@ export const CartScreen = () => {
             await printerService.connect(mainTarget, mainPort, mainType);
             await printerService.print(combinedBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
             await printerService.disconnect();
-          } else if (workflowMode === 'CURRY_POINT') {
-            const billBuffer = ESCPOSService.buildBill(
-              billNo,
-              tableNo,
-              user?.name || 'Staff',
-              cartItems,
-              brandPayload,
-              orderType,
-              finalPayments
-            );
-            await printerService.connect(mainTarget, mainPort, mainType);
-            await printerService.print(billBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
-            await printerService.disconnect();
           } else {
+            // DUAL PRINTER or SINGLE BILL ONLY: Print Customer Bill ONLY.
+            // In Dual Mode, KOT was already fired while dining via "Send KOT". Settlement prints ONLY the customer bill.
             const billBuffer = ESCPOSService.buildBill(
               billNo,
               tableNo,
@@ -305,31 +313,6 @@ export const CartScreen = () => {
             await printerService.connect(mainTarget, mainPort, mainType);
             await printerService.print(billBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
             await printerService.disconnect();
-
-            const kitchenIp = (settings.kitchenIpAddress || '').trim();
-            if (kitchenIp) {
-              try {
-                const kotBuffer = ESCPOSService.buildKOT(
-                  billNo,
-                  tableNo,
-                  user?.name || 'Staff',
-                  cartItems,
-                  'ORDER SETTLED',
-                  orderType
-                );
-                await printerService.connect(kitchenIp, settings.kitchenPort || 9100);
-                await printerService.print(kotBuffer);
-                await printerService.disconnect();
-              } catch (kotErr: any) {
-                console.warn('Kitchen printer background dispatch error:', kotErr);
-                useToastStore.getState().showToast({
-                  type: 'warning',
-                  title: 'Kitchen Ticket Warning',
-                  message: `Bill #${billNo} settled, but kitchen printer did not respond (${kitchenIp}).`,
-                  duration: 6000,
-                });
-              }
-            }
           }
         } catch (printErr: any) {
           console.warn('Thermal print background dispatch error:', printErr);
@@ -356,8 +339,11 @@ export const CartScreen = () => {
       });
 
       clearCart(tableNo);
-      // Immediate screen dismissal
-      navigation.navigate(Routes.HOME);
+      // Reset navigation stack to Home so hardware back button never returns to checkout
+      navigation.reset({
+        index: 0,
+        routes: [{ name: Routes.HOME }],
+      });
     } catch (e: any) {
       toast.error(e.message, 'Checkout Error');
     } finally {

@@ -211,6 +211,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  // Auto-Setup USB Thermal Printer on brand-new Windows PCs (0 downloads needed)
+  if (req.method === 'POST' && (req.url === '/api/setup-usb' || req.url === '/setup-usb')) {
+    try {
+      const psCmd = 'powershell -NoProfile -Command "Add-PrinterDriver -Name \\"Generic / Text Only\\" -ErrorAction SilentlyContinue; Add-Printer -Name \\"Thermal USB Printer\\" -DriverName \\"Generic / Text Only\\" -PortName \\"USB001\\" -ErrorAction SilentlyContinue"';
+      exec(psCmd, { encoding: 'utf8', timeout: 8000 }, async () => {
+        const printers = await getWindowsPrinters();
+        const created = printers.find(p => /thermal|gobbler|pos/i.test(p)) || 'Thermal USB Printer';
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, printerName: created, printers }));
+      });
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+    return;
+  }
+
   // Get detected Windows printers
   if (req.method === 'GET' && (req.url === '/api/printers' || req.url === '/printers')) {
     const printers = await getWindowsPrinters();

@@ -21,7 +21,9 @@ import {
   ChevronUp,
   Utensils,
   ArrowLeft,
-  Trash2
+  Trash2,
+  FileSpreadsheet,
+  Download
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { useOrderStore } from '../../store/order.store';
@@ -32,6 +34,7 @@ import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { DBServices } from '../../services/firebase/db';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+import { OrderSummaryDownloadModal } from './OrderSummaryDownloadModal';
 
 export const RunningOrdersScreen = () => {
   const insets = useSafeAreaInsets();
@@ -52,6 +55,7 @@ export const RunningOrdersScreen = () => {
 
   // Modal & Reprint states
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [isDownloadModalOpen, setDownloadModalOpen] = useState(false);
   const [isReprinting, setIsReprinting] = useState(false);
   const [isReprintingKitchen, setIsReprintingKitchen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -155,16 +159,21 @@ export const RunningOrdersScreen = () => {
 
   // Reprint Kitchen KOT handler
   const handleReprintKitchenKOT = async (order: any) => {
-    const targetIp = (settings.kitchenIpAddress || settings.ipAddress)?.trim();
-    const targetPort = settings.kitchenPort || settings.port || 9100;
-    if (!targetIp) {
-      toast.warning('Please configure Kitchen Printer IP in Settings first.', 'Kitchen Printer Required');
+    const isKitchenUsb = settings.kitchenPrinterType === 'USB';
+    const kitchenTarget = isKitchenUsb
+      ? (settings.kitchenPrinterName || settings.printerName || 'POS-80')
+      : (settings.kitchenIpAddress?.trim() || (settings.printerType === 'LAN' ? settings.ipAddress?.trim() : ''));
+    const kitchenPort = settings.kitchenPort || settings.port || 9100;
+    const kitchenType = isKitchenUsb ? 'USB' : 'LAN';
+
+    if (!kitchenTarget) {
+      toast.warning('Please configure Kitchen Printer in Settings first.', 'Kitchen Printer Required');
       return;
     }
 
     setIsReprintingKitchen(true);
     try {
-      await printerService.connect(targetIp, targetPort);
+      await printerService.connect(kitchenTarget, kitchenPort, kitchenType);
       const buffer = ESCPOSService.buildKOT(
         order.kotNo || `RE-${order.id.slice(0, 5)}`,
         order.tableNo || 0,
@@ -173,7 +182,12 @@ export const RunningOrdersScreen = () => {
         'DUPLICATE / REPRINT KOT',
         order.orderType || (order.tableNo ? 'DINE_IN' : 'PICKUP')
       );
-      await printerService.print(buffer);
+      await printerService.print(
+        buffer,
+        isKitchenUsb
+          ? { printerType: 'USB', printerName: kitchenTarget }
+          : { printerType: 'LAN', ip: kitchenTarget, port: kitchenPort }
+      );
       await printerService.disconnect();
       setToastMessage(`Kitchen KOT reprinted successfully!`);
       setTimeout(() => setToastMessage(null), 3500);
@@ -314,6 +328,15 @@ export const RunningOrdersScreen = () => {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Download Summary Button */}
+          <TouchableOpacity
+            onPress={() => setDownloadModalOpen(true)}
+            className="bg-emerald-600/15 border border-emerald-500/30 px-3 py-2 rounded-2xl flex-row items-center active:bg-emerald-600/25"
+          >
+            <FileSpreadsheet size={15} color="#34D399" />
+            <Text className="text-emerald-400 font-bold text-xs ml-1.5">Download Summary</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -347,11 +370,20 @@ export const RunningOrdersScreen = () => {
                       ₹{stats.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </Text>
                   </View>
-                  <View className="items-end shrink-0 max-w-[45%]">
-                    <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">Average Order</Text>
-                    <Text className="text-xl font-black text-indigo-300 mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
-                      ₹{stats.averageOrderValue.toFixed(2)}
-                    </Text>
+                  <View className="items-end shrink-0 max-w-[45%] flex-row items-center gap-2">
+                    <View className="items-end">
+                      <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">Average Order</Text>
+                      <Text className="text-xl font-black text-indigo-300 mt-0.5" numberOfLines={1} adjustsFontSizeToFit>
+                        ₹{stats.averageOrderValue.toFixed(2)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setDownloadModalOpen(true)}
+                      className="bg-emerald-600/20 border border-emerald-500/40 p-2.5 rounded-2xl items-center justify-center active:bg-emerald-600/35 ml-1"
+                      accessibilityLabel="Download Vasudha Order Summary Excel"
+                    >
+                      <Download size={18} color="#34D399" />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -652,6 +684,15 @@ export const RunningOrdersScreen = () => {
           </SafeAreaView>
         </Modal>
       )}
+
+      {/* Vasudha Order Summary Excel Download Modal */}
+      <OrderSummaryDownloadModal
+        isVisible={isDownloadModalOpen}
+        onClose={() => setDownloadModalOpen(false)}
+        orders={orders}
+        tenantName={tenant?.businessName || tenant?.displayName || 'Vasudha Restaurant'}
+        locationName={locations.find(l => l.id === selectedLocationId)?.name || 'All Branches'}
+      />
     </SafeAreaView>
   );
 };
