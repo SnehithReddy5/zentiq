@@ -3,7 +3,7 @@
 ## Recommended Commit Command
 
 ### Standard Commit (Fast & Free — No Cloud Build Quotas Burned)
-```bash
+```bash 
 git add .
 git commit -m "feat: 1-tap checkout, remove kot blocking popup, expand cart panel and add printer test buttons"
 git push origin main
