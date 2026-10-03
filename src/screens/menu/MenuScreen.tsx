@@ -1,5 +1,5 @@
 import { toast } from '../../utils/toast';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -75,8 +75,16 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     }
   }, [tableNo]);
 
-  const cartTotal = cartItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
-  const cartItemCount = cartItems.reduce((sum, i) => sum + i.qty, 0);
+  const { cartTotal, cartItemCount } = useMemo(() => {
+    let total = 0;
+    let count = 0;
+    for (let i = 0; i < cartItems.length; i++) {
+      const item = cartItems[i];
+      total += item.price * item.qty;
+      count += item.qty;
+    }
+    return { cartTotal: total, cartItemCount: count };
+  }, [cartItems]);
 
   const handleSendToKitchen = async () => {
     if (unsentItems.length === 0) return;
@@ -151,15 +159,18 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     }
   };
 
-  const favoriteCount = items.filter(i => i.isFavorite).length;
+  const favoriteCount = useMemo(() => items.filter(i => i.isFavorite).length, [items]);
 
-  const filteredItems = items
-    .filter(i => {
-      if (activeCategory === 'favorites') return i.isFavorite === true;
-      if (activeCategory === 'all') return true;
-      return i.categoryId === activeCategory;
-    })
-    .filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return items
+      .filter(i => {
+        if (activeCategory === 'favorites') return i.isFavorite === true;
+        if (activeCategory === 'all') return true;
+        return i.categoryId === activeCategory;
+      })
+      .filter(i => !q || i.name.toLowerCase().includes(q));
+  }, [items, activeCategory, searchQuery]);
 
   // Inventory Calculation & Stock Guard Helpers
   const getReservedStock = (baseItemId: string): number => {
@@ -530,6 +541,11 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             data={filteredItems}
             keyExtractor={item => item.id}
             renderItem={renderItemCard}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={true}
+            updateCellsBatchingPeriod={50}
             contentContainerStyle={{ padding: 16, paddingBottom: isSplitView ? Math.max(insets.bottom + 24, 40) : Math.max(insets.bottom + 90, 110) }}
             ListEmptyComponent={
               <View className="py-16 items-center">

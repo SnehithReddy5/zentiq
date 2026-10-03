@@ -1,5 +1,5 @@
 import { toast } from '../../utils/toast';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -70,22 +70,29 @@ export const TablesScreen = () => {
     });
   };
 
-  // Occupancy metrics
-  const runningCount = tables.filter(t => {
-    const localCart = carts[t.tableNo] || [];
-    const remoteCart = (t as any).cartItems || [];
-    return localCart.length > 0 || remoteCart.length > 0 || t.status === 'running' || t.status === 'OCCUPIED';
-  }).length;
-  const availableCount = Math.max(0, tables.length - runningCount);
+  // Memoized occupancy metrics
+  const { runningCount, availableCount } = useMemo(() => {
+    const running = tables.filter(t => {
+      const localCart = carts[t.tableNo] || [];
+      const remoteCart = (t as any).cartItems || [];
+      return localCart.length > 0 || remoteCart.length > 0 || t.status === 'running' || t.status === 'OCCUPIED';
+    }).length;
+    return {
+      runningCount: running,
+      availableCount: Math.max(0, tables.length - running)
+    };
+  }, [tables, carts]);
 
-  const filteredTables = tables.filter(t => {
-    const localCart = carts[t.tableNo] || [];
-    const remoteCart = (t as any).cartItems || [];
-    const isOccupied = localCart.length > 0 || remoteCart.length > 0 || t.status === 'running' || t.status === 'OCCUPIED';
-    if (statusFilter === 'RUNNING') return isOccupied;
-    if (statusFilter === 'AVAILABLE') return !isOccupied;
-    return true;
-  });
+  const filteredTables = useMemo(() => {
+    return tables.filter(t => {
+      const localCart = carts[t.tableNo] || [];
+      const remoteCart = (t as any).cartItems || [];
+      const isOccupied = localCart.length > 0 || remoteCart.length > 0 || t.status === 'running' || t.status === 'OCCUPIED';
+      if (statusFilter === 'RUNNING') return isOccupied;
+      if (statusFilter === 'AVAILABLE') return !isOccupied;
+      return true;
+    });
+  }, [tables, carts, statusFilter]);
 
   const renderTableCard = useCallback(({ item }: { item: Table }) => {
     const localCart = carts[item.tableNo] || [];
@@ -223,6 +230,11 @@ export const TablesScreen = () => {
           keyExtractor={(t) => t.id}
           renderItem={renderTableCard}
           numColumns={tableGridColumns}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={5}
+          removeClippedSubviews={true}
+          updateCellsBatchingPeriod={50}
           contentContainerStyle={{
             padding: 12,
             paddingBottom: Math.max(insets.bottom + 36, 52),

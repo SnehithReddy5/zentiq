@@ -12,13 +12,17 @@ interface TableState {
   subscribeToTables: () => () => void;
 }
 
+// Singleton listener state to prevent duplicate listeners
+let activeTablesUnsub: (() => void) | null = null;
+let currentSubscribedTableLoc: string | null = null;
+let tableSubscribersCount = 0;
+
 export const useTableStore = create<TableState>((set) => ({
   tables: [],
   isLoading: true,
   setTables: (tables) => set({ tables }),
   setLoading: (isLoading) => set({ isLoading }),
   subscribeToTables: () => {
-    set({ isLoading: true });
     const { tenant, activeLocationId } = useTenantStore.getState();
 
     // Tables are strictly branch/location-wise.
@@ -26,6 +30,30 @@ export const useTableStore = create<TableState>((set) => ({
       set({ tables: [], isLoading: false });
       return () => {};
     }
+
+    // Reuse existing listener if already active for this location
+    if (activeTablesUnsub && currentSubscribedTableLoc === activeLocationId) {
+      tableSubscribersCount++;
+      return () => {
+        tableSubscribersCount--;
+        if (tableSubscribersCount <= 0 && activeTablesUnsub) {
+          activeTablesUnsub();
+          activeTablesUnsub = null;
+          currentSubscribedTableLoc = null;
+          tableSubscribersCount = 0;
+        }
+      };
+    }
+
+    if (activeTablesUnsub) {
+      activeTablesUnsub();
+      activeTablesUnsub = null;
+      tableSubscribersCount = 0;
+    }
+
+    set({ isLoading: true });
+    currentSubscribedTableLoc = activeLocationId;
+    tableSubscribersCount = 1;
 
     const q = query(
       collection(db, 'tenants', tenant.id, 'locations', activeLocationId, 'tables'),
@@ -60,6 +88,16 @@ export const useTableStore = create<TableState>((set) => ({
       }
     );
 
-    return unsubscribe;
+    activeTablesUnsub = unsubscribe;
+
+    return () => {
+      tableSubscribersCount--;
+      if (tableSubscribersCount <= 0 && activeTablesUnsub) {
+        activeTablesUnsub();
+        activeTablesUnsub = null;
+        currentSubscribedTableLoc = null;
+        tableSubscribersCount = 0;
+      }
+    };
   },
 }));

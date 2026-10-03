@@ -33,6 +33,7 @@ export const AppNavigator = () => {
         headerShown: false,
         contentStyle: { backgroundColor: '#090D1A' },
         animation: 'slide_from_right',
+        freezeOnBlur: true,
       }}
       initialRouteName={Routes.HOME}
     >

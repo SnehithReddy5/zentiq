@@ -126,30 +126,45 @@ export const HomeScreen = () => {
   const activeLocation = getActiveLocation();
   const businessTitle = branding?.displayName || branding?.businessName || tenant?.businessName || 'Zentiq POS';
 
-  const now = new Date();
-  const todayOrders = orders.filter(o => {
-    if (!o.createdAt) return false;
-    const orderDate = new Date(o.createdAt.seconds ? o.createdAt.seconds * 1000 : o.createdAt);
-    return (
-      orderDate.getDate() === now.getDate() &&
-      orderDate.getMonth() === now.getMonth() &&
-      orderDate.getFullYear() === now.getFullYear()
+  // Fast today boundaries in ms
+  const { startOfTodayMs, endOfTodayMs } = React.useMemo(() => {
+    const d = new Date();
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    return { startOfTodayMs: start, endOfTodayMs: start + 86400000 };
+  }, []);
+
+  const { todayOrders, todaySales } = React.useMemo(() => {
+    const todayList = orders.filter(o => {
+      const raw: any = o.createdAt;
+      if (!raw) return false;
+      const t = raw.seconds !== undefined ? raw.seconds * 1000 : (typeof raw === 'number' ? raw : (raw instanceof Date ? raw.getTime() : (Date.parse(raw) || 0)));
+      return t >= startOfTodayMs && t < endOfTodayMs;
+    });
+    const sales = todayList.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    return { todayOrders: todayList, todaySales: sales };
+  }, [orders, startOfTodayMs, endOfTodayMs]);
+
+  const { occupiedTablesCount, availableTablesCount } = React.useMemo(() => {
+    const occupied = tables.filter(t => 
+      t.status === 'running' || 
+      t.status === 'OCCUPIED' || 
+      ((t as any).cartItems && (t as any).cartItems.length > 0)
     );
-  });
+    return {
+      occupiedTablesCount: occupied.length,
+      availableTablesCount: Math.max(0, tables.length - occupied.length)
+    };
+  }, [tables]);
 
-  const todaySales = todayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-
-  const occupiedTables = tables.filter(t => 
-    t.status === 'running' || 
-    t.status === 'OCCUPIED' || 
-    ((t as any).cartItems && (t as any).cartItems.length > 0)
-  );
-  const occupiedTablesCount = occupiedTables.length;
-  const availableTablesCount = Math.max(0, tables.length - occupiedTablesCount);
-
-  const zomatoOrdersCount = onlineOrders.filter(o => o.platform === 'zomato').length;
-  const swiggyOrdersCount = onlineOrders.filter(o => o.platform === 'swiggy').length;
-  const totalOnlineCount = zomatoOrdersCount + swiggyOrdersCount;
+  const { zomatoOrdersCount, swiggyOrdersCount, totalOnlineCount } = React.useMemo(() => {
+    const zCount = onlineOrders.filter(o => o.platform === 'zomato').length;
+    const sCount = onlineOrders.filter(o => o.platform === 'swiggy').length;
+    return {
+      zomatoOrdersCount: zCount,
+      swiggyOrdersCount: sCount,
+      totalOnlineCount: zCount + sCount
+    };
+  }, [onlineOrders]);
 
   const handleSelectBranch = (loc: any) => {
     if (loc.status === 'DISABLED') return;

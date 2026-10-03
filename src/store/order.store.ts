@@ -12,13 +12,17 @@ interface OrderState {
   subscribeToOrders: (specificLocationId?: string) => () => void;
 }
 
+// Singleton listener state to prevent duplicate listeners
+let activeOrdersUnsub: (() => void) | null = null;
+let currentSubscribedLocId: string | null = null;
+let orderSubscribersCount = 0;
+
 export const useOrderStore = create<OrderState>((set) => ({
   orders: [],
   isLoading: true,
   setOrders: (orders) => set({ orders }),
   setLoading: (isLoading) => set({ isLoading }),
   subscribeToOrders: (specificLocationId?: string) => {
-    set({ isLoading: true });
     const { tenant, activeLocationId, locations } = useTenantStore.getState();
     const targetLocId = specificLocationId !== undefined ? specificLocationId : activeLocationId;
 
@@ -26,6 +30,31 @@ export const useOrderStore = create<OrderState>((set) => ({
       set({ orders: [], isLoading: false });
       return () => {};
     }
+
+    // If already subscribed to this exact location, increment subscriber count and reuse listener
+    if (activeOrdersUnsub && currentSubscribedLocId === (targetLocId || 'NONE')) {
+      orderSubscribersCount++;
+      return () => {
+        orderSubscribersCount--;
+        if (orderSubscribersCount <= 0 && activeOrdersUnsub) {
+          activeOrdersUnsub();
+          activeOrdersUnsub = null;
+          currentSubscribedLocId = null;
+          orderSubscribersCount = 0;
+        }
+      };
+    }
+
+    // Clean up previous subscription if location changed
+    if (activeOrdersUnsub) {
+      activeOrdersUnsub();
+      activeOrdersUnsub = null;
+      orderSubscribersCount = 0;
+    }
+
+    set({ isLoading: true });
+    currentSubscribedLocId = targetLocId || 'NONE';
+    orderSubscribersCount = 1;
 
     // If 'ALL' is requested across all locations
     if (targetLocId === 'ALL') {
@@ -65,8 +94,19 @@ export const useOrderStore = create<OrderState>((set) => ({
         unsubs.push(unsub);
       });
 
-      return () => {
+      const cleanupAll = () => {
         unsubs.forEach(u => u());
+      };
+      activeOrdersUnsub = cleanupAll;
+
+      return () => {
+        orderSubscribersCount--;
+        if (orderSubscribersCount <= 0 && activeOrdersUnsub) {
+          activeOrdersUnsub();
+          activeOrdersUnsub = null;
+          currentSubscribedLocId = null;
+          orderSubscribersCount = 0;
+        }
       };
     }
 
@@ -98,6 +138,16 @@ export const useOrderStore = create<OrderState>((set) => ({
       }
     );
 
-    return unsubscribe;
+    activeOrdersUnsub = unsubscribe;
+
+    return () => {
+      orderSubscribersCount--;
+      if (orderSubscribersCount <= 0 && activeOrdersUnsub) {
+        activeOrdersUnsub();
+        activeOrdersUnsub = null;
+        currentSubscribedLocId = null;
+        orderSubscribersCount = 0;
+      }
+    };
   },
 }));

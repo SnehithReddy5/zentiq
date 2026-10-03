@@ -91,6 +91,56 @@ export class OrderSummaryExcelService {
     const totalRevenue = sortedOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
     const avgOrder = totalRevenue / sortedOrders.length;
 
+    // Payment Methods Aggregation
+    let cashTotal = 0;
+    let upiTotal = 0;
+    let cardTotal = 0;
+    let otherTotal = 0;
+
+    // Item Frequency Aggregation
+    const itemFreqMap: Record<string, { itemName: string; variantName: string; qty: number; orderCount: number; totalSales: number }> = {};
+
+    sortedOrders.forEach((o) => {
+      // Payment collection
+      if (o.payments && Array.isArray(o.payments) && o.payments.length > 0) {
+        o.payments.forEach((p: any) => {
+          const m = String(p.method || 'CASH').toUpperCase();
+          const amt = Number(p.amount) || 0;
+          if (m === 'CASH') cashTotal += amt;
+          else if (m === 'UPI') upiTotal += amt;
+          else if (m === 'CARD') cardTotal += amt;
+          else otherTotal += amt;
+        });
+      } else {
+        const m = String(o.paymentMethod || 'CASH').toUpperCase();
+        const amt = Number(o.totalAmount) || 0;
+        if (m === 'CASH') cashTotal += amt;
+        else if (m === 'UPI') upiTotal += amt;
+        else if (m === 'CARD') cardTotal += amt;
+        else otherTotal += amt;
+      }
+
+      // Item frequency
+      if (o.items && Array.isArray(o.items)) {
+        o.items.forEach((it: any) => {
+          const name = String(it.itemName || it.name || 'Item').trim();
+          const variant = it.variantName ? String(it.variantName).trim() : '';
+          const key = variant ? `${name} (${variant})` : name;
+          const q = Number(it.qty) || 1;
+          const price = Number(it.price) || 0;
+
+          if (!itemFreqMap[key]) {
+            itemFreqMap[key] = { itemName: name, variantName: variant, qty: 0, orderCount: 0, totalSales: 0 };
+          }
+          itemFreqMap[key].qty += q;
+          itemFreqMap[key].orderCount += 1;
+          itemFreqMap[key].totalSales += q * price;
+        });
+      }
+    });
+
+    const sortedItems = Object.values(itemFreqMap).sort((a, b) => b.qty - a.qty);
+
     // Build worksheet data (AOA)
     const sheetData: any[][] = [];
 
@@ -114,6 +164,38 @@ export class OrderSummaryExcelService {
       const lOrder = sortedOrders[lowestIndex];
       const lLabel = lOrder.orderNumber ? `Bill #${lOrder.orderNumber}` : `KOT #${lOrder.kotNo}`;
       sheetData.push(['Lowest Sale Order (Min 🔴)', `${lLabel} - INR ${lowestAmount.toFixed(2)}`]);
+    }
+    sheetData.push([]);
+
+    // Payment Methods Breakdown Section
+    sheetData.push(['--- PAYMENT METHODS BREAKDOWN ---']);
+    sheetData.push(['Cash Collections', `INR ${cashTotal.toFixed(2)}`]);
+    sheetData.push(['UPI / QR Collections', `INR ${upiTotal.toFixed(2)}`]);
+    if (cardTotal > 0) {
+      sheetData.push(['Card Collections', `INR ${cardTotal.toFixed(2)}`]);
+    }
+    if (otherTotal > 0) {
+      sheetData.push(['Other / Custom Tender Collections', `INR ${otherTotal.toFixed(2)}`]);
+    }
+    sheetData.push(['Total Collected', `INR ${(cashTotal + upiTotal + cardTotal + otherTotal).toFixed(2)}`]);
+    sheetData.push([]); // blank
+
+    // Top Selling Items Section (Top 10 by Frequency & Sales)
+    sheetData.push(['--- TOP SELLING ITEMS (BY FREQUENCY / QUANTITY) ---']);
+    sheetData.push(['Rank', 'Item Name', 'Variant / Portion', 'Quantity Sold', 'Revenue Generated']);
+    const topItemsSlice = sortedItems.slice(0, 10);
+    if (topItemsSlice.length === 0) {
+      sheetData.push(['-', 'No items sold', '-', '0 portions', 'INR 0.00']);
+    } else {
+      topItemsSlice.forEach((it, idx) => {
+        sheetData.push([
+          `#${idx + 1}`,
+          it.itemName,
+          it.variantName || 'Standard',
+          `${it.qty} portions`,
+          `INR ${it.totalSales.toFixed(2)}`
+        ]);
+      });
     }
     sheetData.push([]); // blank
 
@@ -202,6 +284,36 @@ export class OrderSummaryExcelService {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Order Summary');
+
+    // Sheet 2: Item Sales Frequency & Quantity
+    const itemSheetData: any[][] = [];
+    itemSheetData.push([`${tenantName.toUpperCase()} - ITEM SALES FREQUENCY & RANKING REPORT`]);
+    itemSheetData.push([`Branch: ${locationName} | Filter Period: ${periodLabel}`]);
+    itemSheetData.push([`Generated On: ${this.formatDateTime(new Date())}`]);
+    itemSheetData.push([]);
+    itemSheetData.push(['Rank', 'Item Name', 'Variant / Portion', 'Quantity Sold (Frequency)', 'Total Orders Appeared In', 'Total Revenue Generated (₹)']);
+
+    sortedItems.forEach((it, idx) => {
+      itemSheetData.push([
+        idx + 1,
+        it.itemName,
+        it.variantName || 'Standard',
+        it.qty,
+        it.orderCount,
+        Number(it.totalSales.toFixed(2))
+      ]);
+    });
+
+    const wsItems = XLSX.utils.aoa_to_sheet(itemSheetData);
+    wsItems['!cols'] = [
+      { wch: 8 },  // Rank
+      { wch: 32 }, // Item Name
+      { wch: 20 }, // Variant
+      { wch: 26 }, // Quantity Sold
+      { wch: 26 }, // Total Orders Appeared In
+      { wch: 28 }  // Total Revenue
+    ];
+    XLSX.utils.book_append_sheet(wb, wsItems, 'Item Sales Frequency');
 
     const cleanTenant = (tenantName || 'Vasudha').replace(/[^a-zA-Z0-9_-]/g, '_');
     const cleanPeriod = periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_');

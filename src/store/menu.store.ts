@@ -14,6 +14,11 @@ interface MenuState {
   subscribeToMenu: () => () => void;
 }
 
+// Singleton listener state to prevent duplicate listeners
+let activeMenuUnsub: (() => void) | null = null;
+let currentMenuLocKey: string | null = null;
+let menuSubscribersCount = 0;
+
 export const useMenuStore = create<MenuState>((set) => ({
   categories: [],
   items: [],
@@ -22,8 +27,32 @@ export const useMenuStore = create<MenuState>((set) => ({
   setCategories: (categories) => set({ categories }),
   setItems: (items) => set({ items }),
   subscribeToMenu: () => {
-    set({ isLoadingCategories: true, isLoadingItems: true });
     const { tenant, activeLocationId } = useTenantStore.getState();
+    const locKey = `${tenant?.id || 'none'}_${activeLocationId || 'none'}`;
+
+    // Reuse existing listener if already active
+    if (activeMenuUnsub && currentMenuLocKey === locKey) {
+      menuSubscribersCount++;
+      return () => {
+        menuSubscribersCount--;
+        if (menuSubscribersCount <= 0 && activeMenuUnsub) {
+          activeMenuUnsub();
+          activeMenuUnsub = null;
+          currentMenuLocKey = null;
+          menuSubscribersCount = 0;
+        }
+      };
+    }
+
+    if (activeMenuUnsub) {
+      activeMenuUnsub();
+      activeMenuUnsub = null;
+      menuSubscribersCount = 0;
+    }
+
+    set({ isLoadingCategories: true, isLoadingItems: true });
+    currentMenuLocKey = locKey;
+    menuSubscribersCount = 1;
 
     let catCol;
     let itemsCol;
@@ -68,9 +97,19 @@ export const useMenuStore = create<MenuState>((set) => ({
       }
     );
 
-    return () => {
+    activeMenuUnsub = () => {
       unsubCategories();
       unsubItems();
+    };
+
+    return () => {
+      menuSubscribersCount--;
+      if (menuSubscribersCount <= 0 && activeMenuUnsub) {
+        activeMenuUnsub();
+        activeMenuUnsub = null;
+        currentMenuLocKey = null;
+        menuSubscribersCount = 0;
+      }
     };
   },
 }));
