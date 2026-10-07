@@ -13,4 +13,5 @@ export const Routes = {
   USER_MANAGEMENT: 'UserManagement',
   BUSINESS_PROFILE: 'BusinessProfile',
   LOCATION_MANAGEMENT: 'LocationManagement',
+  INVENTORY: 'Inventory',
 } as const;

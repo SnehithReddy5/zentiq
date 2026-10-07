@@ -1,3 +1,4 @@
+import { getItemDisplayName, getBaseItemName } from '../../utils/itemDisplay';
 import { toast } from '../../utils/toast';
 import React, {  useEffect, useState, useMemo , useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, Modal, Alert, ActivityIndicator } from 'react-native';
@@ -158,8 +159,7 @@ const OrderCard = React.memo(({
         <View className="mb-2">
           {displayedItems.map((it: any, idx: number) => (
             <Text key={idx} className="text-slate-300 text-xs py-0.5" numberOfLines={1}>
-              <Text className="text-purple-400 font-bold">{it.qty || 1}x</Text> {it.itemName || it.name}
-              {it.variantName ? ` (${it.variantName})` : ''}
+              <Text className="text-purple-400 font-bold">{it.qty || 1}x</Text> {getItemDisplayName(it.itemName || it.name, it.variantName)}
             </Text>
           ))}
           {remainingCount > 0 && (
@@ -934,15 +934,15 @@ export const RunningOrdersScreen = () => {
       list.forEach(o => {
         if (!o.items || !Array.isArray(o.items)) return;
         o.items.forEach(it => {
-          const name = String(it.itemName || (it as any).name || 'Item').trim();
+          const baseName = getBaseItemName(it.itemName || (it as any).name || 'Item', it.variantName);
           const variant = it.variantName ? String(it.variantName).trim() : '';
-          const key = variant ? `${name} (${variant})` : name;
+          const key = getItemDisplayName(baseName, variant);
           const q = Number(it.qty) || 1;
           const p = Number(it.price) || 0;
 
           if (!map[key]) {
             map[key] = {
-              itemName: name,
+              itemName: baseName,
               variantName: variant || undefined,
               qty: 0,
               orderCount: 0,
@@ -1675,7 +1675,7 @@ export const RunningOrdersScreen = () => {
                                 </View>
 
                                 <View className="flex-1">
-                                  <Text className="text-white text-xs font-bold" numberOfLines={1}>{it.itemName}</Text>
+                                  <Text className="text-white text-xs font-bold" numberOfLines={1}>{getBaseItemName(it.itemName, it.variantName)}</Text>
                                   <Text className="text-slate-400 text-[10px] mt-0.5">
                                     {it.variantName ? `${it.variantName} · ` : ''}In {it.orderCount} orders
                                   </Text>

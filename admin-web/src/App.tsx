@@ -4,17 +4,29 @@ import { Tenants } from './pages/Tenants';
 import { LocationRequests } from './pages/LocationRequests';
 import { AppReleases } from './pages/AppReleases';
 import { AdminLogin } from './pages/Login';
-import { LayoutDashboard, Building2, MapPin, Smartphone, ShieldCheck, LogOut, ChevronRight } from 'lucide-react';
+import { CommunicationSettingsModal } from './components/CommunicationSettingsModal';
+import { db } from './firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { LayoutDashboard, Building2, MapPin, Smartphone, ShieldCheck, LogOut, ChevronRight, Mail } from 'lucide-react';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentPage, setCurrentPage] = useState('dashboard');
+  const [isCommSettingsOpen, setIsCommSettingsOpen] = useState(false);
+  const [commEmail, setCommEmail] = useState('support@zentiq.com');
 
   useEffect(() => {
     const isAuth = localStorage.getItem('zentiq_platform_auth');
     if (isAuth === 'true') {
       setIsAuthenticated(true);
     }
+
+    const unsub = onSnapshot(doc(db, 'system', 'settings'), (snap) => {
+      if (snap.exists() && snap.data()?.communicationEmail) {
+        setCommEmail(snap.data().communicationEmail);
+      }
+    });
+    return () => unsub();
   }, []);
 
   const handleLogout = () => {
@@ -104,11 +116,34 @@ export default function App() {
               </div>
               {currentPage === 'releases' && <ChevronRight className="w-3.5 h-3.5" />}
             </button>
+
+            <button
+              onClick={() => setIsCommSettingsOpen(true)}
+              className="w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/50 transition cursor-pointer"
+            >
+              <div className="flex items-center space-x-3">
+                <Mail className="w-4 h-4 text-indigo-400" />
+                <span>Communication Email</span>
+              </div>
+            </button>
           </nav>
         </div>
 
         {/* Footer with Operator Info & Logout */}
         <div className="space-y-3">
+          <div
+            onClick={() => setIsCommSettingsOpen(true)}
+            className="p-3 bg-slate-800/30 hover:bg-slate-800/50 rounded-2xl border border-slate-800/60 cursor-pointer transition-all"
+            title="Click to configure sender communication email"
+          >
+            <div className="flex items-center space-x-2 text-indigo-400 text-xs font-bold">
+              <Mail className="w-3.5 h-3.5" />
+              <span>Sender Email</span>
+            </div>
+            <div className="text-[11px] text-slate-200 font-mono mt-0.5 truncate">{commEmail}</div>
+            <div className="text-[9px] text-slate-500 mt-0.5">Click to configure</div>
+          </div>
+
           <div className="p-3 bg-slate-800/30 rounded-2xl border border-slate-800/60">
             <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold">
               <ShieldCheck className="w-4 h-4" />
@@ -136,6 +171,13 @@ export default function App() {
           {currentPage === 'releases' && <AppReleases />}
         </div>
       </main>
+
+      {/* Super Admin Communication Email Settings Modal */}
+      <CommunicationSettingsModal
+        isOpen={isCommSettingsOpen}
+        onClose={() => setIsCommSettingsOpen(false)}
+        onSaved={(email) => setCommEmail(email)}
+      />
     </div>
   );
 }

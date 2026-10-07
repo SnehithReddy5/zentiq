@@ -1,3 +1,4 @@
+import { getItemDisplayName, getBaseItemName } from '../../utils/itemDisplay';
 import * as XLSX from 'xlsx';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -123,14 +124,14 @@ export class OrderSummaryExcelService {
       // Item frequency
       if (o.items && Array.isArray(o.items)) {
         o.items.forEach((it: any) => {
-          const name = String(it.itemName || it.name || 'Item').trim();
+          const baseName = getBaseItemName(it.itemName || it.name || 'Item', it.variantName);
           const variant = it.variantName ? String(it.variantName).trim() : '';
-          const key = variant ? `${name} (${variant})` : name;
+          const key = getItemDisplayName(baseName, variant);
           const q = Number(it.qty) || 1;
           const price = Number(it.price) || 0;
 
           if (!itemFreqMap[key]) {
-            itemFreqMap[key] = { itemName: name, variantName: variant, qty: 0, orderCount: 0, totalSales: 0 };
+            itemFreqMap[key] = { itemName: baseName, variantName: variant, qty: 0, orderCount: 0, totalSales: 0 };
           }
           itemFreqMap[key].qty += q;
           itemFreqMap[key].orderCount += 1;

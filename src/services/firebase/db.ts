@@ -30,6 +30,7 @@ import { Table } from '../../types/table.types';
 import { MenuCategory, MenuItem } from '../../types/menu.types';
 import { Order, OrderItem } from '../../types/order.types';
 import { TenantProfile, TenantBranding, TenantFeatures, Location } from '../../types/tenant.types';
+import { InventoryItem, InventoryLog } from '../../types/inventory.types';
 
 export const DBServices = {
   // Scoped path helpers
@@ -526,19 +527,92 @@ export const DBServices = {
     }
   },
 
-  async updateUser(id: string, updates: Partial<any>, tenantId?: string): Promise<void> {
-    const cleanId = id.trim();
-    const updatePayload = { ...updates, updatedAt: serverTimestamp() };
-    if (tenantId) {
-      await setDoc(doc(db, 'tenants', tenantId, 'users', cleanId), updatePayload, { merge: true });
-    }
-    try {
-      await setDoc(doc(db, 'users', cleanId), updatePayload, { merge: true });
-    } catch (_) {}
-    if (cleanId.toLowerCase() !== cleanId) {
+  async updateUser(id: string, updates: Partial<any>, tenantId?: string, newId?: string): Promise<string> {
+    const oldCleanId = id.trim();
+    const targetCleanId = (newId || updates.mobile || oldCleanId).trim();
+    const updatePayload = { ...updates, id: targetCleanId, mobile: targetCleanId, updatedAt: serverTimestamp() };
+
+    // If username / login ID has changed, migrate document keys
+    if (targetCleanId.toLowerCase() !== oldCleanId.toLowerCase()) {
+      let existingData: any = {};
+      if (tenantId) {
+        try {
+          const oldSnap = await getDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId));
+          if (oldSnap.exists()) existingData = oldSnap.data();
+        } catch (_) {}
+      }
+      if (!existingData.name) {
+        try {
+          const oldRootSnap = await getDoc(doc(db, 'users', oldCleanId.toLowerCase()));
+          if (oldRootSnap.exists()) existingData = oldRootSnap.data();
+        } catch (_) {}
+      }
+
+      const mergedPayload = { ...existingData, ...updatePayload };
+
+      // 1. Create new documents
+      if (tenantId) {
+        await setDoc(doc(db, 'tenants', tenantId, 'users', targetCleanId), mergedPayload);
+      }
+      await setDoc(doc(db, 'users', targetCleanId), mergedPayload);
+      if (targetCleanId.toLowerCase() !== targetCleanId) {
+        await setDoc(doc(db, 'users', targetCleanId.toLowerCase()), mergedPayload);
+      }
+
+      // 2. Delete old documents
+      if (tenantId) {
+        try { await deleteDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId)); } catch (_) {}
+      }
+      try { await deleteDoc(doc(db, 'users', oldCleanId)); } catch (_) {}
+      if (oldCleanId.toLowerCase() !== oldCleanId) {
+        try { await deleteDoc(doc(db, 'users', oldCleanId.toLowerCase())); } catch (_) {}
+      }
+
+      // 3. If this user is an admin, update the tenant document adminUsername and adminPassword
+      if (
+        tenantId &&
+        (updates.role === 'ADMIN' ||
+          updates.role === 'CLIENT_ADMIN' ||
+          updates.role === 'TENANT_SUPER_ADMIN' ||
+          existingData.role === 'ADMIN' ||
+          existingData.role === 'CLIENT_ADMIN' ||
+          existingData.role === 'TENANT_SUPER_ADMIN')
+      ) {
+        await updateDoc(doc(db, 'tenants', tenantId), {
+          adminUsername: targetCleanId,
+          ...(updates.password ? { adminPassword: updates.password } : {}),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      return targetCleanId;
+    } else {
+      // Normal update without changing username / ID
+      if (tenantId) {
+        await setDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId), updatePayload, { merge: true });
+      }
       try {
-        await setDoc(doc(db, 'users', cleanId.toLowerCase()), updatePayload, { merge: true });
+        await setDoc(doc(db, 'users', oldCleanId), updatePayload, { merge: true });
       } catch (_) {}
+      if (oldCleanId.toLowerCase() !== oldCleanId) {
+        try {
+          await setDoc(doc(db, 'users', oldCleanId.toLowerCase()), updatePayload, { merge: true });
+        } catch (_) {}
+      }
+
+      // If password changed on an admin account, update tenant doc
+      if (
+        tenantId &&
+        updates.password &&
+        (updates.role === 'ADMIN' || updates.role === 'CLIENT_ADMIN' || updates.role === 'TENANT_SUPER_ADMIN')
+      ) {
+        await updateDoc(doc(db, 'tenants', tenantId), {
+          adminPassword: updates.password,
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      return oldCleanId;
     }
   },
 
@@ -576,5 +650,198 @@ export const DBServices = {
         console.warn("Error subscribing to users:", error);
       }
     );
+  },
+
+  // --- KITCHEN INVENTORY & STORE LOAD SERVICES ---
+  getInventoryColRef(tenantId?: string, locationId?: string) {
+    if (tenantId && locationId) {
+      return collection(db, 'tenants', tenantId, 'locations', locationId, 'inventoryItems');
+    }
+    return collection(db, 'inventoryItems');
+  },
+
+  getInventoryLogsColRef(tenantId?: string, locationId?: string) {
+    if (tenantId && locationId) {
+      return collection(db, 'tenants', tenantId, 'locations', locationId, 'inventoryLogs');
+    }
+    return collection(db, 'inventoryLogs');
+  },
+
+  async createInventoryItem(
+    itemData: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'>,
+    tenantId?: string,
+    locationId?: string
+  ): Promise<string> {
+    const colRef = this.getInventoryColRef(tenantId, locationId);
+    const docRef = await addDoc(colRef, cleanFirestoreData({
+      ...itemData,
+      totalReceived: Number(itemData.totalReceived || itemData.currentStock || 0),
+      totalIssued: Number(itemData.totalIssued || 0),
+      currentStock: Number(itemData.currentStock || 0),
+      minThreshold: Number(itemData.minThreshold || 5),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }));
+
+    if (itemData.currentStock > 0) {
+      const logsRef = this.getInventoryLogsColRef(tenantId, locationId);
+      await addDoc(logsRef, cleanFirestoreData({
+        itemId: docRef.id,
+        itemName: itemData.name,
+        type: 'STOCK_IN',
+        quantity: itemData.currentStock,
+        unit: itemData.unit,
+        previousStock: 0,
+        newStock: itemData.currentStock,
+        notes: 'Initial opening stock loaded',
+        recordedBy: 'Manager',
+        createdAt: serverTimestamp(),
+      }));
+    }
+
+    return docRef.id;
+  },
+
+  async receiveStockLoad(
+    itemId: string,
+    quantity: number,
+    notes?: string,
+    staffName?: string,
+    tenantId?: string,
+    locationId?: string
+  ): Promise<void> {
+    const colRef = this.getInventoryColRef(tenantId, locationId);
+    const itemRef = doc(colRef, itemId);
+    const snap = await getDoc(itemRef);
+    if (!snap.exists()) throw new Error('Inventory item not found');
+
+    const item = snap.data() as InventoryItem;
+    const prevStock = Number(item.currentStock || 0);
+    const addedQty = Number(quantity || 0);
+    const newStock = prevStock + addedQty;
+    const newTotalReceived = Number(item.totalReceived || prevStock) + addedQty;
+
+    await updateDoc(itemRef, {
+      currentStock: Number(newStock.toFixed(3)),
+      totalReceived: Number(newTotalReceived.toFixed(3)),
+      lastRestockedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    const logsRef = this.getInventoryLogsColRef(tenantId, locationId);
+    await addDoc(logsRef, cleanFirestoreData({
+      itemId,
+      itemName: item.name,
+      type: 'STOCK_IN',
+      quantity: addedQty,
+      unit: item.unit,
+      previousStock: prevStock,
+      newStock: Number(newStock.toFixed(3)),
+      notes: notes || 'Bulk load received',
+      recordedBy: staffName || 'Kitchen Staff',
+      createdAt: serverTimestamp(),
+    }));
+  },
+
+  async issueStockToKitchen(
+    itemId: string,
+    quantity: number,
+    notes?: string,
+    staffName?: string,
+    tenantId?: string,
+    locationId?: string
+  ): Promise<void> {
+    const colRef = this.getInventoryColRef(tenantId, locationId);
+    const itemRef = doc(colRef, itemId);
+    const snap = await getDoc(itemRef);
+    if (!snap.exists()) throw new Error('Inventory item not found');
+
+    const item = snap.data() as InventoryItem;
+    const prevStock = Number(item.currentStock || 0);
+    const issuedQty = Number(quantity || 0);
+    const newStock = Math.max(0, prevStock - issuedQty);
+    const newTotalIssued = Number(item.totalIssued || 0) + issuedQty;
+
+    await updateDoc(itemRef, {
+      currentStock: Number(newStock.toFixed(3)),
+      totalIssued: Number(newTotalIssued.toFixed(3)),
+      lastIssuedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    const logsRef = this.getInventoryLogsColRef(tenantId, locationId);
+    await addDoc(logsRef, cleanFirestoreData({
+      itemId,
+      itemName: item.name,
+      type: 'KITCHEN_ISSUE',
+      quantity: issuedQty,
+      unit: item.unit,
+      previousStock: prevStock,
+      newStock: Number(newStock.toFixed(3)),
+      notes: notes || 'Taken to kitchen for active cooking',
+      recordedBy: staffName || 'Chef',
+      createdAt: serverTimestamp(),
+    }));
+  },
+
+  async adjustInventoryStock(
+    itemId: string,
+    newStock: number,
+    type: 'WASTAGE' | 'ADJUSTMENT',
+    reason?: string,
+    staffName?: string,
+    tenantId?: string,
+    locationId?: string
+  ): Promise<void> {
+    const colRef = this.getInventoryColRef(tenantId, locationId);
+    const itemRef = doc(colRef, itemId);
+    const snap = await getDoc(itemRef);
+    if (!snap.exists()) throw new Error('Inventory item not found');
+
+    const item = snap.data() as InventoryItem;
+    const prevStock = Number(item.currentStock || 0);
+    const targetStock = Math.max(0, Number(newStock || 0));
+    const delta = Math.abs(targetStock - prevStock);
+
+    await updateDoc(itemRef, {
+      currentStock: Number(targetStock.toFixed(3)),
+      updatedAt: serverTimestamp(),
+    });
+
+    const logsRef = this.getInventoryLogsColRef(tenantId, locationId);
+    await addDoc(logsRef, cleanFirestoreData({
+      itemId,
+      itemName: item.name,
+      type,
+      quantity: delta,
+      unit: item.unit,
+      previousStock: prevStock,
+      newStock: Number(targetStock.toFixed(3)),
+      notes: reason || (type === 'WASTAGE' ? 'Kitchen Spoilage / Wastage' : 'Physical count adjustment'),
+      recordedBy: staffName || 'Manager',
+      createdAt: serverTimestamp(),
+    }));
+  },
+
+  async deleteInventoryItem(itemId: string, tenantId?: string, locationId?: string): Promise<void> {
+    const colRef = this.getInventoryColRef(tenantId, locationId);
+    await deleteDoc(doc(colRef, itemId));
+  },
+
+  async seedStarterInventory(tenantId?: string, locationId?: string): Promise<void> {
+    const starters = [
+      { name: 'Basmati Rice', category: 'Grains & Rice', unit: 'kg', currentStock: 100, minThreshold: 20 },
+      { name: 'Sunflower Cooking Oil', category: 'Oils & Ghee', unit: 'packets', currentStock: 200, minThreshold: 25 },
+      { name: 'Kitchen Spices & Masalas', category: 'Spices & Seasoning', unit: 'kg', currentStock: 100, minThreshold: 15 },
+      { name: 'Fresh Paneer', category: 'Dairy & Poultry', unit: 'kg', currentStock: 25, minThreshold: 5 },
+      { name: 'Fresh Onions', category: 'Vegetables & Produce', unit: 'kg', currentStock: 50, minThreshold: 10 },
+      { name: 'Wheat Flour (Atta)', category: 'Grains & Rice', unit: 'kg', currentStock: 80, minThreshold: 15 },
+      { name: 'Amul Butter', category: 'Dairy & Poultry', unit: 'packets', currentStock: 50, minThreshold: 10 },
+    ];
+
+    for (const s of starters) {
+      await this.createInventoryItem(s as any, tenantId, locationId);
+    }
   }
+
 };

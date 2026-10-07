@@ -2,7 +2,7 @@ import { toast } from '../../utils/toast';
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check, Package, Scale, Layers } from 'lucide-react-native';
+import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check, Package, Scale, Layers, MoreVertical, Ban, CheckCircle2 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
@@ -11,11 +11,15 @@ import { useTenantStore } from '../../store/tenant.store';
 import { DBServices } from '../../services/firebase/db';
 import { MenuExcelImportModal } from './MenuExcelImportModal';
 import { MenuItem, MenuItemVariant } from '../../types/menu.types';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 export const MenuManagementScreen = () => {
   const insets = useSafeAreaInsets();
   const { categories, items, subscribeToMenu } = useMenuStore();
   const { tenant, activeLocationId } = useTenantStore();
+  const { isPhone } = useResponsiveLayout();
+  const [actionKebabItem, setActionKebabItem] = useState<MenuItem | null>(null);
+  const [itemIsAvailable, setItemIsAvailable] = useState<boolean>(true);
 
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -149,6 +153,27 @@ export const MenuManagementScreen = () => {
       setVariants([]);
     }
     setItemModalOpen(true);
+  };
+
+
+  // Toggle Out of Stock / In Stock
+  const handleToggleAvailability = async (item: MenuItem) => {
+    const newStatus = item.isAvailable === false ? true : false;
+    try {
+      await DBServices.updateMenuItem(
+        item.id,
+        { isAvailable: newStatus },
+        tenant?.id,
+        activeLocationId || undefined
+      );
+      if (newStatus) {
+        toast.success(`"${item.name}" is now marked IN STOCK`, 'Available');
+      } else {
+        toast.warning(`"${item.name}" is now marked OUT OF STOCK`, 'Out of Stock');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update item availability', 'Error');
+    }
   };
 
   // Quick Restock Handler (e.g. morning chicken 10 kg)
@@ -472,49 +497,91 @@ export const MenuManagementScreen = () => {
         data={filteredItems}
         keyExtractor={item => item.id}
         contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom + 80, 100) }}
-        renderItem={({ item }) => (
-          <View className="bg-slate-900 border border-slate-800 p-4 rounded-2xl mb-2.5 flex-row items-center justify-between shadow-lg">
-            <View className="flex-1 mr-3">
-              <View className="flex-row items-center">
-                <TouchableOpacity onPress={() => handleToggleFavorite(item)} className="mr-2">
-                  <Star
-                    size={18}
-                    color={item.isFavorite ? '#F59E0B' : '#475569'}
-                    fill={item.isFavorite ? '#F59E0B' : 'transparent'}
-                  />
-                </TouchableOpacity>
-                <Text className="text-white font-bold text-base flex-1" numberOfLines={1}>
-                  {item.name}
-                </Text>
+        renderItem={({ item }) => {
+          const isOutOfStock = item.isAvailable === false;
+          return (
+            <View className={`bg-slate-900 border p-4 rounded-2xl mb-2.5 flex-row items-center justify-between shadow-lg ${
+              isOutOfStock ? 'border-rose-900/50 opacity-90' : 'border-slate-800'
+            }`}>
+              <View className="flex-1 mr-3">
+                <View className="flex-row items-center flex-wrap gap-1.5">
+                  <TouchableOpacity onPress={() => handleToggleFavorite(item)} className="mr-1">
+                    <Star
+                      size={18}
+                      color={item.isFavorite ? '#F59E0B' : '#475569'}
+                      fill={item.isFavorite ? '#F59E0B' : 'transparent'}
+                    />
+                  </TouchableOpacity>
+                  <Text className={`font-bold text-base flex-1 ${isOutOfStock ? 'text-slate-300' : 'text-white'}`} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  {isOutOfStock && (
+                    <View className="bg-rose-500/20 border border-rose-500/40 px-2 py-0.5 rounded-md">
+                      <Text className="text-rose-400 font-black text-[10px] tracking-wider uppercase">OUT OF STOCK</Text>
+                    </View>
+                  )}
+                </View>
+
+                {item.variants && item.variants.length > 0 ? (
+                  <Text className="text-indigo-400 text-xs mt-1">
+                    {item.variants.length} Variants: {item.variants.map(v => `${v.name} (₹${v.price})`).join(', ')}
+                  </Text>
+                ) : (
+                  <Text className="text-slate-400 text-xs mt-1">Price: ₹{item.price}</Text>
+                )}
               </View>
 
-              {item.variants && item.variants.length > 0 ? (
-                <Text className="text-indigo-400 text-xs mt-1">
-                  {item.variants.length} Variants: {item.variants.map(v => `${v.name} (₹${v.price})`).join(', ')}
-                </Text>
+              {/* Mobile: Raindrop / Kebab menu (MoreVertical) */}
+              {isPhone ? (
+                <TouchableOpacity
+                  onPress={() => setActionKebabItem(item)}
+                  className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 active:bg-slate-700"
+                  accessibilityLabel="Item actions"
+                >
+                  <MoreVertical size={18} color="#CBD5E1" />
+                </TouchableOpacity>
               ) : (
-                <Text className="text-slate-400 text-xs mt-1">Price: ₹{item.price}</Text>
+                /* Desktop / Tablet: Direct Action Buttons */
+                <View className="flex-row items-center gap-2">
+                  <TouchableOpacity
+                    onPress={() => handleToggleAvailability(item)}
+                    className={`px-3 py-2 rounded-xl border flex-row items-center ${
+                      isOutOfStock
+                        ? 'bg-rose-500/20 border-rose-500/40 active:bg-rose-500/30'
+                        : 'bg-slate-800 border-slate-700 active:bg-slate-750'
+                    }`}
+                  >
+                    {isOutOfStock ? (
+                      <>
+                        <Ban size={13} color="#F43F5E" />
+                        <Text className="text-rose-400 font-bold text-xs ml-1.5">Out of Stock</Text>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={13} color="#34D399" />
+                        <Text className="text-emerald-400 font-bold text-xs ml-1.5">In Stock</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => openEditItemModal(item)}
+                    className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 active:bg-slate-750"
+                  >
+                    <Pencil size={15} color="#818CF8" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setItemToDelete(item)}
+                    className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 active:bg-rose-500/30"
+                  >
+                    <Trash2 size={15} color="#F43F5E" />
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
-
-            {/* Action Buttons: Edit and Delete */}
-            <View className="flex-row items-center gap-1.5">
-              <TouchableOpacity
-                onPress={() => openEditItemModal(item)}
-                className="p-2 rounded-xl bg-slate-800 border border-slate-700"
-              >
-                <Pencil size={15} color="#818CF8" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => setItemToDelete(item)}
-                className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 active:bg-rose-500/30"
-              >
-                <Trash2 size={15} color="#F43F5E" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+          );
+        }}
         ListEmptyComponent={
           <View className="py-16 items-center">
             <Text className="text-slate-400 text-xs">No items match your filter.</Text>
@@ -647,6 +714,28 @@ export const MenuManagementScreen = () => {
                   )}
                   </ScrollView>
                 </View>
+
+                {/* Stock Availability Toggle */}
+                <TouchableOpacity
+                  onPress={() => setItemIsAvailable(!itemIsAvailable)}
+                  className={`flex-row items-center justify-between p-3 rounded-xl mb-3 border ${
+                    itemIsAvailable
+                      ? 'bg-emerald-950/20 border-emerald-500/30'
+                      : 'bg-rose-950/20 border-rose-500/30'
+                  }`}
+                >
+                  <View className="flex-row items-center">
+                    {itemIsAvailable ? (
+                      <CheckCircle2 size={16} color="#34D399" />
+                    ) : (
+                      <Ban size={16} color="#F43F5E" />
+                    )}
+                    <Text className="text-white font-bold text-xs ml-2">Stock Availability</Text>
+                  </View>
+                  <Text className={`text-xs font-black ${itemIsAvailable ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {itemIsAvailable ? '✓ In Stock' : '✕ Out of Stock'}
+                  </Text>
+                </TouchableOpacity>
 
                 {/* Favorite Toggle */}
                 <TouchableOpacity
@@ -1121,6 +1210,129 @@ export const MenuManagementScreen = () => {
 
       {/* Excel Modal */}
       <MenuExcelImportModal isVisible={isExcelModalOpen} onClose={() => setExcelModalOpen(false)} />
+      {/* Mobile Kebab / Raindrop Action Sheet */}
+      {actionKebabItem && (
+        <Modal
+          visible={!!actionKebabItem}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setActionKebabItem(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setActionKebabItem(null)}
+            className="flex-1 bg-black/75 justify-end"
+          >
+            <View
+              className="bg-slate-900 border-t border-slate-800 rounded-t-3xl p-5 w-full shadow-2xl"
+              style={{ paddingBottom: Math.max(insets.bottom + 16, 28) }}
+            >
+              <View className="w-12 h-1 bg-slate-700 rounded-full self-center mb-4" />
+
+              {/* Header */}
+              <View className="flex-row items-center justify-between pb-3 border-b border-slate-800 mb-4">
+                <View className="flex-1 mr-3">
+                  <Text className="text-white font-black text-lg" numberOfLines={1}>{actionKebabItem.name}</Text>
+                  <Text className="text-slate-400 text-xs">
+                    ₹{actionKebabItem.price} {actionKebabItem.variants?.length ? `• ${actionKebabItem.variants.length} Variants` : ''}
+                  </Text>
+                </View>
+                <View className={`px-2.5 py-1 rounded-full border ${
+                  actionKebabItem.isAvailable === false
+                    ? 'bg-rose-500/20 border-rose-500/40'
+                    : 'bg-emerald-500/20 border-emerald-500/40'
+                }`}>
+                  <Text className={`text-xs font-black ${
+                    actionKebabItem.isAvailable === false ? 'text-rose-400' : 'text-emerald-400'
+                  }`}>
+                    {actionKebabItem.isAvailable === false ? 'OUT OF STOCK' : 'IN STOCK'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 1. Toggle Out of Stock */}
+              <TouchableOpacity
+                onPress={() => {
+                  const itm = actionKebabItem;
+                  setActionKebabItem(null);
+                  handleToggleAvailability(itm);
+                }}
+                className={`flex-row items-center p-3.5 rounded-2xl mb-2.5 border ${
+                  actionKebabItem.isAvailable === false
+                    ? 'bg-emerald-950/30 border-emerald-500/30 active:bg-emerald-950/50'
+                    : 'bg-rose-950/30 border-rose-500/30 active:bg-rose-950/50'
+                }`}
+              >
+                <View className={`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
+                  actionKebabItem.isAvailable === false ? 'bg-emerald-500/20' : 'bg-rose-500/20'
+                }`}>
+                  {actionKebabItem.isAvailable === false ? (
+                    <CheckCircle2 size={20} color="#34D399" />
+                  ) : (
+                    <Ban size={20} color="#F43F5E" />
+                  )}
+                </View>
+                <View className="flex-1">
+                  <Text className={`font-black text-sm ${
+                    actionKebabItem.isAvailable === false ? 'text-emerald-300' : 'text-rose-300'
+                  }`}>
+                    {actionKebabItem.isAvailable === false ? 'Mark as In Stock' : 'Mark as Out of Stock'}
+                  </Text>
+                  <Text className="text-slate-400 text-xs">
+                    {actionKebabItem.isAvailable === false
+                      ? 'Enable item for selling on POS terminal'
+                      : 'Disable item & badge Out of Stock on POS'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* 2. Edit Item */}
+              <TouchableOpacity
+                onPress={() => {
+                  const itm = actionKebabItem;
+                  setActionKebabItem(null);
+                  openEditItemModal(itm);
+                }}
+                className="flex-row items-center p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700 mb-2.5 active:bg-slate-800"
+              >
+                <View className="w-10 h-10 rounded-xl bg-indigo-500/20 items-center justify-center mr-3">
+                  <Pencil size={20} color="#818CF8" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white font-black text-sm">Edit Item Details</Text>
+                  <Text className="text-slate-400 text-xs">Change name, price, variants, or categories</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* 3. Delete Item */}
+              <TouchableOpacity
+                onPress={() => {
+                  const itm = actionKebabItem;
+                  setActionKebabItem(null);
+                  setItemToDelete(itm);
+                }}
+                className="flex-row items-center p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 mb-3 active:bg-rose-500/20"
+              >
+                <View className="w-10 h-10 rounded-xl bg-rose-500/20 items-center justify-center mr-3">
+                  <Trash2 size={20} color="#F43F5E" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-rose-400 font-black text-sm">Delete Item</Text>
+                  <Text className="text-rose-300/70 text-xs">Permanently remove this item from menu</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Cancel Button */}
+              <TouchableOpacity
+                onPress={() => setActionKebabItem(null)}
+                className="p-3.5 bg-slate-800 rounded-2xl items-center"
+              >
+                <Text className="text-slate-300 font-bold text-sm">Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 };

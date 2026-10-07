@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { dispatchSystemEmail, SystemCommunicationSettings } from '../utils/emailDispatcher';
 import {
   Building2,
   Plus,
@@ -25,7 +26,13 @@ import {
   CheckCircle,
   Trash2,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  Mail,
+  Send,
+  Copy,
+  Check,
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 
 // Subcomponent to display and control branches for each tenant
@@ -134,8 +141,11 @@ export const Tenants = () => {
   const [tenantName, setTenantName] = useState('');
   const [initialLocation, setInitialLocation] = useState('Main Branch');
   const [businessType, setBusinessType] = useState<'RESTAURANT' | 'CURRY_POINT' | 'TIFFIN_CENTER' | 'CAFE' | 'FOOD_TRUCK'>('RESTAURANT');
+  const [adminEmail, setAdminEmail] = useState('');
   const [adminMobile, setAdminMobile] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [apkUrl, setApkUrl] = useState('');
+  const [latestSystemApkUrl, setLatestSystemApkUrl] = useState('');
   const [multiLocationEnabled, setMultiLocationEnabled] = useState(true);
   const [dineInEnabled, setDineInEnabled] = useState(true);
   const [pickupEnabled, setPickupEnabled] = useState(true);
@@ -144,8 +154,10 @@ export const Tenants = () => {
   const [editingTenant, setEditingTenant] = useState<any>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<'RESTAURANT' | 'CURRY_POINT' | 'TIFFIN_CENTER' | 'CAFE' | 'FOOD_TRUCK'>('RESTAURANT');
+  const [editAdminEmail, setEditAdminEmail] = useState('');
   const [editAdminMobile, setEditAdminMobile] = useState('');
   const [editAdminPassword, setEditAdminPassword] = useState('');
+  const [editApkUrl, setEditApkUrl] = useState('');
   const [editMultiLocationEnabled, setEditMultiLocationEnabled] = useState(true);
   const [editDineInEnabled, setEditDineInEnabled] = useState(true);
   const [editPickupEnabled, setEditPickupEnabled] = useState(true);
@@ -155,21 +167,119 @@ export const Tenants = () => {
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Real-time snapshot listener on tenants
+  // Post-Onboarding Kit Dialog & Quick Email Dispatch State
+  const [onboardingKitModal, setOnboardingKitModal] = useState<{
+    isOpen: boolean;
+    tenantName: string;
+    adminEmail: string;
+    adminUsername: string;
+    adminPassword: string;
+    apkUrl: string;
+  } | null>(null);
+
+  const [tenantEmailModal, setTenantEmailModal] = useState<{
+    isOpen: boolean;
+    tenant: any;
+    mode: 'WELCOME' | 'UPDATE';
+    targetEmail: string;
+    targetApkUrl: string;
+  } | null>(null);
+
+  const [copiedKit, setCopiedKit] = useState(false);
+  const [commSettings, setCommSettings] = useState<SystemCommunicationSettings>({
+    communicationEmail: 'support@zentiq.com',
+    senderName: 'Zentiq POS Platform',
+    sendMethod: 'GMAIL',
+    resendApiKey: '',
+  });
+
+  // Real-time snapshot listener on tenants, active app release & communication settings
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'tenants'), (snap) => {
       const list: any[] = [];
       snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
       setTenants(list);
     });
-    return () => unsub();
+
+    const unsubVersion = onSnapshot(doc(db, 'system', 'app_version'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data?.latestApkUrl) {
+          setLatestSystemApkUrl(data.latestApkUrl);
+          setApkUrl(prev => prev || data.latestApkUrl);
+        }
+      }
+    });
+
+    const unsubSettings = onSnapshot(doc(db, 'system', 'settings'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setCommSettings({
+          communicationEmail: data.communicationEmail || 'support@zentiq.com',
+          senderName: data.senderName || 'Zentiq POS Platform',
+          sendMethod: data.sendMethod || 'GMAIL',
+          resendApiKey: data.resendApiKey || '',
+        });
+      }
+    });
+
+    return () => {
+      unsub();
+      unsubVersion();
+      unsubSettings();
+    };
   }, []);
+
+  // Helper mail link builders
+  const getWelcomeMailSubject = (name: string) => `Welcome to Zentiq POS — Your Login Details & App Download`;
+  const getWelcomeMailBody = (name: string, username: string, pass: string, downloadUrl: string) => {
+    return `Dear ${name} Team,
+
+Welcome to Zentiq POS! Your multi-tenant restaurant instance has been successfully provisioned.
+
+📱 1. DOWNLOAD THE ANDROID POS APPLICATION:
+Direct APK Download Link:
+${downloadUrl || latestSystemApkUrl || 'Please contact support for APK link'}
+
+🔑 2. YOUR LOGIN CREDENTIALS:
+• Business / Tenant Name: ${name}
+• User ID / Mobile / Email: ${username}
+• Password: ${pass}
+
+🚀 3. GETTING STARTED IN 3 STEPS:
+1. Download and install the APK on your Android POS terminal / tablet.
+2. Launch Zentiq POS and sign in using the credentials above.
+3. Complete the quick Setup Wizard to configure receipt headers, table layout, and printers.
+
+Need assistance? Reply directly to this email or contact the Zentiq Support team.
+
+Best regards,
+Zentiq Platform Team`;
+  };
+
+  const getUpdateMailSubject = (name: string) => `Zentiq POS App Update Available: Download New APK`;
+  const getUpdateMailBody = (name: string, downloadUrl: string) => {
+    return `Dear ${name} Team,
+
+A new update for the Zentiq POS Android Application is now available for your restaurant devices!
+
+📱 DOWNLOAD UPDATED APK:
+${downloadUrl || latestSystemApkUrl || 'Please contact support for APK link'}
+
+🚀 HOW TO UPDATE:
+1. Open the download link above on your Android POS tablet or handheld terminal.
+2. Download and install the new APK (all your menu items, tables, and historical orders will be preserved).
+3. Launch Zentiq POS and continue operations.
+
+Best regards,
+Zentiq Platform Team`;
+  };
 
   // 1. Create / Onboard Tenant
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tenantName || !adminMobile || !adminPassword) {
-      alert('Please fill all required fields');
+    if (!tenantName || !adminMobile || !adminPassword || !adminEmail) {
+      alert('Please fill all required fields including business name, client email, username, and password.');
       return;
     }
 
@@ -177,6 +287,7 @@ export const Tenants = () => {
     try {
       const tenantId = tenantName.toLowerCase().trim().replace(/[^a-z0-9]/g, '-');
       const locationId = 'loc-primary';
+      const effectiveApkUrl = (apkUrl.trim() || latestSystemApkUrl).trim();
 
       // Calculate 1 Calendar Year Renewal Date
       const now = new Date();
@@ -191,8 +302,10 @@ export const Tenants = () => {
         businessType,
         status: 'ACTIVE',
         multiLocationEnabled,
+        adminEmail: adminEmail.trim(),
         adminUsername: adminMobile.trim(),
         adminPassword: adminPassword.trim(),
+        apkUrl: effectiveApkUrl,
         subscriptionPlan: 'ANNUAL',
         renewalDate: renewalDate.toISOString(),
         provisionedAt: serverTimestamp(),
@@ -215,6 +328,7 @@ export const Tenants = () => {
       await setDoc(doc(db, 'tenants', tenantId, 'users', adminMobile.trim()), {
         id: adminMobile.trim(),
         name: `${tenantName} Admin`,
+        email: adminEmail.trim(),
         mobile: adminMobile.trim(),
         password: adminPassword.trim(),
         role: 'ADMIN',
@@ -228,6 +342,7 @@ export const Tenants = () => {
       await setDoc(doc(db, 'users', adminMobile.trim()), {
         id: adminMobile.trim(),
         name: `${tenantName} Admin`,
+        email: adminEmail.trim(),
         mobile: adminMobile.trim(),
         password: adminPassword.trim(),
         role: 'ADMIN',
@@ -239,6 +354,7 @@ export const Tenants = () => {
         await setDoc(doc(db, 'users', adminMobile.trim().toLowerCase()), {
           id: adminMobile.trim(),
           name: `${tenantName} Admin`,
+          email: adminEmail.trim(),
           mobile: adminMobile.trim(),
           password: adminPassword.trim(),
           role: 'ADMIN',
@@ -264,17 +380,28 @@ export const Tenants = () => {
       await setDoc(doc(db, 'tenants', tenantId, 'branding', 'config'), {
         businessName: tenantName.trim(),
         displayName: tenantName.trim(),
+        email: adminEmail.trim(),
         receiptHeader: tenantName.toUpperCase().trim(),
         receiptFooter: 'Thank You & Visit Again!!',
         createdAt: serverTimestamp(),
       });
 
+      // Open Onboarding Kit modal with pre-composed email dispatch
+      setOnboardingKitModal({
+        isOpen: true,
+        tenantName: tenantName.trim(),
+        adminEmail: adminEmail.trim(),
+        adminUsername: adminMobile.trim(),
+        adminPassword: adminPassword.trim(),
+        apkUrl: effectiveApkUrl,
+      });
+
       // Reset form
       setTenantName('');
+      setAdminEmail('');
       setAdminMobile('');
       setAdminPassword('');
       setIsModalOpen(false);
-      alert('Client instance provisioned successfully! Credentials are live immediately.');
     } catch (err: any) {
       console.error(err);
       alert('Failed to provision client: ' + err.message);
@@ -288,8 +415,10 @@ export const Tenants = () => {
     setEditingTenant(tenant);
     setEditName(tenant.businessName || tenant.displayName || '');
     setEditType(tenant.businessType || 'RESTAURANT');
+    setEditAdminEmail(tenant.adminEmail || '');
     setEditAdminMobile(tenant.adminUsername || '');
     setEditAdminPassword(tenant.adminPassword || '');
+    setEditApkUrl(tenant.apkUrl || '');
     setEditMultiLocationEnabled(tenant.multiLocationEnabled ?? true);
     if (tenant.renewalDate) {
       setEditRenewalDate(tenant.renewalDate.split('T')[0]);
@@ -324,8 +453,10 @@ export const Tenants = () => {
         displayName: editName.trim(),
         businessType: editType,
         multiLocationEnabled: editMultiLocationEnabled,
+        adminEmail: editAdminEmail.trim() || undefined,
         adminUsername: editAdminMobile.trim() || undefined,
         adminPassword: editAdminPassword.trim() || undefined,
+        apkUrl: editApkUrl.trim() || undefined,
         renewalDate: editRenewalDate ? new Date(editRenewalDate).toISOString() : undefined,
         updatedAt: serverTimestamp(),
       });
@@ -338,28 +469,39 @@ export const Tenants = () => {
         multiLocationEnabled: editMultiLocationEnabled,
       }, { merge: true });
 
-      // If admin credentials changed, update root user doc as well
-      if (editAdminMobile && editAdminPassword) {
-        await setDoc(doc(db, 'users', editAdminMobile.trim()), {
-          id: editAdminMobile.trim(),
-          name: `${editName} Admin`,
-          mobile: editAdminMobile.trim(),
-          password: editAdminPassword.trim(),
+      // If admin credentials changed, synchronize user documents
+      const oldUsername = (editingTenant.adminUsername || '').trim();
+      const newUsername = (editAdminMobile || oldUsername).trim();
+      const newPassword = (editAdminPassword || editingTenant.adminPassword || '').trim();
+
+      if (newUsername) {
+        const adminPayload: any = {
+          id: newUsername,
+          name: `${editName.trim()} Admin`,
+          mobile: newUsername,
           role: 'ADMIN',
           tenantId: editingTenant.id,
           locationIds: ['*'],
-        });
+          active: true,
+          updatedAt: serverTimestamp(),
+        };
+        if (editAdminEmail.trim()) adminPayload.email = editAdminEmail.trim();
+        if (newPassword) adminPayload.password = newPassword;
 
-        if (editAdminMobile.trim().toLowerCase() !== editAdminMobile.trim()) {
-          await setDoc(doc(db, 'users', editAdminMobile.trim().toLowerCase()), {
-            id: editAdminMobile.trim(),
-            name: `${editName} Admin`,
-            mobile: editAdminMobile.trim(),
-            password: editAdminPassword.trim(),
-            role: 'ADMIN',
-            tenantId: editingTenant.id,
-            locationIds: ['*'],
-          });
+        // Create new documents in tenant and root users
+        await setDoc(doc(db, 'tenants', editingTenant.id, 'users', newUsername), adminPayload, { merge: true });
+        await setDoc(doc(db, 'users', newUsername), adminPayload, { merge: true });
+        if (newUsername.toLowerCase() !== newUsername) {
+          await setDoc(doc(db, 'users', newUsername.toLowerCase()), adminPayload, { merge: true });
+        }
+
+        // If username was renamed, delete old documents
+        if (oldUsername && oldUsername.toLowerCase() !== newUsername.toLowerCase()) {
+          try { await deleteDoc(doc(db, 'tenants', editingTenant.id, 'users', oldUsername)); } catch (_) {}
+          try { await deleteDoc(doc(db, 'users', oldUsername)); } catch (_) {}
+          if (oldUsername.toLowerCase() !== oldUsername) {
+            try { await deleteDoc(doc(db, 'users', oldUsername.toLowerCase())); } catch (_) {}
+          }
         }
       }
 
@@ -611,6 +753,13 @@ export const Tenants = () => {
                       </span>
                     </div>
 
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Client Email:</span>
+                      <span className="text-slate-200 font-mono text-[11px] truncate max-w-[150px]" title={tenant.adminEmail || 'N/A'}>
+                        {tenant.adminEmail || (tenant.adminUsername?.includes('@') ? tenant.adminUsername : 'No email set')}
+                      </span>
+                    </div>
+
                     {/* Annual Calendar Renewal */}
                     {(() => {
                       const renewal = getRenewalInfo(tenant);
@@ -643,6 +792,24 @@ export const Tenants = () => {
 
                   {/* Real-time Branch Manager for this Tenant */}
                   <TenantLocationsManager tenantId={tenant.id} />
+
+                  {/* Quick Email & App Link Action for Super Admin */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setTenantEmailModal({
+                        isOpen: true,
+                        tenant,
+                        mode: 'WELCOME',
+                        targetEmail: tenant.adminEmail || (tenant.adminUsername?.includes('@') ? tenant.adminUsername : ''),
+                        targetApkUrl: tenant.apkUrl || latestSystemApkUrl || '',
+                      })}
+                      className="w-full flex items-center justify-center gap-1.5 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 hover:from-indigo-600/30 hover:to-purple-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer shadow-sm"
+                    >
+                      <Mail size={13} />
+                      Send App URL & Credentials
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pt-3 border-t border-slate-800 flex items-center gap-2">
@@ -797,30 +964,56 @@ export const Tenants = () => {
 
               <div className="border-t border-slate-800 pt-3">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  Client Admin Initial Credentials (Restaurant Owner)
+                  Client Contact & Credentials (To receive App Link & Logins)
                 </span>
                 <div className="space-y-2.5">
                   <div>
-                    <label className="text-xs text-slate-300 font-semibold block mb-1">Client Admin Username / Mobile / Email *</label>
+                    <label className="text-xs text-slate-300 font-semibold block mb-1">Client Official Email *</label>
                     <input
-                      type="text"
+                      type="email"
                       required
-                      placeholder="e.g. 9876543210 or admin@brand.com"
-                      value={adminMobile}
-                      onChange={e => setAdminMobile(e.target.value)}
+                      placeholder="e.g. owner@restaurant.com"
+                      value={adminEmail}
+                      onChange={e => setAdminEmail(e.target.value)}
                       className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
                     />
+                    <p className="text-[10px] text-slate-500 mt-0.5">The client will receive their credentials & download link at this email.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-xs text-slate-300 font-semibold block mb-1">User ID / Mobile *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 9876543210"
+                        value={adminMobile}
+                        onChange={e => setAdminMobile(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-300 font-semibold block mb-1">Initial Password *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Secret123"
+                        value={adminPassword}
+                        onChange={e => setAdminPassword(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
                   </div>
                   <div>
-                    <label className="text-xs text-slate-300 font-semibold block mb-1">Client Admin Initial Password *</label>
+                    <label className="text-xs text-slate-300 font-semibold block mb-1">Android POS APK Download URL *</label>
                     <input
-                      type="text"
+                      type="url"
                       required
-                      placeholder="Enter a secure password"
-                      value={adminPassword}
-                      onChange={e => setAdminPassword(e.target.value)}
+                      placeholder="https://expo.dev/artifacts/eas/... or hosted APK link"
+                      value={apkUrl}
+                      onChange={e => setApkUrl(e.target.value)}
                       className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
                     />
+                    <p className="text-[10px] text-slate-500 mt-0.5">Pre-filled with latest active release URL. Editable per client if needed.</p>
                   </div>
                 </div>
               </div>
@@ -1018,7 +1211,27 @@ export const Tenants = () => {
                 </span>
                 <div className="space-y-2.5">
                   <div>
-                    <label className="text-xs text-slate-300 font-semibold block mb-1">Admin Username / Mobile / Email</label>
+                    <label className="text-xs text-slate-300 font-semibold block mb-1">Client Official Email</label>
+                    <input
+                      type="email"
+                      placeholder="owner@restaurant.com"
+                      value={editAdminEmail}
+                      onChange={e => setEditAdminEmail(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-300 font-semibold block mb-1">POS APK Download URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://expo.dev/artifacts/eas/... or hosted link"
+                      value={editApkUrl}
+                      onChange={e => setEditApkUrl(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-300 font-semibold block mb-1">Admin Username / Mobile</label>
                     <input
                       type="text"
                       value={editAdminMobile}
@@ -1058,6 +1271,317 @@ export const Tenants = () => {
           </div>
         </div>
       )}
+
+      {/* Modal: Client Provisioned & Onboarding Kit Ready */}
+      {onboardingKitModal && onboardingKitModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="bg-slate-900 border border-emerald-500/40 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="text-emerald-400" size={22} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Client Provisioned Successfully!</h2>
+                  <p className="text-xs text-emerald-400/90 font-medium mt-0.5">
+                    Login credentials and APK download link are ready
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOnboardingKitModal(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Credentials Card */}
+            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs space-y-2.5">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-850">
+                <span className="text-slate-400">Client / Restaurant:</span>
+                <span className="text-white font-bold text-sm">{onboardingKitModal.tenantName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Client Email:</span>
+                <span className="text-indigo-300 font-mono font-medium">{onboardingKitModal.adminEmail}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">User ID / Username:</span>
+                <span className="text-slate-200 font-mono font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                  {onboardingKitModal.adminUsername}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Initial Password:</span>
+                <span className="text-amber-300 font-mono font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                  {onboardingKitModal.adminPassword}
+                </span>
+              </div>
+              <div className="pt-2 border-t border-slate-850">
+                <span className="text-slate-400 block mb-1">APK Download Link:</span>
+                <div className="bg-slate-900 p-2 rounded-xl border border-slate-800 font-mono text-[11px] text-indigo-400 truncate">
+                  {onboardingKitModal.apkUrl}
+                </div>
+              </div>
+            </div>
+
+            {/* Email Message Preview */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Pre-composed Welcome Email
+              </span>
+              <div className="bg-slate-950/70 p-3 rounded-2xl border border-slate-800/80 text-[11px] text-slate-300 max-h-36 overflow-y-auto whitespace-pre-wrap font-sans">
+                {getWelcomeMailBody(
+                  onboardingKitModal.tenantName,
+                  onboardingKitModal.adminUsername,
+                  onboardingKitModal.adminPassword,
+                  onboardingKitModal.apkUrl
+                )}
+              </div>
+            </div>
+
+            {/* Sender Communication Email Banner */}
+            <div className="bg-indigo-950/40 border border-indigo-500/30 p-2.5 rounded-xl flex items-center justify-between text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <Mail size={13} className="text-indigo-400" />
+                <span>Sending from: <strong className="text-indigo-300 font-mono">{commSettings.communicationEmail}</strong></span>
+              </div>
+              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded font-bold">
+                {commSettings.sendMethod === 'RESEND' ? 'Direct Silent' : commSettings.sendMethod === 'GMAIL' ? 'Gmail' : 'Mail App'}
+              </span>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await dispatchSystemEmail({
+                      to: onboardingKitModal.adminEmail,
+                      subject: getWelcomeMailSubject(onboardingKitModal.tenantName),
+                      body: getWelcomeMailBody(
+                        onboardingKitModal.tenantName,
+                        onboardingKitModal.adminUsername,
+                        onboardingKitModal.adminPassword,
+                        onboardingKitModal.apkUrl
+                      ),
+                    }, commSettings);
+                  } catch (err: any) {
+                    alert('Error: ' + err.message);
+                  }
+                }}
+                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold py-3 rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all"
+              >
+                <Mail size={16} /> Send Email to Client via {commSettings.communicationEmail}
+              </button>
+
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = `ZENTIQ POS CLIENT ONBOARDING KIT\n\nRestaurant: ${onboardingKitModal.tenantName}\nAPK Download: ${onboardingKitModal.apkUrl}\nUser ID: ${onboardingKitModal.adminUsername}\nPassword: ${onboardingKitModal.adminPassword}\n\nDownload the app on your Android terminal, sign in with the details above, and complete setup.`;
+                    navigator.clipboard.writeText(text);
+                    setCopiedKit(true);
+                    setTimeout(() => setCopiedKit(false), 2500);
+                  }}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2.5 rounded-xl border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  {copiedKit ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  {copiedKit ? 'Copied Details!' : 'Copy for WhatsApp / SMS'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOnboardingKitModal(null)}
+                  className="px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2.5 rounded-xl cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Quick Email / App Link Dispatch from Tenant Card */}
+      {tenantEmailModal && tenantEmailModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-white">Send POS App & Access</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Client: <strong className="text-white">{tenantEmailModal.tenant.businessName || tenantEmailModal.tenant.id}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setTenantEmailModal(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Mode Switch Tabs */}
+            <div className="flex bg-slate-800/60 p-1 rounded-2xl border border-slate-700/60">
+              <button
+                type="button"
+                onClick={() => setTenantEmailModal(prev => prev ? { ...prev, mode: 'WELCOME' } : null)}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  tenantEmailModal.mode === 'WELCOME'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Initial Welcome Kit & Logins
+              </button>
+              <button
+                type="button"
+                onClick={() => setTenantEmailModal(prev => prev ? { ...prev, mode: 'UPDATE' } : null)}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  tenantEmailModal.mode === 'UPDATE'
+                    ? 'bg-purple-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                New App APK Update Link
+              </button>
+            </div>
+
+            {/* Inputs: Target Email and APK URL */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-300 font-semibold block mb-1">Recipient Email</label>
+                <input
+                  type="email"
+                  value={tenantEmailModal.targetEmail}
+                  onChange={(e) => setTenantEmailModal(prev => prev ? { ...prev, targetEmail: e.target.value } : null)}
+                  placeholder="client@restaurant.com"
+                  className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-300 font-semibold block mb-1">APK Download URL</label>
+                <input
+                  type="url"
+                  value={tenantEmailModal.targetApkUrl}
+                  onChange={(e) => setTenantEmailModal(prev => prev ? { ...prev, targetApkUrl: e.target.value } : null)}
+                  placeholder="https://expo.dev/artifacts/eas/... or hosted link"
+                  className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Preview Box */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                {tenantEmailModal.mode === 'WELCOME' ? 'Welcome Email Message' : 'Update Notification Message'}
+              </span>
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-[11px] text-slate-300 max-h-40 overflow-y-auto whitespace-pre-wrap font-sans">
+                {tenantEmailModal.mode === 'WELCOME'
+                  ? getWelcomeMailBody(
+                      tenantEmailModal.tenant.businessName || tenantEmailModal.tenant.displayName || 'Partner',
+                      tenantEmailModal.tenant.adminUsername || 'N/A',
+                      tenantEmailModal.tenant.adminPassword || 'Your configured password',
+                      tenantEmailModal.targetApkUrl || latestSystemApkUrl
+                    )
+                  : getUpdateMailBody(
+                      tenantEmailModal.tenant.businessName || tenantEmailModal.tenant.displayName || 'Partner',
+                      tenantEmailModal.targetApkUrl || latestSystemApkUrl
+                    )}
+              </div>
+            </div>
+
+            {/* Sender Communication Email Banner */}
+            <div className="bg-indigo-950/40 border border-indigo-500/30 p-2.5 rounded-xl flex items-center justify-between text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <Mail size={13} className="text-indigo-400" />
+                <span>Sending from: <strong className="text-indigo-300 font-mono">{commSettings.communicationEmail}</strong></span>
+              </div>
+              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded font-bold">
+                {commSettings.sendMethod === 'RESEND' ? 'Direct Silent' : commSettings.sendMethod === 'GMAIL' ? 'Gmail' : 'Mail App'}
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  const name = tenantEmailModal.tenant.businessName || tenantEmailModal.tenant.displayName || 'Partner';
+                  const email = tenantEmailModal.targetEmail;
+                  const apk = tenantEmailModal.targetApkUrl || latestSystemApkUrl;
+
+                  let subject = '';
+                  let body = '';
+
+                  if (tenantEmailModal.mode === 'WELCOME') {
+                    subject = getWelcomeMailSubject(name);
+                    body = getWelcomeMailBody(
+                      name,
+                      tenantEmailModal.tenant.adminUsername || 'N/A',
+                      tenantEmailModal.tenant.adminPassword || 'Your configured password',
+                      apk
+                    );
+                  } else {
+                    subject = getUpdateMailSubject(name);
+                    body = getUpdateMailBody(name, apk);
+                  }
+
+                  try {
+                    await dispatchSystemEmail({
+                      to: email,
+                      subject,
+                      body,
+                    }, commSettings);
+                  } catch (err: any) {
+                    alert('Error: ' + err.message);
+                  }
+                }}
+                className={`w-full text-white text-xs font-bold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                  tenantEmailModal.mode === 'WELCOME'
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-indigo-600/30'
+                    : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-600/30'
+                }`}
+              >
+                <Mail size={16} /> Send Email via {commSettings.communicationEmail}
+              </button>
+
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = tenantEmailModal.tenant.businessName || tenantEmailModal.tenant.displayName || 'Partner';
+                    const apk = tenantEmailModal.targetApkUrl || latestSystemApkUrl;
+                    const text = tenantEmailModal.mode === 'WELCOME'
+                      ? `ZENTIQ POS CLIENT ONBOARDING\n\nRestaurant: ${name}\nAPK Download: ${apk}\nUser ID: ${tenantEmailModal.tenant.adminUsername}\nPassword: ${tenantEmailModal.tenant.adminPassword}`
+                      : `ZENTIQ POS NEW UPDATE\n\nRestaurant: ${name}\nUpdated APK Download: ${apk}\nInstall to get the latest features and updates!`;
+                    navigator.clipboard.writeText(text);
+                    setCopiedKit(true);
+                    setTimeout(() => setCopiedKit(false), 2500);
+                  }}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2.5 rounded-xl border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  {copiedKit ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  {copiedKit ? 'Copied Message!' : 'Copy for WhatsApp / SMS'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTenantEmailModal(null)}
+                  className="px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2.5 rounded-xl cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

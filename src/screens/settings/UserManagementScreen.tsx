@@ -74,9 +74,12 @@ export const UserManagementScreen = () => {
         if (password.trim()) {
           updates.password = password.trim();
         }
-
-        await DBServices.updateUser(editingUserId, updates, tenant?.id);
-        toast.success('Staff member details updated successfully!');
+        const updatedId = await DBServices.updateUser(editingUserId, updates, tenant?.id, mobile.trim());
+        toast.success(
+          updatedId.toLowerCase() !== editingUserId.toLowerCase()
+            ? `Username changed to "${updatedId}" and updated successfully!`
+            : 'Staff member details updated successfully!'
+        );
       } else {
         // Create new staff
         await DBServices.addUser({

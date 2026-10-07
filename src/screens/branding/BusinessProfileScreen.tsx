@@ -1,5 +1,5 @@
 import { toast } from '../../utils/toast';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, Switch, TouchableOpacity, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -15,17 +15,34 @@ import {
   Trash2,
   AlertCircle,
   Calculator,
-  CheckCircle2
+  CheckCircle2,
+  Lock,
+  KeyRound,
+  ShieldCheck
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { useTenantStore } from '../../store/tenant.store';
+import { useAuthStore } from '../../store/auth.store';
 import { DBServices } from '../../services/firebase/db';
 
 export const BusinessProfileScreen = () => {
   const insets = useSafeAreaInsets();
   const { tenant, branding, features, setBranding, setFeatures } = useTenantStore();
+  const { user, setUser } = useAuthStore();
+  const isClientAdmin = user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'CLIENT_ADMIN';
+
+  // Admin login credentials
+  const initialAdminUsername = tenant?.adminUsername || (isClientAdmin ? user?.id : '') || '';
+  const [adminUsername, setAdminUsername] = useState(initialAdminUsername);
+  const [adminPassword, setAdminPassword] = useState('');
+
+  useEffect(() => {
+    if (tenant?.adminUsername) {
+      setAdminUsername(tenant.adminUsername);
+    }
+  }, [tenant?.adminUsername]);
 
   // Branding states
   const [businessName, setBusinessName] = useState(branding?.businessName || '');
@@ -157,7 +174,34 @@ export const BusinessProfileScreen = () => {
       await DBServices.updateTenantFeatures(tenant.id, featuresPayload);
       setFeatures({ ...features, ...featuresPayload });
 
-      toast.success('Store settings and payment preferences updated successfully!', 'Settings Saved');
+      // 3. Update Client Admin credentials if changed
+      let credMessage = '';
+      if (isClientAdmin && adminUsername.trim()) {
+        const targetUsername = adminUsername.trim();
+        const oldUsername = tenant?.adminUsername || user?.id || '';
+        if ((oldUsername && targetUsername.toLowerCase() !== oldUsername.toLowerCase()) || adminPassword.trim()) {
+          const updatedId = await DBServices.updateUser(
+            oldUsername || targetUsername,
+            {
+              name: `${displayName || businessName} Admin`,
+              role: user?.role || 'ADMIN',
+              mobile: targetUsername,
+              ...(adminPassword.trim() ? { password: adminPassword.trim() } : {}),
+            },
+            tenant.id,
+            targetUsername
+          );
+          if (user) {
+            setUser({ ...user, id: updatedId });
+          }
+          credMessage = targetUsername.toLowerCase() !== oldUsername.toLowerCase()
+            ? ` Admin username changed to "${updatedId}".`
+            : ' Admin password updated.';
+          setAdminPassword('');
+        }
+      }
+
+      toast.success(`Store settings updated successfully!${credMessage}`, 'Settings Saved');
     } catch (e: any) {
       toast.error(e.message, 'Save Error');
     } finally {
@@ -549,6 +593,39 @@ export const BusinessProfileScreen = () => {
           <Input label="Receipt Header (Printed on Bills)" value={receiptHeader} onChangeText={setReceiptHeader} />
           <Input label="Receipt Footer Note" value={receiptFooter} onChangeText={setReceiptFooter} />
         </View>
+
+        {/* 5. CLIENT ADMIN CREDENTIALS CARD */}
+        {isClientAdmin && (
+          <View className="bg-slate-900 border border-indigo-500/30 rounded-3xl p-5 mb-6 shadow-sm">
+            <View className="flex-row items-center justify-between mb-1">
+              <View className="flex-row items-center">
+                <ShieldCheck size={18} color="#818CF8" />
+                <Text className="text-white font-black text-base ml-2">Admin Login Credentials</Text>
+              </View>
+              <View className="bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full">
+                <Text className="text-indigo-400 text-[10px] font-bold uppercase tracking-wider">Client Admin</Text>
+              </View>
+            </View>
+            <Text className="text-slate-400 text-xs mb-4 leading-relaxed">
+              Customize your login Username / Mobile and Password. If changed, use your new username next time you sign into the POS.
+            </Text>
+
+            <Input
+              label="Admin Login Username / Mobile"
+              value={adminUsername}
+              onChangeText={setAdminUsername}
+              placeholder="e.g. restaurant_admin or 9876543210"
+              autoCapitalize="none"
+            />
+            <Input
+              label="New Password (leave blank to keep current)"
+              value={adminPassword}
+              onChangeText={setAdminPassword}
+              placeholder="••••••••"
+              secureTextEntry
+            />
+          </View>
+        )}
 
         <Button
           title="Save Store & Payment Settings"

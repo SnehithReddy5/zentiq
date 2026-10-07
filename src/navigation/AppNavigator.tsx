@@ -1,3 +1,4 @@
+import { InventoryScreen } from '../screens/inventory/InventoryScreen';
 import React, { useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { HomeScreen } from '../screens/home/HomeScreen';
@@ -43,6 +44,7 @@ export const AppNavigator = () => {
       <Stack.Screen name={Routes.MENU_MANAGEMENT} component={MenuManagementScreen} />
       <Stack.Screen name={Routes.CART} component={CartScreen} />
       <Stack.Screen name={Routes.ORDERS} component={RunningOrdersScreen} />
+      <Stack.Screen name={Routes.INVENTORY} component={InventoryScreen} />
       <Stack.Screen name={Routes.LOCATION_MANAGEMENT} component={LocationManagementScreen} />
       <Stack.Screen name={Routes.BUSINESS_PROFILE} component={BusinessProfileScreen} />
       <Stack.Screen name={Routes.SETTINGS} component={PrinterSettingsScreen} />

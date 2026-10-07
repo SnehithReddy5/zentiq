@@ -1,3 +1,4 @@
+import { getItemDisplayName } from '../../utils/itemDisplay';
 import type { TenantBranding } from '../../types/tenant.types';
 
 export class ESCPOSService {
@@ -114,10 +115,7 @@ export class ESCPOSService {
     this.pushSeparatorLine(buffer, '-');
 
     items.forEach(item => {
-      let nameStr = item.itemName || item.name || '';
-      if (item.variantName) {
-        nameStr += ` (${item.variantName})`;
-      }
+      const nameStr = getItemDisplayName(item.itemName || item.name || '', item.variantName);
       const wrappedNameLines = this.wrapText(nameStr, 26);
       const line1Name = wrappedNameLines[0] || '';
       const note = (item.note || '--').substring(0, 14);
@@ -233,10 +231,7 @@ export class ESCPOSService {
         displayLineTotal = Math.round((displayUnitPrice * qty) * 100) / 100;
       }
 
-      let nameStr = item.itemName || item.name || 'Item';
-      if (item.variantName) {
-        nameStr += ` (${item.variantName})`;
-      }
+      const nameStr = getItemDisplayName(item.itemName || item.name || 'Item', item.variantName);
       const wrappedNameLines = this.wrapText(nameStr, 22);
       const line1Name = wrappedNameLines[0] || '';
 
@@ -360,10 +355,9 @@ export class ESCPOSService {
     tokenBuffer.push(...this.ALIGN_LEFT);
     items.forEach((item: any) => {
       const q = (item.qty || 1).toString();
-      const n = item.itemName || item.name || 'Item';
-      const v = item.variantName ? ` (${item.variantName})` : '';
+      const n = getItemDisplayName(item.itemName || item.name || 'Item', item.variantName);
       tokenBuffer.push(...this.BOLD_ON);
-      tokenBuffer.push(...this.stringToBytes(`  ${q}x ${n}${v}\n`));
+      tokenBuffer.push(...this.stringToBytes(`  ${q}x ${n}\n`));
       tokenBuffer.push(...this.BOLD_OFF);
       if (item.note && item.note !== '--') {
         tokenBuffer.push(...this.stringToBytes(`     Note: ${item.note}\n`));

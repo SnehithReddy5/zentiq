@@ -1,3 +1,4 @@
+import { getBaseItemName } from '../../utils/itemDisplay';
 import { toast } from '../../utils/toast';
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
@@ -125,7 +126,7 @@ export const CartScreen = () => {
         captainName: user?.name || 'Staff',
         status: 'RUNNING',
         paymentStatus: 'UNPAID',
-        items: cartItems,
+        items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
         subtotal,
         tax: totalTax,
         totalAmount: cartTotal,
@@ -256,7 +257,7 @@ export const CartScreen = () => {
         status: 'COMPLETED',
         paymentStatus: 'PAID',
         payments: finalPayments.map(p => ({ ...p, id: 'pay_' + Date.now(), method: p.method as any, timestamp: new Date().toISOString() })),
-        items: cartItems,
+        items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
         totalAmount: cartTotal,
         createdAt: new Date(),
       }, tenant?.id, activeLocationId || undefined);
@@ -387,7 +388,7 @@ export const CartScreen = () => {
                   <View key={item.itemId} className="flex-row justify-between py-2 border-b border-slate-800/60 last:border-b-0">
                     <View className="flex-1 mr-3">
                       <Text className="text-white text-xs font-semibold">
-                        {item.qty}x {item.itemName}
+                        {item.qty}x {getBaseItemName(item.itemName, item.variantName)}
                       </Text>
                       {item.variantName && (
                         <Text className="text-slate-400 text-[11px]">{item.variantName}</Text>

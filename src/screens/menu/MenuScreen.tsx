@@ -186,6 +186,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   };
 
   const handleAddSimpleItem = (item: MenuItem) => {
+    if (item.isAvailable === false) {
+      toast.warning(`"${item.name}" is marked out of stock.`, 'Out of Stock');
+      return;
+    }
     if (item.trackInventory) {
       const avail = getAvailableStock(item);
       if (avail < 1) {
@@ -204,6 +208,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   };
 
   const handleIncrementSimpleItem = (item: MenuItem, currentQty: number) => {
+    if (item.isAvailable === false) {
+      toast.warning(`"${item.name}" is marked out of stock.`, 'Out of Stock');
+      return;
+    }
     if (item.trackInventory) {
       const avail = getAvailableStock(item);
       if (avail < 1) {
@@ -217,6 +225,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const handleIncrementCartItem = (cItem: any) => {
     const baseId = cItem.baseItemId || cItem.itemId;
     const masterItem = items.find(i => i.id === baseId);
+    if (masterItem && masterItem.isAvailable === false) {
+      toast.warning(`"${masterItem.name}" is marked out of stock.`, 'Out of Stock');
+      return;
+    }
     if (masterItem && masterItem.trackInventory) {
       const deduction = typeof cItem.portionDeduction === 'number' ? cItem.portionDeduction : 1;
       const avail = getAvailableStock(masterItem);
@@ -233,8 +245,9 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     const cartItem = cartItems.find(i => i.itemId === item.id);
     const qty = cartItem?.qty || 0;
     const availStock = getAvailableStock(item);
-    const isOutOfStock = item.trackInventory && availStock <= 0;
-    const isLowStock = item.trackInventory && !isOutOfStock && availStock <= (item.lowStockThreshold || 2);
+    const isExplicitlyOutOfStock = item.isAvailable === false;
+    const isOutOfStock = isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0);
+    const isLowStock = !isExplicitlyOutOfStock && item.trackInventory && !isOutOfStock && availStock <= (item.lowStockThreshold || 2);
 
     return (
       <View className={`bg-slate-900 border p-4 rounded-2xl mb-3 flex-row items-center justify-between shadow-lg ${
@@ -251,8 +264,14 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
               {item.name}
             </Text>
 
-            {/* Inventory Status Pill */}
-            {item.trackInventory && (
+            {/* Out of Stock / Inventory Status Badge */}
+            {isExplicitlyOutOfStock ? (
+              <View className="px-2 py-0.5 rounded-full border bg-rose-500/20 border-rose-500/40">
+                <Text className="text-[10px] font-black text-rose-400 tracking-wider uppercase">
+                  OUT OF STOCK
+                </Text>
+              </View>
+            ) : item.trackInventory ? (
               <View className={`px-2 py-0.5 rounded-full border ${
                 isOutOfStock
                   ? 'bg-rose-500/15 border-rose-500/30'
@@ -274,7 +293,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                     : `In Stock: ${availStock.toFixed(availStock % 1 === 0 ? 0 : 2)} ${item.stockUnit || 'kg'}`}
                 </Text>
               </View>
-            )}
+            ) : null}
           </View>
           <Text className="text-slate-400 font-bold text-xs mt-1">₹{item.price}</Text>
           {hasVariants && (
@@ -300,7 +319,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           </TouchableOpacity>
         ) : isOutOfStock ? (
           <View className="bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl">
-            <Text className="text-slate-500 font-bold text-xs">Out of Stock</Text>
+            <Text className="text-rose-400 font-bold text-xs">Out of Stock</Text>
           </View>
         ) : qty > 0 ? (
           <View className="flex-row items-center bg-slate-800 rounded-xl p-1 border border-slate-700">
@@ -592,7 +611,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                     const avail = getAvailableStock(selectedItemForVariants);
                     return selectedItemForVariants.variants?.map(v => {
                       const deduction = typeof v.portionDeduction === 'number' ? v.portionDeduction : 1;
-                      const canFulfill = !selectedItemForVariants.trackInventory || (avail >= deduction);
+                      const canFulfill = selectedItemForVariants.isAvailable !== false && (!selectedItemForVariants.trackInventory || (avail >= deduction));
                       const variantItemId = `${selectedItemForVariants.id}_${v.name}`;
                       const inCart = cartItems.find(i => i.itemId === variantItemId);
                       const vQty = inCart ? inCart.qty : 0;
@@ -654,7 +673,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                                 addItem(tableNo, {
                                   itemId: variantItemId,
                                   baseItemId: selectedItemForVariants.id,
-                                  itemName: `${selectedItemForVariants.name} (${v.name})`,
+                                  itemName: selectedItemForVariants.name,
                                   price: v.price,
                                   qty: 1,
                                   variantName: v.name,

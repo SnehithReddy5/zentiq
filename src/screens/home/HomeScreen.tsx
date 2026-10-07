@@ -31,6 +31,7 @@ import {
   Receipt,
   Bell,
   Users,
+  Boxes,
   Settings,
   Plus
 } from 'lucide-react-native';
@@ -234,6 +235,14 @@ export const HomeScreen = () => {
         {/* Header Right Actions for Large POS */}
         {isLargePOS && (
           <View className="flex-row items-center gap-3">
+            <TouchableOpacity
+              onPress={() => navigation.navigate(Routes.INVENTORY)}
+              className="flex-row items-center bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl"
+            >
+              <Boxes size={14} color="#34D399" />
+              <Text className="text-slate-200 text-xs font-bold ml-1.5">Kitchen Inventory</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={() => navigation.navigate(Routes.ORDERS)}
               className="flex-row items-center bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl"
@@ -467,6 +476,23 @@ export const HomeScreen = () => {
                 </View>
               </View>
             </View>
+
+            {/* Quick Kitchen Inventory Banner */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate(Routes.INVENTORY)}
+              className="bg-slate-900 border border-slate-800 rounded-3xl p-3.5 mt-2 flex-row items-center justify-between active:bg-slate-850"
+            >
+              <View className="flex-row items-center flex-1 mr-2">
+                <View className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 items-center justify-center mr-3">
+                  <Boxes size={20} color="#34D399" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white font-bold text-sm">Kitchen Inventory & Stock</Text>
+                  <Text className="text-slate-400 text-[11px] mt-0.5">Track raw bulk loads, kitchen issues & balance</Text>
+                </View>
+              </View>
+              <ChevronRight size={18} color="#94A3B8" />
+            </TouchableOpacity>
           </View>
         ) : (
           /* DESKTOP / LARGE POS VIEW (>= 768px): Enterprise Multi-Column Dashboard */

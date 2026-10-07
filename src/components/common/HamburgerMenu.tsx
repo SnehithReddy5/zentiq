@@ -8,6 +8,7 @@ import {
   LogOut,
   Users,
   ClipboardList,
+  Boxes,
   Utensils,
   MapPin,
   Building,
@@ -113,6 +114,20 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
                 </View>
                 <ChevronRight size={16} color="#64748B" />
               </TouchableOpacity>
+
+              {/* Kitchen Inventory & Store Load */}
+              {isManager && (
+                <TouchableOpacity
+                  onPress={() => navigateTo(Routes.INVENTORY)}
+                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                >
+                  <View className="flex-row items-center">
+                    <Boxes size={18} color="#34D399" />
+                    <Text className="text-slate-200 text-sm font-semibold ml-3">Kitchen Inventory & Stock</Text>
+                  </View>
+                  <ChevronRight size={16} color="#64748B" />
+                </TouchableOpacity>
+              )}
 
               {/* Menu Management: Managers and Admins */}
               {isManager && (
