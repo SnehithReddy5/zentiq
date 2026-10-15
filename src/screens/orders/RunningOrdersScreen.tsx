@@ -133,8 +133,23 @@ const OrderCard = React.memo(({
         <View className="flex-row items-start justify-between mb-2">
           <View className="flex-1 mr-2 flex-row items-center flex-wrap gap-1.5">
             <Text className="text-white font-black text-base">
-              {item.tableNo ? (`Table ${item.tableNo}`) : (item.orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway')}
+              {item.orderType === 'ONLINE_ZOMATO'
+                ? '🔴 Zomato'
+                : item.orderType === 'ONLINE_SWIGGY'
+                ? '🟠 Swiggy'
+                : item.tableNo
+                ? `Table ${item.tableNo}`
+                : item.orderType === 'PICKUP'
+                ? 'Pick Up'
+                : 'Takeaway'}
             </Text>
+            {item.aggregatorOrderId && (
+              <View className="bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30">
+                <Text className="text-amber-300 text-[10px] font-bold">
+                  #{item.aggregatorOrderId}
+                </Text>
+              </View>
+            )}
             <View className="bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30">
               <Text className="text-indigo-300 text-[10px] font-bold">
                 {orderBillNo}
@@ -602,7 +617,7 @@ export const RunningOrdersScreen = () => {
     isClientAdmin ? (activeLocationId || (locations[0]?.id || 'ALL')) : (staffBranch || 'ALL')
   );
   const [search, setSearch] = useState('');
-  const [selectedOrderTypeFilter, setSelectedOrderTypeFilter] = useState<'ALL' | 'DINE_IN' | 'PICKUP' | 'TAKEAWAY'>('ALL');
+  const [selectedOrderTypeFilter, setSelectedOrderTypeFilter] = useState<'ALL' | 'DINE_IN' | 'PICKUP' | 'TAKEAWAY' | 'ONLINE_AGGREGATOR'>('ALL');
 
   // Single Master Scope for both Summary Dashboard & Order List: 'TODAY' vs 'ALL'
   const [timeScope, setTimeScope] = useState<'TODAY' | 'ALL'>('TODAY');
@@ -631,13 +646,16 @@ export const RunningOrdersScreen = () => {
 
     return orders.filter(o => {
       // Order type filter
-      if (selectedOrderTypeFilter === 'DINE_IN' && (!o.tableNo || o.orderType === 'PICKUP' || o.orderType === 'TAKEAWAY')) {
+      if (selectedOrderTypeFilter === 'DINE_IN' && (!o.tableNo || o.orderType === 'PICKUP' || o.orderType === 'TAKEAWAY' || o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY')) {
         return false;
       }
       if (selectedOrderTypeFilter === 'PICKUP' && o.orderType !== 'PICKUP') {
         return false;
       }
       if (selectedOrderTypeFilter === 'TAKEAWAY' && o.orderType !== 'TAKEAWAY') {
+        return false;
+      }
+      if (selectedOrderTypeFilter === 'ONLINE_AGGREGATOR' && o.orderType !== 'ONLINE_ZOMATO' && o.orderType !== 'ONLINE_SWIGGY') {
         return false;
       }
 
@@ -1057,7 +1075,7 @@ export const RunningOrdersScreen = () => {
         order.tableNo || 0,
         order.captainName || 'Staff',
         order.items || [],
-        'DUPLICATE / REPRINT KOT',
+        order.specialNote || (order.orderType?.includes('ONLINE') ? 'ONLINE AGGREGATOR ORDER' : 'DUPLICATE / REPRINT KOT'),
         order.orderType || (order.tableNo ? 'DINE_IN' : 'PICKUP')
       );
       await printerService.print(
@@ -1259,7 +1277,7 @@ export const RunningOrdersScreen = () => {
           <View className="h-5 w-[1px] bg-slate-800 mx-0.5" />
 
           {/* Order Type Filter: All Types, Dine In, Pick Up, Takeaway */}
-          {(['ALL', 'DINE_IN', 'PICKUP', 'TAKEAWAY'] as const).map(f => (
+          {(['ALL', 'DINE_IN', 'PICKUP', 'TAKEAWAY', 'ONLINE_AGGREGATOR'] as const).map(f => (
             <TouchableOpacity
               key={f}
               onPress={() => setSelectedOrderTypeFilter(f)}
@@ -1270,7 +1288,7 @@ export const RunningOrdersScreen = () => {
             >
               <Text className={`text-xs font-bold ${selectedOrderTypeFilter === f ? 'text-white' : 'text-slate-400'
                 }`}>
-                {f === 'ALL' ? 'All Types' : f === 'DINE_IN' ? 'Dine In' : f === 'PICKUP' ? 'Pick Up' : 'Takeaway'}
+                {f === 'ALL' ? 'All Types' : f === 'DINE_IN' ? 'Dine In' : f === 'PICKUP' ? 'Pick Up' : f === 'TAKEAWAY' ? 'Takeaway' : '🛵 Zomato & Swiggy'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -1335,9 +1353,31 @@ export const RunningOrdersScreen = () => {
               </View>
 
               <View className="flex-row items-center gap-2">
-                <View className={`px-3 py-1 rounded-full ${selectedOrder.orderType === 'PICKUP' ? 'bg-purple-500/20 border border-purple-500/40' : 'bg-blue-500/20 border border-blue-500/40'}`}>
-                  <Text className={`text-xs font-bold ${selectedOrder.orderType === 'PICKUP' ? 'text-purple-300' : 'text-blue-300'}`}>
-                    {selectedOrder.orderType === 'PICKUP' ? 'Pick Up' : (selectedOrder.tableNo ? `Table ${selectedOrder.tableNo}` : 'Takeaway')}
+                <View className={`px-3 py-1 rounded-full ${
+                    selectedOrder.orderType === 'ONLINE_ZOMATO'
+                      ? 'bg-rose-500/20 border border-rose-500/40'
+                      : selectedOrder.orderType === 'ONLINE_SWIGGY'
+                      ? 'bg-orange-500/20 border border-orange-500/40'
+                      : selectedOrder.orderType === 'PICKUP'
+                      ? 'bg-purple-500/20 border border-purple-500/40'
+                      : 'bg-blue-500/20 border border-blue-500/40'
+                  }`}>
+                  <Text className={`text-xs font-bold ${
+                    selectedOrder.orderType === 'ONLINE_ZOMATO'
+                      ? 'text-rose-300'
+                      : selectedOrder.orderType === 'ONLINE_SWIGGY'
+                      ? 'text-orange-300'
+                      : selectedOrder.orderType === 'PICKUP'
+                      ? 'text-purple-300'
+                      : 'text-blue-300'
+                  }`}>
+                    {selectedOrder.orderType === 'ONLINE_ZOMATO'
+                      ? '🔴 Zomato Online'
+                      : selectedOrder.orderType === 'ONLINE_SWIGGY'
+                      ? '🟠 Swiggy Online'
+                      : selectedOrder.orderType === 'PICKUP'
+                      ? 'Pick Up'
+                      : (selectedOrder.tableNo ? `Table ${selectedOrder.tableNo}` : 'Takeaway')}
                   </Text>
                 </View>
 
@@ -1354,6 +1394,32 @@ export const RunningOrdersScreen = () => {
             </View>
 
             <ScrollView className="flex-1 px-4 py-4" contentContainerStyle={{ paddingBottom: 60 }}>
+              {(selectedOrder.orderType === 'ONLINE_ZOMATO' || selectedOrder.orderType === 'ONLINE_SWIGGY') && (
+                <View className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-2xl mb-4">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-amber-300 font-bold text-xs uppercase tracking-wider">
+                      🛵 {selectedOrder.orderType === 'ONLINE_ZOMATO' ? 'Zomato Online Delivery' : 'Swiggy Online Delivery'}
+                    </Text>
+                    <Text className="text-white font-mono font-bold text-xs">
+                      #{selectedOrder.aggregatorOrderId || selectedOrder.kotNo}
+                    </Text>
+                  </View>
+                  <View className="space-y-1.5">
+                    <View className="flex-row justify-between">
+                      <Text className="text-slate-400 text-xs">Delivery Rider:</Text>
+                      <Text className="text-slate-200 text-xs font-semibold">
+                        {selectedOrder.deliveryRiderName || 'Valet Assigned'} {selectedOrder.deliveryRiderPhone ? `(${selectedOrder.deliveryRiderPhone})` : ''}
+                      </Text>
+                    </View>
+                    <View className="flex-row justify-between">
+                      <Text className="text-slate-400 text-xs">Customer:</Text>
+                      <Text className="text-slate-200 text-xs font-semibold">
+                        {selectedOrder.customerName || 'Online Diner'} {selectedOrder.customerPhone ? `(${selectedOrder.customerPhone})` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
               {/* Top & Least Order Callout Banners in Modal */}
               {selectedOrder.id === stats.highestOrderId && filteredOrders.length > 1 && (
                 <View className="bg-emerald-500/15 border-2 border-emerald-500/40 p-3.5 rounded-2xl mb-4 flex-row items-center">
@@ -1508,7 +1574,7 @@ export const RunningOrdersScreen = () => {
                     ) : (
                       <View className="flex-row items-center justify-center">
                         <Utensils size={18} color="#FBBF24" />
-                        <Text className="text-amber-300 font-black text-sm ml-2">Reprint KOT</Text>
+                        <Text className="text-amber-300 font-black text-sm ml-2">{selectedOrder.orderType?.includes('ONLINE') ? 'Print Kitchen KOT' : 'Reprint KOT'}</Text>
                       </View>
                     )}
                   </TouchableOpacity>

@@ -9,6 +9,8 @@ import {
   Users,
   ClipboardList,
   Boxes,
+  ChefHat,
+  Store,
   Utensils,
   MapPin,
   Building,
@@ -40,7 +42,7 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
     navigation.navigate(route);
   };
 
-  const isSuperAdmin = user?.role === 'CLIENT_ADMIN' || user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'admin';
+  const isSuperAdmin = user?.role === 'PLATFORM_ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'admin';
   const isManager = isSuperAdmin || user?.role === 'MANAGER' || user?.role === 'manager';
   const isBiller = isManager || user?.role === 'BILLER' || user?.role === 'CASHIER';
 
@@ -124,6 +126,34 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
                   <View className="flex-row items-center">
                     <Boxes size={18} color="#34D399" />
                     <Text className="text-slate-200 text-sm font-semibold ml-3">Kitchen Inventory & Stock</Text>
+                  </View>
+                  <ChevronRight size={16} color="#64748B" />
+                </TouchableOpacity>
+              )}
+
+              {/* Central Kitchen Hub: Supplier */}
+              {isManager && (
+                <TouchableOpacity
+                  onPress={() => navigateTo(Routes.CENTRAL_KITCHEN)}
+                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                >
+                  <View className="flex-row items-center">
+                    <ChefHat size={18} color="#818CF8" />
+                    <Text className="text-slate-200 text-sm font-semibold ml-3">Central Kitchen Hub (Supply)</Text>
+                  </View>
+                  <ChevronRight size={16} color="#64748B" />
+                </TouchableOpacity>
+              )}
+
+              {/* Central Kitchen Ordering: Buyer Outlet */}
+              {isManager && (
+                <TouchableOpacity
+                  onPress={() => navigateTo(Routes.CENTRAL_KITCHEN_ORDERING)}
+                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                >
+                  <View className="flex-row items-center">
+                    <Store size={18} color="#38BDF8" />
+                    <Text className="text-slate-200 text-sm font-semibold ml-3">Order from Central Kitchen</Text>
                   </View>
                   <ChevronRight size={16} color="#64748B" />
                 </TouchableOpacity>

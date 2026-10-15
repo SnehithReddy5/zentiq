@@ -14,4 +14,6 @@ export const Routes = {
   BUSINESS_PROFILE: 'BusinessProfile',
   LOCATION_MANAGEMENT: 'LocationManagement',
   INVENTORY: 'Inventory',
+  CENTRAL_KITCHEN: 'CentralKitchen',
+  CENTRAL_KITCHEN_ORDERING: 'CentralKitchenOrdering',
 } as const;

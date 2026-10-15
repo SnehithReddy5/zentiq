@@ -1,3 +1,4 @@
+import { simulateAdminTestOrder } from '../utils/aggregatorParser';
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
@@ -127,6 +128,8 @@ const TenantLocationsManager = ({ tenantId }: { tenantId: string }) => {
           )}
         </div>
       )}
+
+      
     </div>
   );
 };
@@ -155,6 +158,12 @@ export const Tenants = () => {
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<'RESTAURANT' | 'CURRY_POINT' | 'TIFFIN_CENTER' | 'CAFE' | 'FOOD_TRUCK'>('RESTAURANT');
   const [editAdminEmail, setEditAdminEmail] = useState('');
+  const [testAggregatorModal, setTestAggregatorModal] = useState<{
+    isOpen: boolean;
+    tenant: any | null;
+    isSimulating: boolean;
+    lastResult: string | null;
+  }>({ isOpen: false, tenant: null, isSimulating: false, lastResult: null });
   const [editAdminMobile, setEditAdminMobile] = useState('');
   const [editAdminPassword, setEditAdminPassword] = useState('');
   const [editApkUrl, setEditApkUrl] = useState('');
@@ -302,7 +311,9 @@ Zentiq Platform Team`;
         businessType,
         status: 'ACTIVE',
         multiLocationEnabled,
-        adminEmail: adminEmail.trim(),
+        adminEmail: adminEmail.trim().toLowerCase(),
+        email: adminEmail.trim().toLowerCase(),
+        aggregatorEmail: adminEmail.trim().toLowerCase(),
         adminUsername: adminMobile.trim(),
         adminPassword: adminPassword.trim(),
         apkUrl: effectiveApkUrl,
@@ -415,7 +426,7 @@ Zentiq Platform Team`;
     setEditingTenant(tenant);
     setEditName(tenant.businessName || tenant.displayName || '');
     setEditType(tenant.businessType || 'RESTAURANT');
-    setEditAdminEmail(tenant.adminEmail || '');
+    setEditAdminEmail(tenant.aggregatorEmail || tenant.adminEmail || tenant.email || '');
     setEditAdminMobile(tenant.adminUsername || '');
     setEditAdminPassword(tenant.adminPassword || '');
     setEditApkUrl(tenant.apkUrl || '');
@@ -453,7 +464,9 @@ Zentiq Platform Team`;
         displayName: editName.trim(),
         businessType: editType,
         multiLocationEnabled: editMultiLocationEnabled,
-        adminEmail: editAdminEmail.trim() || undefined,
+        adminEmail: editAdminEmail.trim() ? editAdminEmail.trim().toLowerCase() : undefined,
+        email: editAdminEmail.trim() ? editAdminEmail.trim().toLowerCase() : undefined,
+        aggregatorEmail: editAdminEmail.trim() ? editAdminEmail.trim().toLowerCase() : undefined,
         adminUsername: editAdminMobile.trim() || undefined,
         adminPassword: editAdminPassword.trim() || undefined,
         apkUrl: editApkUrl.trim() || undefined,
@@ -754,9 +767,17 @@ Zentiq Platform Team`;
                     </div>
 
                     <div className="flex items-center justify-between text-slate-400">
-                      <span>Client Email:</span>
-                      <span className="text-slate-200 font-mono text-[11px] truncate max-w-[150px]" title={tenant.adminEmail || 'N/A'}>
-                        {tenant.adminEmail || (tenant.adminUsername?.includes('@') ? tenant.adminUsername : 'No email set')}
+                      <span>Aggregator Email:</span>
+                      <span className="text-slate-200 font-mono text-[11px] truncate max-w-[150px]" title={tenant.aggregatorEmail || tenant.adminEmail || 'N/A'}>
+                        {tenant.aggregatorEmail || tenant.adminEmail || (tenant.adminUsername?.includes('@') ? tenant.adminUsername : 'No email set')}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] bg-slate-900/60 px-2.5 py-1.5 rounded-lg border border-slate-800/80">
+                      <span className="text-amber-400 font-medium flex items-center gap-1">
+                        <span>🛵</span> Zomato & Swiggy:
+                      </span>
+                      <span className="text-emerald-400 font-mono font-semibold text-[10px]">
+                        {(tenant.aggregatorEmail || tenant.adminEmail || tenant.email) ? '● Auto-Sync Ready' : '○ Missing Email'}
                       </span>
                     </div>
 
@@ -808,6 +829,19 @@ Zentiq Platform Team`;
                     >
                       <Mail size={13} />
                       Send App URL & Credentials
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTestAggregatorModal({
+                        isOpen: true,
+                        tenant,
+                        isSimulating: false,
+                        lastResult: null,
+                      })}
+                      className="w-full mt-2 flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500/15 to-orange-500/15 hover:from-amber-500/25 hover:to-orange-500/25 text-amber-300 border border-amber-500/30 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer shadow-sm"
+                    >
+                      <span>⚡</span>
+                      Test Zomato / Swiggy Live Order
                     </button>
                   </div>
                 </div>
@@ -968,16 +1002,33 @@ Zentiq Platform Team`;
                 </span>
                 <div className="space-y-2.5">
                   <div>
-                    <label className="text-xs text-slate-300 font-semibold block mb-1">Client Official Email *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-slate-200 font-bold flex items-center gap-1.5">
+                        <span className="text-amber-400">★</span> Official Restaurant Email (Mandatory) *
+                      </label>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">
+                        Zomato & Swiggy Key
+                      </span>
+                    </div>
                     <input
                       type="email"
                       required
-                      placeholder="e.g. owner@restaurant.com"
+                      placeholder="e.g. orders@myrestaurant.com"
                       value={adminEmail}
                       onChange={e => setAdminEmail(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+                      className="w-full bg-slate-800 border border-amber-500/40 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-amber-400 font-mono focus:ring-1 focus:ring-amber-400/50"
                     />
-                    <p className="text-[10px] text-slate-500 mt-0.5">The client will receive their credentials & download link at this email.</p>
+                    <div className="mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2 text-left">
+                      <span className="text-amber-400 text-sm mt-0.5 leading-none">💡</span>
+                      <div className="flex-1">
+                        <p className="text-[11px] text-amber-200 font-bold mb-0.5">
+                          Must be used for Zomato & Swiggy Merchant Sync:
+                        </p>
+                        <p className="text-[10px] text-amber-200/80 leading-relaxed">
+                          This email MUST match the restaurant's registered email in Zomato & Swiggy merchant accounts (or where order receipts are forwarded). Zentiq uses this email in code as the unique routing key to auto-ingest online orders, deduct inventory, and auto-print KOTs at zero 3rd-party fee.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
@@ -1211,14 +1262,25 @@ Zentiq Platform Team`;
                 </span>
                 <div className="space-y-2.5">
                   <div>
-                    <label className="text-xs text-slate-300 font-semibold block mb-1">Client Official Email</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-slate-200 font-bold flex items-center gap-1.5">
+                        <span className="text-amber-400">★</span> Official Restaurant Email (Zomato & Swiggy Key)
+                      </label>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">
+                        Aggregator Routing
+                      </span>
+                    </div>
                     <input
                       type="email"
-                      placeholder="owner@restaurant.com"
+                      required
+                      placeholder="orders@restaurant.com"
                       value={editAdminEmail}
                       onChange={e => setEditAdminEmail(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+                      className="w-full bg-slate-800 border border-amber-500/40 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-amber-400 font-mono"
                     />
+                    <p className="text-[10px] text-amber-300/80 mt-1">
+                      Routing key for live Zomato and Swiggy order auto-ingestion and POS KOT printing.
+                    </p>
                   </div>
                   <div>
                     <label className="text-xs text-slate-300 font-semibold block mb-1">POS APK Download URL</label>
@@ -1581,7 +1643,105 @@ Zentiq Platform Team`;
           </div>
         </div>
       )}
+{/* TEST AGGREGATOR ORDER MODAL */}
+      {testAggregatorModal.isOpen && testAggregatorModal.tenant && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              onClick={() => setTestAggregatorModal({ isOpen: false, tenant: null, isSimulating: false, lastResult: null })}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg">
+                🛵
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Live Aggregator Simulation</h3>
+                <p className="text-xs text-slate-400">Zero-cost Zomato & Swiggy Order Ingestion</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 mb-4 space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Restaurant:</span>
+                <span className="text-white font-bold">{testAggregatorModal.tenant.displayName || testAggregatorModal.tenant.businessName}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Sync Email:</span>
+                <span className="text-amber-300 font-mono font-medium">
+                  {testAggregatorModal.tenant.aggregatorEmail || testAggregatorModal.tenant.adminEmail || testAggregatorModal.tenant.email || 'None configured'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/60 leading-relaxed">
+                Clicking test will inject a realistic order into this restaurant's POS terminal in real-time, generate a KOT sequence number, and trigger thermal KOT printing.
+              </p>
+            </div>
+
+            {testAggregatorModal.lastResult && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
+                {testAggregatorModal.lastResult}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={testAggregatorModal.isSimulating}
+                onClick={async () => {
+                  try {
+                    setTestAggregatorModal((prev: any) => ({ ...prev, isSimulating: true, lastResult: null }));
+                    const res = await simulateAdminTestOrder(testAggregatorModal.tenant.id, 'ZOMATO');
+                    setTestAggregatorModal((prev: any) => ({
+                      ...prev,
+                      isSimulating: false,
+                      lastResult: `✅ Zomato Order #ZOM-${res.kotNo} placed! Check POS Running Orders.`,
+                    }));
+                  } catch (err: any) {
+                    setTestAggregatorModal((prev: any) => ({
+                      ...prev,
+                      isSimulating: false,
+                      lastResult: `❌ Error: ${err.message || 'Failed to simulate'}`,
+                    }));
+                  }
+                }}
+                className="flex items-center justify-center gap-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 py-3 rounded-xl font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                <span>🔴</span>
+                {testAggregatorModal.isSimulating ? 'Sending...' : 'Test ZOMATO Order'}
+              </button>
+
+              <button
+                type="button"
+                disabled={testAggregatorModal.isSimulating}
+                onClick={async () => {
+                  try {
+                    setTestAggregatorModal((prev: any) => ({ ...prev, isSimulating: true, lastResult: null }));
+                    const res = await simulateAdminTestOrder(testAggregatorModal.tenant.id, 'SWIGGY');
+                    setTestAggregatorModal((prev: any) => ({
+                      ...prev,
+                      isSimulating: false,
+                      lastResult: `✅ Swiggy Order #SWIG-${res.kotNo} placed! Check POS Running Orders.`,
+                    }));
+                  } catch (err: any) {
+                    setTestAggregatorModal((prev: any) => ({
+                      ...prev,
+                      isSimulating: false,
+                      lastResult: `❌ Error: ${err.message || 'Failed to simulate'}`,
+                    }));
+                  }
+                }}
+                className="flex items-center justify-center gap-2 bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 border border-orange-500/30 py-3 rounded-xl font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                <span>🟠</span>
+                {testAggregatorModal.isSimulating ? 'Sending...' : 'Test SWIGGY Order'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-

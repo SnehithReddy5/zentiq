@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import {
   Boxes,
   Package,
@@ -19,6 +20,7 @@ import {
   Truck,
   Utensils,
   AlertTriangle,
+  ShieldAlert,
   CheckCircle2,
   Clock,
   Search,
@@ -54,6 +56,7 @@ const COMMON_UNITS = ['kg', 'packets', 'litres', 'grams', 'cans', 'boxes', 'pcs'
 
 export const InventoryScreen = () => {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const { items, logs, isLoading, subscribeToInventory } = useInventoryStore();
   const { tenant, activeLocationId } = useTenantStore();
   const { user } = useAuthStore();
@@ -327,6 +330,44 @@ export const InventoryScreen = () => {
     if (isNaN(date.getTime())) return 'Just now';
     return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   };
+
+  const isManagerOrAbove =
+    user?.role === 'PLATFORM_ADMIN' ||
+    user?.role === 'CLIENT_ADMIN' ||
+    user?.role === 'ADMIN' ||
+    user?.role === 'TENANT_SUPER_ADMIN' ||
+    user?.role === 'admin' ||
+    user?.role === 'MANAGER' ||
+    user?.role === 'manager';
+
+  if (!isManagerOrAbove) {
+    return (
+      <SafeAreaView className="flex-1 bg-[#090D1A]">
+        <Header title="Kitchen Inventory" subtitle="Access Control" />
+        <View className="flex-1 items-center justify-center p-6">
+          <View className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/20 items-center justify-center mb-4">
+            <ShieldAlert size={36} color="#F43F5E" />
+          </View>
+          <Text className="text-white font-black text-xl text-center">Store Manager Access Required</Text>
+          <Text className="text-slate-400 text-xs text-center mt-2 max-w-sm leading-5">
+            Kitchen inventory balance, bulk load reception, and usage ledgers are restricted to Store Managers and Restaurant Administrators only.
+          </Text>
+          <View className="bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl mt-4">
+            <Text className="text-slate-400 text-xs">
+              Your Current Role: <Text className="text-amber-400 font-bold uppercase">{user?.role || 'Staff'}</Text>
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            className="mt-6 bg-[#5D3FD3] px-6 py-3 rounded-2xl flex-row items-center active:bg-[#4D32B8]"
+          >
+            <ArrowRight size={16} color="white" />
+            <Text className="text-white font-bold text-xs ml-2">Back to POS Terminal</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-[#090D1A]">

@@ -1,4 +1,4 @@
-name: Admin Web Console
+name: Admin Web Console & Firebase Deploy
 
 on:
   push:
@@ -11,8 +11,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-admin-web:
-    name: Build & Validate Admin Web
+  build-and-deploy:
+    name: Build & Deploy to Firebase Hosting
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -39,3 +39,29 @@ jobs:
           name: admin-web-production-dist
           path: admin-web/dist/
           retention-days: 30
+
+      # 1. Deploy via Firebase Service Account (Recommended by Google)
+      - name: Deploy to Firebase Hosting (Service Account)
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ZENTIQ_B5D40 != '' }}
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ZENTIQ_B5D40 }}'
+          channelId: live
+          projectId: zentiq-b5d40
+          entryPoint: ./admin-web
+
+      # 2. Deploy via Firebase Token Fallback
+      - name: Deploy to Firebase Hosting (Token Fallback)
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ZENTIQ_B5D40 == '' && secrets.FIREBASE_TOKEN != '' }}
+        working-directory: admin-web
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"
+
+      # 3. Informative notice if secrets are not yet configured in GitHub Repo
+      - name: Deployment Notice if Secrets Missing
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ZENTIQ_B5D40 == '' && secrets.FIREBASE_TOKEN == '' }}
+        run: |
+          echo "::warning::Automated Firebase Hosting deploy requires a secret in your GitHub repository."
+          echo "Please add either FIREBASE_TOKEN or FIREBASE_SERVICE_ACCOUNT_ZENTIQ_B5D40 in GitHub: Settings -> Secrets and variables -> Actions."

@@ -1,4 +1,4 @@
-export type OrderType = 'DINE_IN' | 'PICKUP' | 'TAKEAWAY' | 'dine-in' | 'pickup';
+export type OrderType = 'DINE_IN' | 'PICKUP' | 'TAKEAWAY' | 'ONLINE_ZOMATO' | 'ONLINE_SWIGGY' | 'dine-in' | 'pickup';
 
 export type OrderStatus = 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'running' | 'completed' | 'cancelled';
 
@@ -52,6 +52,12 @@ export interface Order {
   totalAmount: number;
   specialNote?: string;
   createdBy?: string;
+  aggregatorOrderId?: string;
+  aggregatorPlatform?: 'ZOMATO' | 'SWIGGY';
+  customerName?: string;
+  customerPhone?: string;
+  deliveryRiderName?: string;
+  deliveryRiderPhone?: string;
   createdAt: any;
   updatedAt?: any;
 }

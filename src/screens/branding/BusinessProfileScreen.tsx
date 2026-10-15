@@ -100,6 +100,7 @@ export const BusinessProfileScreen = () => {
   );
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isSimulatingAggregator, setIsSimulatingAggregator] = useState(false);
 
   // Active payment methods count
   const activeMethodsCount = (paymentsEnabled ? (
@@ -142,7 +143,8 @@ export const BusinessProfileScreen = () => {
         businessName,
         displayName: displayName || businessName,
         phone,
-        email,
+        email: email.trim().toLowerCase(),
+        aggregatorEmail: email.trim().toLowerCase(),
         address,
         gstin,
         receiptHeader: receiptHeader || businessName,
@@ -587,11 +589,88 @@ export const BusinessProfileScreen = () => {
           <Input label="Business Legal Name" value={businessName} onChangeText={setBusinessName} />
           <Input label="App Display Name" value={displayName} onChangeText={setDisplayName} />
           <Input label="Contact Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <Input label="Official Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
+          <Input
+            label="Official Aggregator & Operations Email *"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            placeholder="orders@myrestaurant.com"
+          />
+          <View className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 mb-4 -mt-2">
+            <View className="flex-row items-center mb-1">
+              <Text className="text-amber-400 font-bold text-xs">🛵 Used for Zomato & Swiggy Integration</Text>
+            </View>
+            <Text className="text-amber-200/90 text-[11px] leading-relaxed">
+              Ensure this email matches your restaurant's registered email in Zomato Merchant and Swiggy Partner accounts (or receipt forwarding). Zentiq uses this email in code to auto-ingest online orders and print kitchen KOTs at ₹0 fee.
+            </Text>
+          </View>
           <Input label="Address" value={address} onChangeText={setAddress} />
           <Input label="GSTIN Number" value={gstin} onChangeText={setGstin} autoCapitalize="characters" />
           <Input label="Receipt Header (Printed on Bills)" value={receiptHeader} onChangeText={setReceiptHeader} />
           <Input label="Receipt Footer Note" value={receiptFooter} onChangeText={setReceiptFooter} />
+        </View>
+
+        {/* 4B. ONLINE AGGREGATORS (ZOMATO & SWIGGY) INTEGRATION CARD */}
+        <View className="bg-slate-900 border border-amber-500/30 rounded-3xl p-5 mb-6 shadow-sm">
+          <View className="flex-row items-center justify-between mb-1">
+            <View className="flex-row items-center">
+              <Text className="text-lg mr-2">🛵</Text>
+              <Text className="text-white font-black text-base">Zomato & Swiggy Auto-Sync</Text>
+            </View>
+            <View className={`px-2.5 py-0.5 rounded-full border ${email ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
+              <Text className={`text-[10px] font-bold uppercase ${email ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {email ? '● Live Ready' : '○ Email Needed'}
+              </Text>
+            </View>
+          </View>
+
+          <Text className="text-slate-400 text-xs mb-3 leading-relaxed">
+            Zero-cost online order ingestion. When Zomato or Swiggy orders arrive, they are mapped to your POS via your registered email ({email || 'not set'}), creating instant KOTs without 3rd-party aggregators.
+          </Text>
+
+          <View className="flex-row gap-3 pt-1">
+            <TouchableOpacity
+              disabled={isSimulatingAggregator || !tenant?.id}
+              onPress={async () => {
+                if (!tenant?.id) return;
+                setIsSimulatingAggregator(true);
+                try {
+                  const res = await DBServices.simulateTestAggregatorOrder(tenant.id, 'ZOMATO');
+                  toast.success(`Zomato Order #ZOM-${res.kotNo} Ingested! Check Running Orders.`);
+                } catch (err: any) {
+                  Alert.alert('Simulation Error', err?.message || 'Could not place test order');
+                } finally {
+                  setIsSimulatingAggregator(false);
+                }
+              }}
+              className="flex-1 bg-rose-600/20 active:bg-rose-600/30 border border-rose-500/30 rounded-xl py-2.5 items-center justify-center"
+            >
+              <Text className="text-rose-300 font-bold text-xs">
+                {isSimulatingAggregator ? 'Sending...' : '🔴 Test Zomato Order'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={isSimulatingAggregator || !tenant?.id}
+              onPress={async () => {
+                if (!tenant?.id) return;
+                setIsSimulatingAggregator(true);
+                try {
+                  const res = await DBServices.simulateTestAggregatorOrder(tenant.id, 'SWIGGY');
+                  toast.success(`Swiggy Order #SWIG-${res.kotNo} Ingested! Check Running Orders.`);
+                } catch (err: any) {
+                  Alert.alert('Simulation Error', err?.message || 'Could not place test order');
+                } finally {
+                  setIsSimulatingAggregator(false);
+                }
+              }}
+              className="flex-1 bg-orange-600/20 active:bg-orange-600/30 border border-orange-500/30 rounded-xl py-2.5 items-center justify-center"
+            >
+              <Text className="text-orange-300 font-bold text-xs">
+                {isSimulatingAggregator ? 'Sending...' : '🟠 Test Swiggy Order'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* 5. CLIENT ADMIN CREDENTIALS CARD */}

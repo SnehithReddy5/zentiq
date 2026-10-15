@@ -9,6 +9,8 @@ export interface TenantProfile {
   businessType: BusinessType;
   status: TenantStatus;
   multiLocationEnabled?: boolean;
+  email?: string;
+  aggregatorEmail?: string;
   adminUsername?: string;
   adminPassword?: string;
   createdAt?: any;

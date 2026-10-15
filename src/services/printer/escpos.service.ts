@@ -99,9 +99,17 @@ export class ESCPOSService {
     const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().slice(-2)} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 
     const cleanType = (orderType || '').toUpperCase().trim();
-    let orderTypeStr = (tableNo && tableNo > 0) ? `Table: ${tableNo}` : (cleanType === 'PICKUP' ? 'Pick Up' : 'Takeaway');
+    let orderTypeStr = (tableNo && tableNo > 0)
+      ? `Table: ${tableNo}`
+      : (cleanType === 'ONLINE_ZOMATO' ? '★ ZOMATO ★' : cleanType === 'ONLINE_SWIGGY' ? '★ SWIGGY ★' : cleanType === 'PICKUP' ? 'Pick Up' : 'Takeaway');
     const cleanStaff = (captainName || 'Staff').slice(0, 24);
 
+    if (cleanType === 'ONLINE_ZOMATO' || cleanType === 'ONLINE_SWIGGY') {
+      buffer.push(...this.ALIGN_CENTER);
+      buffer.push(...this.BOLD_ON);
+      buffer.push(...this.stringToBytes(cleanType === 'ONLINE_ZOMATO' ? '*** ZOMATO ONLINE ORDER ***\n' : '*** SWIGGY ONLINE ORDER ***\n'));
+      buffer.push(...this.BOLD_OFF);
+    }
     buffer.push(...this.ALIGN_LEFT);
     this.pushSeparatorLine(buffer, '=');
     buffer.push(...this.stringToBytes(this.formatTwoCol(`KOT #: ${kotNo}`, orderTypeStr, 48)));
@@ -186,7 +194,7 @@ export class ESCPOSService {
     const formattedTime = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 
     const rightOrderType = (tableNo === 0 || !tableNo)
-      ? (orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway')
+      ? (orderType === 'ONLINE_ZOMATO' ? 'Zomato Online' : orderType === 'ONLINE_SWIGGY' ? 'Swiggy Online' : orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway')
       : `Table: ${tableNo}`;
 
     const cleanCashier = (cashierName || 'Staff').slice(0, 22);
@@ -348,7 +356,7 @@ export class ESCPOSService {
     tokenBuffer.push(...this.NORMAL_SIZE);
     tokenBuffer.push(...this.BOLD_OFF);
 
-    const orderTypeLabel = (tableNo && tableNo > 0) ? `Table: ${tableNo}` : (orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway');
+    const orderTypeLabel = (tableNo && tableNo > 0) ? `Table: ${tableNo}` : (orderType === 'ONLINE_ZOMATO' ? 'Zomato Online' : orderType === 'ONLINE_SWIGGY' ? 'Swiggy Online' : orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway');
     tokenBuffer.push(...this.stringToBytes(`${orderTypeLabel} • Kitchen Copy\n`));
     this.pushSeparatorLine(tokenBuffer, '-');
 

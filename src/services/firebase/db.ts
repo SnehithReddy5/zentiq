@@ -14,6 +14,7 @@ import {
   orderBy,
   runTransaction,
   writeBatch,
+  limit,
 } from 'firebase/firestore';
 import { db } from './config';
 function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
@@ -31,6 +32,15 @@ import { MenuCategory, MenuItem } from '../../types/menu.types';
 import { Order, OrderItem } from '../../types/order.types';
 import { TenantProfile, TenantBranding, TenantFeatures, Location } from '../../types/tenant.types';
 import { InventoryItem, InventoryLog } from '../../types/inventory.types';
+import {
+  CKProfile,
+  CKPartner,
+  CKMenuItem,
+  CKOrder,
+  CKOrderStatus,
+  CKPaymentStatus,
+  CKPartnerStatus,
+} from '../../types/centralKitchen.types';
 
 export const DBServices = {
   // Scoped path helpers
@@ -842,6 +852,426 @@ export const DBServices = {
     for (const s of starters) {
       await this.createInventoryItem(s as any, tenantId, locationId);
     }
+  },
+
+  // ==========================================
+  // CENTRAL KITCHEN (CK) B2B FOOD SUPPLY
+  // ==========================================
+
+  async getOrCreateCKProfile(tenantId: string, locationId: string, businessName: string): Promise<CKProfile> {
+    const profileRef = doc(db, 'ckProfiles', tenantId);
+    const snap = await getDoc(profileRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as CKProfile;
+    }
+
+    const prefix = (businessName || 'CK')
+      .replace(/[^A-Za-z]/g, '')
+      .slice(0, 3)
+      .toUpperCase() || 'VSD';
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const partnerCode = `${prefix}-CK-${randomSuffix}`;
+
+    const newProfile: Omit<CKProfile, 'id'> = {
+      tenantId,
+      locationId: locationId || 'default',
+      businessName: businessName || 'Central Kitchen',
+      partnerCode,
+      whitelistedPartners: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    await setDoc(profileRef, cleanFirestoreData(newProfile));
+    return { id: tenantId, ...newProfile } as CKProfile;
+  },
+
+  async getCKProfile(tenantId: string): Promise<CKProfile | null> {
+    const profileRef = doc(db, 'ckProfiles', tenantId);
+    const snap = await getDoc(profileRef);
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as CKProfile;
+  },
+
+  async getCKProfileByPartnerCode(partnerCode: string): Promise<CKProfile | null> {
+    const q = query(collection(db, 'ckProfiles'), where('partnerCode', '==', partnerCode.trim().toUpperCase()));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const docData = snap.docs[0];
+    return { id: docData.id, ...docData.data() } as CKProfile;
+  },
+
+  async connectCKPartnerWithCode(
+    partnerCode: string,
+    buyerTenantId: string,
+    buyerLocationId: string,
+    buyerBusinessName: string,
+    contactNumber?: string
+  ): Promise<{ success: boolean; profile: CKProfile; status: CKPartnerStatus }> {
+    const profile = await this.getCKProfileByPartnerCode(partnerCode);
+    if (!profile) {
+      throw new Error('Invalid Partner Code. No Central Kitchen found with this code.');
+    }
+
+    if (profile.tenantId === buyerTenantId) {
+      return { success: true, profile, status: 'APPROVED' };
+    }
+
+    const profileRef = doc(db, 'ckProfiles', profile.tenantId);
+    const partners = profile.whitelistedPartners || [];
+    const existingIndex = partners.findIndex((p: CKPartner) => p.tenantId === buyerTenantId);
+
+    const newPartner: CKPartner = {
+      tenantId: buyerTenantId,
+      locationId: buyerLocationId,
+      businessName: buyerBusinessName,
+      contactNumber: contactNumber || '',
+      status: 'APPROVED',
+      isInternalBranch: false,
+      approvedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    };
+
+    let updatedPartners: CKPartner[] = [];
+    if (existingIndex >= 0) {
+      updatedPartners = [...partners];
+      updatedPartners[existingIndex] = { ...updatedPartners[existingIndex], status: 'APPROVED', approvedAt: serverTimestamp() };
+    } else {
+      updatedPartners = [newPartner, ...partners];
+    }
+
+    await updateDoc(profileRef, {
+      whitelistedPartners: cleanFirestoreData(updatedPartners),
+      updatedAt: serverTimestamp(),
+    });
+
+    return { success: true, profile, status: 'APPROVED' };
+  },
+
+  async updateCKPartnerStatus(ckTenantId: string, partnerTenantId: string, newStatus: CKPartnerStatus): Promise<void> {
+    const profileRef = doc(db, 'ckProfiles', ckTenantId);
+    const snap = await getDoc(profileRef);
+    if (!snap.exists()) throw new Error('Central Kitchen profile not found');
+
+    const profile = snap.data() as CKProfile;
+    const partners = profile.whitelistedPartners || [];
+    const updated = partners.map((p: CKPartner) => (p.tenantId === partnerTenantId ? { ...p, status: newStatus } : p));
+
+    await updateDoc(profileRef, {
+      whitelistedPartners: cleanFirestoreData(updated),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  async getCKMenuItems(ckTenantId: string): Promise<CKMenuItem[]> {
+    const q = query(collection(db, 'ckMenuItems'), where('ckTenantId', '==', ckTenantId));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CKMenuItem));
+  },
+
+  async createCKMenuItem(
+    ckTenantId: string,
+    data: Omit<CKMenuItem, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<string> {
+    const colRef = collection(db, 'ckMenuItems');
+    const docRef = await addDoc(colRef, cleanFirestoreData({
+      ...data,
+      ckTenantId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }));
+    return docRef.id;
+  },
+
+  async updateCKMenuItem(itemId: string, updates: Partial<CKMenuItem>): Promise<void> {
+    const itemRef = doc(db, 'ckMenuItems', itemId);
+    await updateDoc(itemRef, cleanFirestoreData({
+      ...updates,
+      updatedAt: serverTimestamp(),
+    }));
+  },
+
+  async deleteCKMenuItem(itemId: string): Promise<void> {
+    const itemRef = doc(db, 'ckMenuItems', itemId);
+    await deleteDoc(itemRef);
+  },
+
+  async placeCKOrder(
+    orderData: Omit<CKOrder, 'id' | 'orderNumber' | 'status' | 'paymentStatus' | 'createdAt' | 'updatedAt'>
+  ): Promise<{ orderId: string; orderNumber: string }> {
+    const orderNumber = `CK-${Date.now().toString().slice(-6)}`;
+    const colRef = collection(db, 'ckOrders');
+    const docRef = await addDoc(colRef, cleanFirestoreData({
+      ...orderData,
+      orderNumber,
+      status: 'PENDING',
+      paymentStatus: 'UNPAID',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }));
+    return { orderId: docRef.id, orderNumber };
+  },
+
+  async updateCKOrderStatus(
+    orderId: string,
+    status: CKOrderStatus,
+    rejectionReason?: string,
+    paymentStatus?: CKPaymentStatus,
+    paymentMode?: 'UPI' | 'NEFT' | 'CASH' | 'LEDGER'
+  ): Promise<void> {
+    const orderRef = doc(db, 'ckOrders', orderId);
+    const updates: any = {
+      status,
+      updatedAt: serverTimestamp(),
+    };
+    if (rejectionReason) updates.rejectionReason = rejectionReason;
+    if (paymentStatus) updates.paymentStatus = paymentStatus;
+    if (paymentMode) updates.paymentMode = paymentMode;
+    if (status === 'DISPATCHED') updates.dispatchedAt = serverTimestamp();
+    if (status === 'DELIVERED') updates.deliveredAt = serverTimestamp();
+
+    await updateDoc(orderRef, cleanFirestoreData(updates));
+  },
+
+  subscribeToCKOrdersForSeller(sellerTenantId: string, callback: (orders: CKOrder[]) => void): () => void {
+    const q = query(
+      collection(db, 'ckOrders'),
+      where('sellerTenantId', '==', sellerTenantId),
+      orderBy('createdAt', 'desc')
+    );
+    return onSnapshot(q, (snap) => {
+      const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CKOrder));
+      callback(orders);
+    });
+  },
+
+  subscribeToCKOrdersForBuyer(buyerTenantId: string, callback: (orders: CKOrder[]) => void): () => void {
+    const q = query(
+      collection(db, 'ckOrders'),
+      where('buyerTenantId', '==', buyerTenantId),
+      orderBy('createdAt', 'desc')
+    );
+    return onSnapshot(q, (snap) => {
+      const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CKOrder));
+      callback(orders);
+    });
+  },
+
+  async seedStarterCKMenu(ckTenantId: string): Promise<void> {
+    const starters = [
+      { name: 'Special Butter Chicken Gravy Base', category: 'Gravies & Curries', unit: 'kg', pricePerUnit: 350, minOrderQty: 5, isAvailable: true, description: 'Rich tomato cashew makhani gravy base for outlet finishing.' },
+      { name: 'Hyderabadi Dum Biryani Rice Base', category: 'Rice & Biryani', unit: 'deg', pricePerUnit: 2800, minOrderQty: 1, isAvailable: true, description: 'Pre-cooked seasoned dum biryani rice layer batch (approx. 10 kg / 25 portions).' },
+      { name: 'Tandoori Chicken Marinated Batches', category: 'Marinated Meats', unit: 'kg', pricePerUnit: 280, minOrderQty: 5, isAvailable: true, description: 'First and second marinade completed, vacuum packed, ready for skewering.' },
+      { name: 'Slow-Cooked Mutton Rogan Josh Gravy', category: 'Gravies & Curries', unit: 'kg', pricePerUnit: 480, minOrderQty: 5, isAvailable: true, description: 'Traditional Kashmiri style clarified gravy ready for meat addition.' },
+      { name: 'Paneer Tikka Marinated Cubes', category: 'Marinated Meats', unit: 'kg', pricePerUnit: 320, minOrderQty: 3, isAvailable: true, description: 'Fresh Malai paneer cubes in mustard ajwain marinade.' },
+      { name: 'Rumali Roti Frozen Ready-to-Puff', category: 'Bakery & Breads', unit: 'pcs', pricePerUnit: 8, minOrderQty: 50, isAvailable: true, description: 'Pre-rolled rumali sheets ready to flash cook on inverted tawa.' },
+    ];
+
+    for (const item of starters) {
+      await this.createCKMenuItem(ckTenantId, item as any);
+    }
+  },
+
+  // 12. Online Aggregators (Zomato & Swiggy) Zero-Cost Direct Ingestion & Matching
+  async findTenantByAggregatorEmail(targetEmail: string): Promise<{ tenantId: string; locationId: string; businessName: string; email: string } | null> {
+    const cleanEmail = (targetEmail || '').trim().toLowerCase();
+    if (!cleanEmail) return null;
+
+    // A. Query tenants collection where aggregatorEmail matches
+    let q = query(collection(db, 'tenants'), where('aggregatorEmail', '==', cleanEmail), limit(1));
+    let snap = await getDocs(q);
+
+    // B. Fallback to adminEmail
+    if (snap.empty) {
+      q = query(collection(db, 'tenants'), where('adminEmail', '==', cleanEmail), limit(1));
+      snap = await getDocs(q);
+    }
+
+    // C. Fallback to email
+    if (snap.empty) {
+      q = query(collection(db, 'tenants'), where('email', '==', cleanEmail), limit(1));
+      snap = await getDocs(q);
+    }
+
+    if (snap.empty) {
+      return null;
+    }
+
+    const tenantDoc = snap.docs[0];
+    const tenantData = tenantDoc.data();
+    const tenantId = tenantDoc.id;
+
+    // Retrieve primary location
+    let locationId = 'loc-primary';
+    try {
+      const locSnap = await getDocs(collection(db, 'tenants', tenantId, 'locations'));
+      if (!locSnap.empty) {
+        locationId = locSnap.docs[0].id;
+      }
+    } catch (_) {}
+
+    return {
+      tenantId,
+      locationId,
+      businessName: tenantData.displayName || tenantData.businessName || tenantId,
+      email: cleanEmail,
+    };
+  },
+
+  async ingestAggregatorOrder(payload: {
+    restaurantEmail: string;
+    aggregatorPlatform: 'ZOMATO' | 'SWIGGY';
+    aggregatorOrderId: string;
+    customerName?: string;
+    customerPhone?: string;
+    deliveryRiderName?: string;
+    deliveryRiderPhone?: string;
+    items: Array<{ itemName: string; qty: number; price: number; note?: string }>;
+    totalAmount?: number;
+    specialNote?: string;
+  }): Promise<{ success: boolean; orderId?: string; kotNo?: number; message?: string }> {
+    const tenantInfo = await this.findTenantByAggregatorEmail(payload.restaurantEmail);
+    if (!tenantInfo) {
+      return {
+        success: false,
+        message: `No active restaurant tenant found registered with email "${payload.restaurantEmail}". Please verify the email in onboarding / business profile.`,
+      };
+    }
+
+    const { tenantId, locationId, businessName } = tenantInfo;
+    const kotNo = await this.getNextSequenceNumber(tenantId, locationId);
+    const computedTotal = payload.totalAmount ?? payload.items.reduce((sum, it) => sum + (it.price * it.qty), 0);
+
+    // Attempt to map items to existing menu items for automated inventory stock deduction
+    let existingItemsMap = new Map<string, MenuItem>();
+    try {
+      const menuSnap = await getDocs(collection(db, 'tenants', tenantId, 'locations', locationId, 'menuItems'));
+      menuSnap.forEach(d => {
+        const item = d.data() as MenuItem;
+        existingItemsMap.set(item.name.toLowerCase().trim(), { ...item, id: d.id });
+      });
+    } catch (_) {}
+
+    const orderItems: OrderItem[] = payload.items.map(it => {
+      const matched = existingItemsMap.get(it.itemName.toLowerCase().trim());
+      return {
+        itemId: matched?.id || `ext-${Math.random().toString(36).slice(2, 8)}`,
+        baseItemId: matched?.id,
+        itemName: it.itemName,
+        qty: it.qty,
+        price: it.price,
+        note: it.note || (matched ? undefined : '(Online Special)'),
+        portionDeduction: matched?.trackInventory ? 1 : undefined,
+      };
+    });
+
+    const orderPayload: Omit<Order, 'id'> = {
+      orderNumber: kotNo,
+      kotNo,
+      orderType: payload.aggregatorPlatform === 'ZOMATO' ? 'ONLINE_ZOMATO' : 'ONLINE_SWIGGY',
+      tableId: null,
+      tableNo: 0,
+      captainId: 'system-aggregator',
+      captainName: payload.aggregatorPlatform === 'ZOMATO' ? 'Zomato Online' : 'Swiggy Online',
+      status: 'RUNNING',
+      paymentStatus: 'PAID',
+      paymentMethod: 'OTHER',
+      payments: [
+        {
+          id: `pay-${Date.now()}`,
+          method: 'OTHER',
+          amount: computedTotal,
+          timestamp: new Date().toISOString(),
+          reference: `${payload.aggregatorPlatform} Paid #${payload.aggregatorOrderId}`,
+        },
+      ],
+      items: orderItems,
+      subtotal: computedTotal,
+      totalAmount: computedTotal,
+      specialNote: payload.specialNote || `Online Order from ${payload.aggregatorPlatform}`,
+      aggregatorOrderId: payload.aggregatorOrderId,
+      aggregatorPlatform: payload.aggregatorPlatform,
+      customerName: payload.customerName || 'Online Diner',
+      customerPhone: payload.customerPhone || '',
+      deliveryRiderName: payload.deliveryRiderName || 'Valet / Rider Assigned',
+      deliveryRiderPhone: payload.deliveryRiderPhone || '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    const orderId = await this.createOrder(orderPayload, tenantId, locationId);
+
+    return {
+      success: true,
+      orderId,
+      kotNo,
+      message: `Successfully ingested ${payload.aggregatorPlatform} Order #${payload.aggregatorOrderId} for ${businessName}!`,
+    };
+  },
+
+  async simulateTestAggregatorOrder(
+    tenantId: string,
+    platform: 'ZOMATO' | 'SWIGGY' = 'ZOMATO',
+    locationId: string = 'loc-primary'
+  ): Promise<{ success: boolean; orderId: string; kotNo: number }> {
+    const kotNo = await this.getNextSequenceNumber(tenantId, locationId);
+    const randSuffix = Math.floor(1000 + Math.random() * 9000);
+
+    const isZomato = platform === 'ZOMATO';
+    const sampleItems: OrderItem[] = isZomato
+      ? [
+          { itemId: 'sim-1', itemName: 'Special Chicken Dum Biryani', qty: 2, price: 320, note: 'Extra Raita & Salan' },
+          { itemId: 'sim-2', itemName: 'Butter Garlic Naan', qty: 3, price: 55 },
+          { itemId: 'sim-3', itemName: 'Gulab Jamun (2 pcs)', qty: 1, price: 90 },
+        ]
+      : [
+          { itemId: 'sim-4', itemName: 'Paneer Butter Masala', qty: 1, price: 260, note: 'Medium Spicy' },
+          { itemId: 'sim-5', itemName: 'Jeera Fried Rice', qty: 1, price: 180 },
+          { itemId: 'sim-6', itemName: 'Masala Chaas (Spiced Buttermilk)', qty: 2, price: 40 },
+        ];
+
+    const totalAmount = sampleItems.reduce((acc, it) => acc + (it.price * it.qty), 0);
+    const orderRef = doc(collection(db, 'tenants', tenantId, 'locations', locationId, 'orders'));
+
+    const sampleOrder: Order = {
+      id: orderRef.id,
+      orderNumber: kotNo,
+      kotNo,
+      tenantId,
+      locationId,
+      orderType: isZomato ? 'ONLINE_ZOMATO' : 'ONLINE_SWIGGY',
+      tableId: null,
+      tableNo: 0,
+      captainId: 'sim-aggregator',
+      captainName: isZomato ? 'Zomato Online' : 'Swiggy Online',
+      status: 'RUNNING',
+      paymentStatus: 'PAID',
+      paymentMethod: 'OTHER',
+      payments: [
+        {
+          id: `pay-sim-${Date.now()}`,
+          method: 'OTHER',
+          amount: totalAmount,
+          timestamp: new Date().toISOString(),
+          reference: `${platform} Paid #${isZomato ? 'ZOM-' : 'SWIG-'}${randSuffix}`,
+        },
+      ],
+      items: sampleItems,
+      subtotal: totalAmount,
+      totalAmount,
+      specialNote: isZomato ? "Online Delivery - Please don't ring bell, baby is sleeping" : 'Pack cutlery & extra paper napkins',
+      aggregatorOrderId: `${isZomato ? 'ZOM-' : 'SWIG-'}${randSuffix}`,
+      aggregatorPlatform: platform,
+      customerName: isZomato ? 'Rahul Sharma' : 'Deepika Rao',
+      customerPhone: isZomato ? '+91 98765 43210' : '+91 98490 12345',
+      deliveryRiderName: isZomato ? 'Suresh Kumar (Zomato Valet)' : 'Mahesh Gowda (Swiggy Rider)',
+      deliveryRiderPhone: '+91 91234 56789',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    await setDoc(orderRef, sampleOrder);
+    return { success: true, orderId: orderRef.id, kotNo };
   }
 
 };
