@@ -17,7 +17,7 @@ import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { Utensils, Lock, User, Eye, EyeOff, Sparkles } from 'lucide-react-native';
 import { db } from '../../services/firebase/config';
-import { doc, getDoc, setDoc, collectionGroup, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, collectionGroup, query, where, getDocs } from 'firebase/firestore';
 import { DBServices } from '../../services/firebase/db';
 
 export const LoginScreen = () => {
@@ -70,11 +70,33 @@ export const LoginScreen = () => {
         if (userSnap.exists()) {
           const u = userSnap.data();
           if (u.password === cleanPassword) {
+            let userTenantId = u.tenantId;
+
+            // If tenantId is missing, resolve directly from tenants collection
+            if (!userTenantId) {
+              try {
+                const tQuery = query(collection(db, 'tenants'), where('adminUsername', '==', cleanId));
+                const tSnap = await getDocs(tQuery);
+                if (!tSnap.empty) {
+                  userTenantId = tSnap.docs[0].id;
+                  try {
+                    await setDoc(doc(db, 'users', cleanId), { tenantId: userTenantId }, { merge: true });
+                  } catch (_) {}
+                }
+              } catch (_) {}
+            }
+
+            if (!userTenantId) {
+              toast.error('This user account is not linked to any active restaurant.', 'Account Error');
+              setLoading(false);
+              return;
+            }
+
             matchedUser = {
               id: u.id || cleanId,
-              name: u.name,
-              role: u.role || 'TENANT_SUPER_ADMIN',
-              tenantId: u.tenantId || 'vasudha-family-restaurant',
+              name: u.name || cleanId,
+              role: u.role || 'WAITER',
+              tenantId: userTenantId,
               locationIds: u.locationIds || ['*'],
               assignedLocationId: u.assignedLocationId || null,
               lastActiveLocationId: u.lastActiveLocationId || null,
@@ -93,22 +115,11 @@ export const LoginScreen = () => {
           firestoreErr.code === 'permission-denied' ||
           firestoreErr.code === 'unavailable'
         ) {
-          toast.error('Cannot reach Cloud Firestore for project "zentiq-b5d40". Please ensure Firestore is created and rules allow access.', 'Database Offline');
+          toast.error('Cannot reach Cloud Firestore. Please ensure your internet connection is active.', 'Database Offline');
           setLoading(false);
           return;
         }
         throw firestoreErr;
-      }
-
-      // 2. Demo fallback if user enters admin / admin
-      if (!matchedUser && cleanId === 'admin' && cleanPassword === 'admin') {
-        matchedUser = {
-          id: 'admin',
-          name: 'Demo Admin',
-          role: 'TENANT_SUPER_ADMIN',
-          tenantId: 'vasudha-family-restaurant',
-          locationIds: ['*'],
-        };
       }
 
       if (!matchedUser) {
@@ -117,7 +128,7 @@ export const LoginScreen = () => {
         return;
       }
 
-      const targetTenantId = matchedUser.tenantId || 'vasudha-family-restaurant';
+      const targetTenantId = matchedUser.tenantId;
 
       // 3. Check if Tenant is DEACTIVATED or SUSPENDED
       const tenantRef = doc(db, 'tenants', targetTenantId);
@@ -132,15 +143,9 @@ export const LoginScreen = () => {
         }
         setTenant({ ...tData, id: tenantSnap.id } as any);
       } else {
-        const defaultTenant = {
-          id: targetTenantId,
-          businessName: 'Vasudha Family Restaurant',
-          displayName: 'Vasudha POS',
-          businessType: 'RESTAURANT' as const,
-          status: 'ACTIVE' as const,
-        };
-        await setDoc(tenantRef, defaultTenant);
-        setTenant(defaultTenant);
+        toast.error('The restaurant tenant linked to this account could not be found.', 'Restaurant Not Found');
+        setLoading(false);
+        return;
       }
 
       // Fetch Features
@@ -270,7 +275,7 @@ export const LoginScreen = () => {
 
             <Input
               label="User ID / Mobile / Email"
-              placeholder="e.g. admin or 9876543210"
+              placeholder="Enter Mobile / User ID"
               value={userId}
               onChangeText={setUserId}
               autoCapitalize="none"
@@ -302,12 +307,8 @@ export const LoginScreen = () => {
 
           {/* Footer - Centered */}
           <View style={{ width: '100%', maxWidth: 440, alignItems: 'center', justifyContent: 'center' }} className="mt-8">
-            <View className="flex-row items-center bg-slate-800/50 px-3.5 py-1.5 rounded-full border border-slate-750">
-              <Sparkles size={14} color="#818CF8" />
-              <Text className="text-slate-400 text-xs ml-1.5 font-mono">Demo: admin / admin</Text>
-            </View>
-            <Text style={{ textAlign: 'center' }} className="text-slate-600 text-[11px] mt-4">
-              Zentiq POS v1.0.0 • Connected to Live Cloud
+            <Text style={{ textAlign: 'center' }} className="text-slate-600 text-[11px]">
+              Zentiq POS Enterprise • Connected to Live Cloud
             </Text>
           </View>
         </ScrollView>

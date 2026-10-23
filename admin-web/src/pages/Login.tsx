@@ -18,13 +18,13 @@ export const AdminLogin: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
     // Default Platform Master credentials
     if (
-      (email.trim().toLowerCase() === 'admin@zentiq.io' || email.trim() === 'admin') &&
-      (password === 'zentiq2026' || password === 'admin')
+      email.trim().toLowerCase() === 'admin@zentiq.io' &&
+      password === 'zentiq2026'
     ) {
       localStorage.setItem('zentiq_platform_auth', 'true');
       onLoginSuccess();
     } else {
-      setError('Invalid platform credentials. Use admin@zentiq.io / zentiq2026');
+      setError('Invalid platform credentials. Please verify your email and password.');
     }
     setIsLoading(false);
   };
@@ -92,11 +92,7 @@ export const AdminLogin: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         </form>
 
         <div className="mt-6 pt-5 border-t border-slate-800/80 text-center">
-          <div className="inline-flex items-center space-x-1 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50">
-            <Sparkles className="w-3 h-3 text-indigo-400" />
-            <span className="text-[11px] text-slate-400 font-mono">Demo: admin@zentiq.io / zentiq2026</span>
-          </div>
-          <p className="text-[10px] text-slate-600 mt-4">Authorized Personnel Only • Confidential System</p>
+          <p className="text-[10px] text-slate-500 font-medium">Authorized Personnel Only • Confidential System</p>
         </div>
       </div>
     </div>

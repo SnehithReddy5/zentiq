@@ -1,4 +1,4 @@
-export type OrderType = 'DINE_IN' | 'PICKUP' | 'TAKEAWAY' | 'ONLINE_ZOMATO' | 'ONLINE_SWIGGY' | 'dine-in' | 'pickup';
+export type OrderType = 'DINE_IN' | 'PICKUP' | 'TAKEAWAY' | 'ONLINE_ZOMATO' | 'ONLINE_SWIGGY' | 'COUNTER' | 'dine-in' | 'pickup';
 
 export type OrderStatus = 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'running' | 'completed' | 'cancelled';
 

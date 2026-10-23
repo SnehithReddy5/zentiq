@@ -54,24 +54,27 @@ export class OrderSummaryExcelService {
   static async exportOrderSummary(options: OrderSummaryExportOptions): Promise<{ count: number; filename: string }> {
     const { orders, tenantName = 'Vasudha Restaurant', locationName = 'Main Branch', startDate, endDate, periodLabel } = options;
 
-    // Filter orders by date range if provided
-    const filteredOrders = orders.filter((o) => {
+    const isCancelled = (o: any) => String(o.status || '').toUpperCase() === 'CANCELLED';
+
+    // Filter orders by date range and EXCLUDE all cancelled orders from Excel
+    const validOrders = orders.filter((o) => {
+      if (isCancelled(o)) return false;
       const oDate = this.parseOrderDate(o.createdAt);
       if (startDate && oDate < startDate) return false;
       if (endDate && oDate > endDate) return false;
       return true;
     });
 
-    if (filteredOrders.length === 0) {
-      throw new Error('No orders found for the selected date range.');
+    if (validOrders.length === 0) {
+      throw new Error('No successful orders found for the selected date range.');
     }
 
     // Sort chronologically (oldest to newest)
-    const sortedOrders = [...filteredOrders].sort((a, b) => {
+    const sortedOrders = [...validOrders].sort((a, b) => {
       return this.parseOrderDate(a.createdAt).getTime() - this.parseOrderDate(b.createdAt).getTime();
     });
 
-    // Find highest and lowest orders by totalAmount
+    // Find highest and lowest orders among successful orders
     let highestIndex = -1;
     let lowestIndex = -1;
     let highestAmount = -Infinity;
@@ -90,7 +93,7 @@ export class OrderSummaryExcelService {
     });
 
     const totalRevenue = sortedOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-    const avgOrder = totalRevenue / sortedOrders.length;
+    const avgOrder = sortedOrders.length > 0 ? totalRevenue / sortedOrders.length : 0;
 
     // Payment Methods Aggregation
     let cashTotal = 0;
@@ -101,7 +104,7 @@ export class OrderSummaryExcelService {
     // Item Frequency Aggregation
     const itemFreqMap: Record<string, { itemName: string; variantName: string; qty: number; orderCount: number; totalSales: number }> = {};
 
-    sortedOrders.forEach((o) => {
+    validOrders.forEach((o) => {
       // Payment collection
       if (o.payments && Array.isArray(o.payments) && o.payments.length > 0) {
         o.payments.forEach((p: any) => {

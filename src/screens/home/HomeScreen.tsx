@@ -15,6 +15,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native';
 import {
   Menu as MenuIcon,
+  Zap,
+  Sliders,
   LayoutGrid,
   Utensils,
   ShoppingBag,
@@ -186,10 +188,7 @@ export const HomeScreen = () => {
     toast.info('Order marked ready! Delivery rider notified for pickup.', 'Rider Notified');
   };
 
-  const isDirectMenuMode = features.dineInEnabled === false && features.pickupEnabled === false;
-  if (isDirectMenuMode) {
-    return <MenuScreen isDirectHome={true} />;
-  }
+// Direct counter billing handled gracefully within dashboard (no deadlock)
 
   return (
     <SafeAreaView className="flex-1 bg-[#090D1A]">
@@ -311,7 +310,47 @@ export const HomeScreen = () => {
                 </View>
               </View>
 
+              {/* Fallback Banner when Dine-In and Pickup are both disabled */}
+              {features.dineInEnabled === false && features.pickupEnabled === false && (
+                <View className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl px-4 py-3 mb-3 flex-row items-center justify-between">
+                  <View className="flex-row items-center flex-1 mr-3">
+                    <Sliders size={16} color="#A78BFA" />
+                    <Text className="text-indigo-200 text-xs ml-2 flex-1">
+                      Dine-in floor and pickup are turned off. Running in Direct Counter Billing mode.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate(Routes.SETTINGS)}
+                    className="bg-indigo-600 px-3 py-1.5 rounded-xl"
+                  >
+                    <Text className="text-white text-xs font-bold">Settings</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               <View className="flex-row gap-3">
+                {features.dineInEnabled === false && features.pickupEnabled === false && (
+                  <TouchableOpacity
+                    className="flex-1 bg-gradient-to-br from-[#6A45F7] to-[#4F30D1] border border-indigo-400/40 p-4 rounded-3xl shadow-xl justify-between min-h-[135px]"
+                    activeOpacity={0.85}
+                    onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'COUNTER' })}
+                    style={{ backgroundColor: '#5D3FD3' }}
+                  >
+                    <View className="flex-row items-center justify-between">
+                      <View className="w-11 h-11 rounded-2xl bg-white/15 items-center justify-center">
+                        <Zap size={22} color="white" />
+                      </View>
+                      <View className="bg-black/25 px-2 py-0.5 rounded-lg border border-white/10">
+                        <Text className="text-purple-100 text-[10px] font-bold">Counter Billing</Text>
+                      </View>
+                    </View>
+                    <View>
+                      <Text className="text-white font-black text-xl">Quick Counter Sale</Text>
+                      <Text className="text-purple-200 text-xs font-medium mt-0.5">Direct Fast Billing Mode</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
                 {features.dineInEnabled !== false && (
                   features.tablesEnabled ? (
                     <TouchableOpacity
@@ -587,7 +626,38 @@ export const HomeScreen = () => {
                   <Text className="text-slate-500 text-xs">Equal Sized Launch Hub</Text>
                 </View>
 
+                {features.dineInEnabled === false && features.pickupEnabled === false && (
+                  <View className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl px-4 py-3 mb-4 flex-row items-center justify-between">
+                    <View className="flex-row items-center flex-1 mr-3">
+                      <Sliders size={16} color="#A78BFA" />
+                      <Text className="text-indigo-200 text-xs ml-2 flex-1">
+                        Dine-in floor and pickup are turned off. Running in Direct Counter Billing mode.
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate(Routes.SETTINGS)}
+                      className="bg-indigo-600 px-3 py-1.5 rounded-xl"
+                    >
+                      <Text className="text-white text-xs font-bold">Settings</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 <View className="flex-row gap-3 mb-6">
+                  {features.dineInEnabled === false && features.pickupEnabled === false && (
+                    <TouchableOpacity
+                      className="flex-1 bg-[#5D3FD3] border border-indigo-500/40 p-4 rounded-3xl shadow-lg shadow-purple-500/25 items-center justify-center min-h-[148px]"
+                      activeOpacity={0.85}
+                      onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'COUNTER' })}
+                    >
+                      <View className="w-12 h-12 rounded-2xl bg-white/10 items-center justify-center mb-1">
+                        <Zap size={26} color="white" />
+                      </View>
+                      <Text className="text-white font-black text-base mt-1">Quick Counter Sale</Text>
+                      <Text className="text-purple-200 text-xs font-medium">Direct Fast Billing Mode</Text>
+                    </TouchableOpacity>
+                  )}
+
                   {features.dineInEnabled !== false && (
                     features.tablesEnabled ? (
                       <TouchableOpacity

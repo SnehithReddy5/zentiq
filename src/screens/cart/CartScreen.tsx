@@ -378,7 +378,7 @@ export const CartScreen = () => {
                 <Text className="text-white font-black text-base">Order Breakdown</Text>
                 <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-lg border border-purple-500/30">
                   <Text className="text-purple-300 font-bold text-xs">
-                    {orderType === 'PICKUP' ? 'Pick Up' : ('Table ' + tableNo)}
+                    {orderType === 'PICKUP' ? 'Pick Up' : (orderType === 'COUNTER' ? 'Quick Counter' : ('Table ' + tableNo))}
                   </Text>
                 </View>
               </View>

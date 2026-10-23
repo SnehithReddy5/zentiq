@@ -1,20 +1,15 @@
-import { collection, doc, setDoc, serverTimestamp, getDocs, limit, query } from 'firebase/firestore';
+import { collection, doc, setDoc, serverTimestamp, getDocs, limit, query, where, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export async function simulateAdminTestOrder(
   tenantId: string,
   platform: 'ZOMATO' | 'SWIGGY' = 'ZOMATO',
   locationId: string = 'loc-primary'
-): Promise<{ success: boolean; orderId: string; kotNo: number }> {
-  // 1. Get next sequence / KOT number
+): Promise<{ success: boolean; orderId: string; kotNo: number; aggregatorOrderId: string }> {
   let kotNo = Math.floor(100 + Math.random() * 900);
-  try {
-    const seqRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'settings', 'sequence');
-    // If sequence exists, can increment or fallback to random 3-digit
-  } catch (_) {}
-
   const isZomato = platform === 'ZOMATO';
   const randSuffix = Math.floor(1000 + Math.random() * 9000);
+  const aggregatorOrderId = `${isZomato ? 'ZOM-' : 'SWIG-'}${randSuffix}`;
 
   const sampleItems = isZomato
     ? [
@@ -51,14 +46,14 @@ export async function simulateAdminTestOrder(
         method: 'OTHER',
         amount: totalAmount,
         timestamp: new Date().toISOString(),
-        reference: `${platform} Paid #${isZomato ? 'ZOM-' : 'SWIG-'}${randSuffix}`,
+        reference: `${platform} Paid #${aggregatorOrderId}`,
       },
     ],
     items: sampleItems,
     subtotal: totalAmount,
     totalAmount,
     specialNote: isZomato ? "Online Delivery - Please don't ring bell, baby is sleeping" : 'Pack cutlery & extra paper napkins',
-    aggregatorOrderId: `${isZomato ? 'ZOM-' : 'SWIG-'}${randSuffix}`,
+    aggregatorOrderId,
     aggregatorPlatform: platform,
     customerName: isZomato ? 'Rahul Sharma' : 'Deepika Rao',
     customerPhone: isZomato ? '+91 98765 43210' : '+91 98490 12345',
@@ -69,5 +64,24 @@ export async function simulateAdminTestOrder(
   };
 
   await setDoc(orderRef, sampleOrder);
-  return { success: true, orderId: orderRef.id, kotNo };
+  return { success: true, orderId: orderRef.id, kotNo, aggregatorOrderId };
+}
+
+export async function simulateAdminTestCancellation(
+  tenantId: string,
+  aggregatorOrderId: string,
+  locationId: string = 'loc-primary'
+): Promise<boolean> {
+  const ordersRef = collection(db, 'tenants', tenantId, 'locations', locationId, 'orders');
+  const q = query(ordersRef, where('aggregatorOrderId', '==', aggregatorOrderId), limit(1));
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    await updateDoc(snap.docs[0].ref, {
+      status: 'CANCELLED',
+      specialNote: 'Cancelled by Online Aggregator (Customer/Rider Cancellation)',
+      updatedAt: serverTimestamp(),
+    });
+    return true;
+  }
+  return false;
 }

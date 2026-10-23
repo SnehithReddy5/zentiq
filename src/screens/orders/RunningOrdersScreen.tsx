@@ -5,9 +5,11 @@ import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, Modal, A
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search,
+  RefreshCw,
   MapPin,
   Receipt,
   CheckCircle2,
+  XCircle,
   ShoppingBag,
   TrendingUp,
   TrendingDown,
@@ -137,6 +139,8 @@ const OrderCard = React.memo(({
                 ? '🔴 Zomato'
                 : item.orderType === 'ONLINE_SWIGGY'
                 ? '🟠 Swiggy'
+                : item.orderType === 'COUNTER'
+                ? '⚡ Counter'
                 : item.tableNo
                 ? `Table ${item.tableNo}`
                 : item.orderType === 'PICKUP'
@@ -155,19 +159,31 @@ const OrderCard = React.memo(({
                 {orderBillNo}
               </Text>
             </View>
-            <View className={`px-2 py-0.5 rounded border ${isRunning ? 'bg-amber-500/20 border-amber-500/30' : 'bg-emerald-500/20 border-emerald-500/30'
-              }`}>
-              <Text className={`text-[10px] font-bold ${isRunning ? 'text-amber-300' : 'text-emerald-300'
+            {String(item.status || '').toUpperCase() === 'CANCELLED' ? (
+              <View className="px-2 py-0.5 rounded border bg-rose-500/20 border-rose-500/40">
+                <Text className="text-[10px] font-bold text-rose-300">CANCELLED</Text>
+              </View>
+            ) : (
+              <View className={`px-2 py-0.5 rounded border ${isRunning ? 'bg-amber-500/20 border-amber-500/30' : 'bg-emerald-500/20 border-emerald-500/30'
                 }`}>
-                {isRunning ? 'RUNNING' : 'SETTLED'}
-              </Text>
-            </View>
+                <Text className={`text-[10px] font-bold ${isRunning ? 'text-amber-300' : 'text-emerald-300'
+                  }`}>
+                  {isRunning ? 'RUNNING' : 'SETTLED'}
+                </Text>
+              </View>
+            )}
           </View>
 
-          <Text className={`font-black text-lg shrink-0 ${isHighest ? 'text-emerald-300' : isLowest ? 'text-rose-300' : 'text-emerald-400'
-            }`} numberOfLines={1}>
-            ₹{Number(item.totalAmount || 0).toFixed(0)}
-          </Text>
+          {String(item.status || '').toUpperCase() === 'CANCELLED' ? (
+            <Text className="font-bold text-sm text-slate-500 line-through shrink-0" numberOfLines={1}>
+              ₹{Number(item.totalAmount || 0).toFixed(0)}
+            </Text>
+          ) : (
+            <Text className={`font-black text-lg shrink-0 ${isHighest ? 'text-emerald-300' : isLowest ? 'text-rose-300' : 'text-emerald-400'
+              }`} numberOfLines={1}>
+              ₹{Number(item.totalAmount || 0).toFixed(0)}
+            </Text>
+          )}
         </View>
 
         {/* Items Summary Preview */}
@@ -227,6 +243,7 @@ const OrdersSummaryDashboard = React.memo(({
             const activeDineIn = timeScope === 'TODAY' ? stats.todayDineInCount : stats.dineInCount;
             const activePickup = timeScope === 'TODAY' ? stats.todayPickupCount : stats.pickupCount;
             const activeTakeaway = timeScope === 'TODAY' ? stats.todayTakeawayCount : stats.takeawayCount;
+  const activeOnline = timeScope === 'TODAY' ? (stats.todayOnlineCount || 0) : (stats.onlineCount || 0);
             const activeAvg = timeScope === 'TODAY' ? stats.todayAvgOrder : stats.averageOrderValue;
             const activePayments = timeScope === 'TODAY' ? stats.paymentsToday : stats.paymentsAll;
             const activeItems = timeScope === 'TODAY' ? stats.itemFrequencyToday : stats.itemFrequencyAll;
@@ -323,31 +340,35 @@ const OrdersSummaryDashboard = React.memo(({
                       {/* Tab 1: OVERVIEW METRIC TILES */}
                       {summaryTab === 'OVERVIEW' && (
                         <View className="flex-row flex-wrap gap-2 pt-2.5">
-                          {/* Today's Orders Tile */}
+                          {/* Active Scope Orders Count Tile */}
                           <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
                             <View className="flex-row items-center justify-between">
-                              <Text className="text-slate-400 text-[10px] font-bold uppercase">Today's Orders</Text>
-                              <Clock size={13} color="#34D399" />
+                              <Text className="text-slate-400 text-[10px] font-bold uppercase">
+                                {timeScope === 'TODAY' ? "Today's Orders" : "Total Orders"}
+                              </Text>
+                              {timeScope === 'TODAY' ? <Clock size={13} color="#34D399" /> : <Receipt size={13} color="#818CF8" />}
                             </View>
-                            <Text className="text-emerald-300 font-black text-base mt-1" numberOfLines={1}>
-                              {stats.todayOrdersCount} <Text className="text-xs text-slate-400 font-normal">({stats.todayDineInCount}D / {stats.todayPickupCount}P)</Text>
+                            <Text className={`${timeScope === 'TODAY' ? 'text-emerald-300' : 'text-white'} font-black text-base mt-1`} numberOfLines={1}>
+                              {activeCount} <Text className="text-xs text-slate-400 font-normal">({activeDineIn}D / {activePickup}P{activeOnline > 0 ? ` / ${activeOnline} Online` : ''})</Text>
                             </Text>
                             <Text className="text-slate-400 text-[10px] mt-0.5">
-                              ₹{stats.todayRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} today
+                              ₹{activeRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} {timeScope === 'TODAY' ? 'today' : 'all-time'}
                             </Text>
                           </View>
 
-                          {/* Total Orders History Tile */}
+                          {/* Active Scope Revenue Tile */}
                           <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
                             <View className="flex-row items-center justify-between">
-                              <Text className="text-slate-400 text-[10px] font-bold uppercase">Total Orders</Text>
-                              <Receipt size={13} color="#818CF8" />
+                              <Text className="text-slate-400 text-[10px] font-bold uppercase">
+                                {timeScope === 'TODAY' ? "Today's Revenue" : "Total Revenue"}
+                              </Text>
+                              <TrendingUp size={13} color="#34D399" />
                             </View>
                             <Text className="text-white font-black text-base mt-1" numberOfLines={1}>
-                              {stats.totalOrdersCount} <Text className="text-xs text-slate-400 font-normal">({stats.dineInCount}D / {stats.pickupCount}P)</Text>
+                              ₹{activeRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </Text>
                             <Text className="text-slate-400 text-[10px] mt-0.5">
-                              ₹{stats.totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} total
+                              {timeScope === 'TODAY' ? `${stats.todayOrdersCount} orders today` : `${stats.totalOrdersCount} total orders`}
                             </Text>
                           </View>
 
@@ -365,22 +386,26 @@ const OrdersSummaryDashboard = React.memo(({
                             </Text>
                           </View>
 
-                          {/* Top Order Peak Tile */}
+                          {/* Scope-Synchronized Peak Sale Tile */}
                           <View className="bg-emerald-950/30 border border-emerald-500/40 p-2.5 rounded-2xl flex-1 min-w-[130px]">
                             <View className="flex-row items-center justify-between">
-                              <Text className="text-emerald-400 text-[10px] font-black uppercase tracking-wide">Peak Sale (🟢)</Text>
+                              <Text className="text-emerald-400 text-[10px] font-black uppercase tracking-wide">
+                                {timeScope === 'TODAY' ? "Today's Peak (🟢)" : "All-Time Peak (🟢)"}
+                              </Text>
                               <TrendingUp size={13} color="#34D399" />
                             </View>
                             <View className="flex-row items-baseline gap-1 mt-1">
                               <Text className="text-emerald-300 font-black text-base" numberOfLines={1}>
-                                ₹{stats.highestOrderAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                ₹{(timeScope === 'TODAY' ? stats.todayHighestAmount : stats.highestOrderAmount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                               </Text>
-                              {stats.highestOrderKOT !== 'None' && (
-                                <Text className="text-emerald-400/80 text-[10px] font-bold" numberOfLines={1}>{stats.highestOrderKOT}</Text>
+                              {((timeScope === 'TODAY' ? stats.todayHighestKOT : stats.highestOrderKOT) !== 'None') && (
+                                <Text className="text-emerald-400/80 text-[10px] font-bold" numberOfLines={1}>
+                                  {timeScope === 'TODAY' ? stats.todayHighestKOT : stats.highestOrderKOT}
+                                </Text>
                               )}
                             </View>
                             <Text className="text-slate-400 text-[10px] mt-0.5">
-                              Min: ₹{stats.lowestOrderAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              Min: ₹{(timeScope === 'TODAY' ? stats.todayLowestAmount : stats.lowestOrderAmount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </Text>
                           </View>
                         </View>
@@ -587,7 +612,7 @@ const OrdersSummaryDashboard = React.memo(({
 
 export const RunningOrdersScreen = () => {
   const insets = useSafeAreaInsets();
-  const { orders, subscribeToOrders, isLoading } = useOrderStore();
+  const { orders, subscribeToOrders, isLoading, totalOrdersCount: serverTotalCount, loadMoreOrders } = useOrderStore();
   const { tenant, locations, activeLocationId, branding, features } = useTenantStore();
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
@@ -733,6 +758,8 @@ export const RunningOrdersScreen = () => {
   const getOrderTimestamp = (o: any): number => {
     const raw = o.createdAt;
     if (!raw) return 0;
+    if (typeof raw.toMillis === 'function') return raw.toMillis();
+    if (typeof raw.toDate === 'function') return raw.toDate().getTime();
     if (raw.seconds !== undefined) return raw.seconds * 1000;
     if (typeof raw === 'number') return raw;
     if (raw instanceof Date) return raw.getTime();
@@ -758,21 +785,30 @@ export const RunningOrdersScreen = () => {
 
   // Rich KPIs & Analytics Calculations (pre-calculated once, independent of timeScope toggle)
   const stats = useMemo(() => {
-    const totalOrdersCount = baseFilteredOrders.length;
-    const totalRevenue = baseFilteredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-    const averageOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0;
+    // Filter out CANCELLED orders from all financial metrics and successful counts
+    const isCancelled = (o: any) => String(o.status || '').toUpperCase() === 'CANCELLED';
+    const validBaseOrders = baseFilteredOrders.filter(o => !isCancelled(o));
+    const validTodayOrders = todayOrders.filter(o => !isCancelled(o));
 
-    const todayOrdersCount = todayOrders.length;
-    const todayRevenue = todayOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    const totalOrdersCount = serverTotalCount !== null && serverTotalCount !== undefined
+      ? Math.max(serverTotalCount, validBaseOrders.length)
+      : validBaseOrders.length;
+    const totalRevenue = validBaseOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    const averageOrderValue = validBaseOrders.length > 0 ? totalRevenue / validBaseOrders.length : 0;
+
+    const todayOrdersCount = validTodayOrders.length;
+    const todayRevenue = validTodayOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
     const todayAvgOrder = todayOrdersCount > 0 ? todayRevenue / todayOrdersCount : 0;
 
-    const todayDineInCount = todayOrders.filter(o => o.tableNo && o.orderType !== 'PICKUP' && o.orderType !== 'TAKEAWAY').length;
-    const todayPickupCount = todayOrders.filter(o => o.orderType === 'PICKUP').length;
-    const todayTakeawayCount = todayOrders.filter(o => o.orderType === 'TAKEAWAY').length;
+    const todayDineInCount = validTodayOrders.filter(o => o.tableNo && o.orderType !== 'PICKUP' && o.orderType !== 'TAKEAWAY' && !o.orderType?.includes('ONLINE')).length;
+    const todayPickupCount = validTodayOrders.filter(o => o.orderType === 'PICKUP').length;
+    const todayTakeawayCount = validTodayOrders.filter(o => o.orderType === 'TAKEAWAY').length;
+    const todayOnlineCount = validTodayOrders.filter(o => o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY').length;
 
-    const dineInCount = baseFilteredOrders.filter(o => o.tableNo && o.orderType !== 'PICKUP' && o.orderType !== 'TAKEAWAY').length;
-    const pickupCount = baseFilteredOrders.filter(o => o.orderType === 'PICKUP').length;
-    const takeawayCount = baseFilteredOrders.filter(o => o.orderType === 'TAKEAWAY').length;
+    const dineInCount = validBaseOrders.filter(o => o.tableNo && o.orderType !== 'PICKUP' && o.orderType !== 'TAKEAWAY' && !o.orderType?.includes('ONLINE')).length;
+    const pickupCount = validBaseOrders.filter(o => o.orderType === 'PICKUP').length;
+    const takeawayCount = validBaseOrders.filter(o => o.orderType === 'TAKEAWAY').length;
+    const onlineCount = validBaseOrders.filter(o => o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY').length;
 
     const emptyPayments = {
       cash: { amount: 0, count: 0, percent: 0 },
@@ -809,6 +845,8 @@ export const RunningOrdersScreen = () => {
         dineInCount,
         pickupCount,
         takeawayCount,
+        onlineCount,
+        todayOnlineCount,
         paymentsAll: emptyPayments,
         paymentsToday: emptyPayments,
         itemFrequencyAll: [],
@@ -824,8 +862,8 @@ export const RunningOrdersScreen = () => {
     let lowestOrderId = '';
     let lowestOrderKOT = 'None';
 
-    if (baseFilteredOrders.length > 0) {
-      baseFilteredOrders.forEach(o => {
+    if (validBaseOrders.length > 0) {
+      validBaseOrders.forEach(o => {
         const amt = Number(o.totalAmount) || 0;
         if (amt > highestOrderAmount) {
           highestOrderAmount = amt;
@@ -851,8 +889,8 @@ export const RunningOrdersScreen = () => {
     let todayLowestId = '';
     let todayLowestKOT = 'None';
 
-    if (todayOrders.length > 0) {
-      todayOrders.forEach(o => {
+    if (validTodayOrders.length > 0) {
+      validTodayOrders.forEach(o => {
         const amt = Number(o.totalAmount) || 0;
         if (amt > todayHighestAmount) {
           todayHighestAmount = amt;
@@ -976,11 +1014,11 @@ export const RunningOrdersScreen = () => {
       return Object.values(map).sort((a, b) => b.qty - a.qty);
     };
 
-    const paymentsAll = calcPaymentBreakdown(baseFilteredOrders);
-    const paymentsToday = calcPaymentBreakdown(todayOrders);
+    const paymentsAll = calcPaymentBreakdown(validBaseOrders);
+    const paymentsToday = calcPaymentBreakdown(validTodayOrders);
 
-    const itemFrequencyAll = calcItemFrequency(baseFilteredOrders);
-    const itemFrequencyToday = calcItemFrequency(todayOrders);
+    const itemFrequencyAll = calcItemFrequency(validBaseOrders);
+    const itemFrequencyToday = calcItemFrequency(validTodayOrders);
 
     return {
       totalOrdersCount,
@@ -1094,7 +1132,49 @@ export const RunningOrdersScreen = () => {
     }
   };
 
-  // Delete Order handler (Admin / Manager only)
+  // Mark Food Ready / Handed to Delivery Partner
+  const handleMarkFoodReady = async (order: any) => {
+    try {
+      await DBServices.updateOrderStatus(order.id, 'COMPLETED', tenant?.id, order.locationId || activeLocationId);
+      setSelectedOrder((prev: any) => prev ? { ...prev, status: 'COMPLETED' } : null);
+      toast.success(
+        order.orderType?.includes('ONLINE')
+          ? `Order #${order.aggregatorOrderId || order.kotNo} marked Food Ready & Dispatched!`
+          : `Order #${order.kotNo} marked Completed!`
+      );
+    } catch (e: any) {
+      toast.error(`Could not update order status: ${e.message}`);
+    }
+  };
+
+  // Cancel Order handler
+  const handleCancelOrder = (order: any) => {
+    const isOnline = order.orderType?.includes('ONLINE');
+    Alert.alert(
+      'Cancel Order',
+      isOnline
+        ? `Are you sure you want to cancel this ${order.aggregatorPlatform || 'Online'} order?\n\nNotice: Please also cancel this order in your ${order.aggregatorPlatform || 'Swiggy/Zomato'} merchant app so the customer receives their refund and the rider is unassigned.`
+        : `Are you sure you want to cancel Order #${order.kotNo}?`,
+      [
+        { text: 'No, Keep Order', style: 'cancel' },
+        {
+          text: 'Yes, Cancel Order',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DBServices.updateOrderStatus(order.id, 'CANCELLED', tenant?.id, order.locationId || activeLocationId);
+              setSelectedOrder((prev: any) => prev ? { ...prev, status: 'CANCELLED' } : null);
+              toast.info(`Order #${order.aggregatorOrderId || order.kotNo} has been cancelled.`);
+            } catch (e: any) {
+              toast.error(`Could not cancel order: ${e.message}`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+    // Delete Order handler (Admin / Manager only)
   const handleDeleteOrder = (id: string, kotNo: number | string) => {
     Alert.alert(
       'Delete Order',
@@ -1166,7 +1246,7 @@ export const RunningOrdersScreen = () => {
     <SafeAreaView className="flex-1 bg-[#090D1A]">
       <Header
         title="Orders History"
-        subtitle={`${filteredOrders.length} ${timeScope === 'TODAY' ? "Today's" : 'Total'} Orders`}
+        subtitle={timeScope === 'TODAY' ? `${todayOrders.length} Today's Orders` : stats.totalOrdersCount > filteredOrders.length ? `Showing latest ${filteredOrders.length} of ${stats.totalOrdersCount} Total Orders` : `${stats.totalOrdersCount} Total Orders`}
         rightElement={
           <TouchableOpacity
             onPress={() => setDownloadModalOpen(true)}
@@ -1319,6 +1399,21 @@ export const RunningOrdersScreen = () => {
             alignSelf: 'center',
             width: '100%'
           }}          ListHeaderComponent={listHeader}
+          ListFooterComponent={
+            timeScope === 'ALL' && stats.totalOrdersCount > filteredOrders.length ? (
+              <View className="py-4 items-center">
+                <TouchableOpacity
+                  onPress={loadMoreOrders}
+                  className="bg-indigo-600/30 border border-indigo-500/40 px-5 py-3 rounded-2xl flex-row items-center active:bg-indigo-600/50"
+                >
+                  <RefreshCw size={14} color="#A78BFA" />
+                  <Text className="text-purple-200 font-bold text-xs ml-2">
+                    Load More Past Orders (Showing {filteredOrders.length} of {stats.totalOrdersCount})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null
+          }
           renderItem={renderOrderItem}
           ListEmptyComponent={
             <View className="items-center justify-center py-20">
@@ -1545,6 +1640,31 @@ export const RunningOrdersScreen = () => {
                   </View>
                 )}
               </View>
+
+              {/* Order Lifecycle Actions: Food Ready / Complete & Cancel */}
+              {(selectedOrder.status === 'RUNNING' || selectedOrder.status === 'running') && (
+                <View className="mb-3 space-y-2">
+                  <TouchableOpacity
+                    onPress={() => handleMarkFoodReady(selectedOrder)}
+                    className="w-full bg-emerald-600 active:bg-emerald-700 py-3.5 rounded-2xl flex-row items-center justify-center shadow-lg shadow-emerald-600/30"
+                  >
+                    <CheckCircle2 size={18} color="white" />
+                    <Text className="text-white font-black text-sm ml-2">
+                      {selectedOrder.orderType?.includes('ONLINE') ? '✅ Food Ready • Hand to Rider' : '✅ Mark Order Complete'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleCancelOrder(selectedOrder)}
+                    className="w-full bg-rose-500/15 border border-rose-500/30 active:bg-rose-500/25 py-2.5 rounded-2xl flex-row items-center justify-center"
+                  >
+                    <XCircle size={15} color="#FB7185" />
+                    <Text className="text-rose-300 font-bold text-xs ml-1.5">
+                      {selectedOrder.orderType?.includes('ONLINE') ? 'Cancel Online Order' : 'Cancel Order'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               {/* Thermal Reprint Action Buttons */}
               <View className="gap-3 mt-2">

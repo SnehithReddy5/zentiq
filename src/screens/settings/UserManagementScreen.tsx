@@ -7,12 +7,14 @@ import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { useTenantStore } from '../../store/tenant.store';
+import { useAuthStore } from '../../store/auth.store';
 import { DBServices } from '../../services/firebase/db';
 import { UserRole } from '../../types/auth.types';
 
 export const UserManagementScreen = () => {
   const insets = useSafeAreaInsets();
   const { tenant, locations } = useTenantStore();
+  const { user } = useAuthStore();
   const [users, setUsers] = useState<any[]>([]);
   const [isModalOpen, setModalOpen] = useState(false);
 
@@ -51,6 +53,12 @@ export const UserManagementScreen = () => {
   };
 
   const handleSave = async () => {
+    const effectiveTenantId = tenant?.id || user?.tenantId;
+    if (!effectiveTenantId) {
+      toast.error('Active restaurant tenant not found. Please log in again.', 'Missing Tenant');
+      return;
+    }
+
     if (!name.trim() || !mobile.trim()) {
       toast.warning('Name and mobile/ID are required.', 'Required');
       return;
@@ -74,7 +82,7 @@ export const UserManagementScreen = () => {
         if (password.trim()) {
           updates.password = password.trim();
         }
-        const updatedId = await DBServices.updateUser(editingUserId, updates, tenant?.id, mobile.trim());
+        const updatedId = await DBServices.updateUser(editingUserId, updates, effectiveTenantId, mobile.trim());
         toast.success(
           updatedId.toLowerCase() !== editingUserId.toLowerCase()
             ? `Username changed to "${updatedId}" and updated successfully!`
@@ -87,10 +95,10 @@ export const UserManagementScreen = () => {
           mobile: mobile.trim(),
           password: password.trim(),
           role,
-          tenantId: tenant?.id,
+          tenantId: effectiveTenantId,
           locationIds: selectedLocId ? [selectedLocId] : ['*'],
           assignedLocationId: selectedLocId !== '*' ? selectedLocId : null,
-        }, tenant?.id);
+        }, effectiveTenantId);
         toast.success('Staff member created successfully!');
       }
 
@@ -250,8 +258,8 @@ export const UserManagementScreen = () => {
                     {[
                       { r: 'WAITER', title: 'Waiter / Captain', desc: 'Order entry & KOT printing only' },
                       { r: 'BILLER', title: 'Biller / Cashier', desc: 'Orders, KOT, checkout & bill settlement' },
-                      { r: 'MANAGER', title: 'Manager', desc: 'Orders, billing, tables, printer config & discounts' },
-                      { r: 'CLIENT_ADMIN', title: 'Client Admin (Owner)', desc: 'Full restaurant control & branch switching' },
+                      { r: 'MANAGER', title: 'Store Manager', desc: 'Orders, billing, tables, printer config & inventory' },
+                      { r: 'CLIENT_ADMIN', title: 'Restaurant Admin / Owner', desc: 'Full restaurant control, staff management & branch access' },
                     ].map(opt => (
                       <TouchableOpacity
                         key={opt.r}

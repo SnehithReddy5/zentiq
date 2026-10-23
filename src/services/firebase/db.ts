@@ -515,20 +515,22 @@ export const DBServices = {
   // 8. User Management
   async addUser(userData: any, tenantId?: string): Promise<void> {
     const cleanId = (userData.mobile || userData.id || '').trim();
+    const effectiveTenantId = tenantId || userData.tenantId;
+    if (!effectiveTenantId) {
+      throw new Error('Cannot create staff user: active restaurant tenant ID is required.');
+    }
     const payload = {
       ...userData,
       id: cleanId,
       mobile: cleanId,
-      tenantId: tenantId || userData.tenantId || null,
+      tenantId: effectiveTenantId,
       active: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
     // 1. Write to tenant subcollection
-    if (tenantId) {
-      await setDoc(doc(db, 'tenants', tenantId, 'users', cleanId), payload);
-    }
+    await setDoc(doc(db, 'tenants', effectiveTenantId, 'users', cleanId), payload);
 
     // 2. Register in root users collection for immediate global mobile login lookup
     await setDoc(doc(db, 'users', cleanId), payload);
@@ -578,21 +580,19 @@ export const DBServices = {
         try { await deleteDoc(doc(db, 'users', oldCleanId.toLowerCase())); } catch (_) {}
       }
 
-      // 3. If this user is an admin, update the tenant document adminUsername and adminPassword
-      if (
-        tenantId &&
-        (updates.role === 'ADMIN' ||
-          updates.role === 'CLIENT_ADMIN' ||
-          updates.role === 'TENANT_SUPER_ADMIN' ||
-          existingData.role === 'ADMIN' ||
-          existingData.role === 'CLIENT_ADMIN' ||
-          existingData.role === 'TENANT_SUPER_ADMIN')
-      ) {
-        await updateDoc(doc(db, 'tenants', tenantId), {
-          adminUsername: targetCleanId,
-          ...(updates.password ? { adminPassword: updates.password } : {}),
-          updatedAt: serverTimestamp(),
-        });
+      // 3. Only update tenant document if this user is the registered primary owner / admin of the tenant
+      if (tenantId) {
+        try {
+          const tSnap = await getDoc(doc(db, 'tenants', tenantId));
+          const tData = tSnap.exists() ? tSnap.data() : null;
+          if (tData && (tData.adminUsername === oldCleanId || tData.adminUsername === targetCleanId)) {
+            await updateDoc(doc(db, 'tenants', tenantId), {
+              adminUsername: targetCleanId,
+              ...(updates.password ? { adminPassword: updates.password } : {}),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        } catch (_) {}
       }
 
       return targetCleanId;
@@ -610,16 +610,18 @@ export const DBServices = {
         } catch (_) {}
       }
 
-      // If password changed on an admin account, update tenant doc
-      if (
-        tenantId &&
-        updates.password &&
-        (updates.role === 'ADMIN' || updates.role === 'CLIENT_ADMIN' || updates.role === 'TENANT_SUPER_ADMIN')
-      ) {
-        await updateDoc(doc(db, 'tenants', tenantId), {
-          adminPassword: updates.password,
-          updatedAt: serverTimestamp(),
-        });
+      // If password changed and this user is the registered primary owner of the tenant, sync tenant doc
+      if (tenantId && updates.password) {
+        try {
+          const tSnap = await getDoc(doc(db, 'tenants', tenantId));
+          const tData = tSnap.exists() ? tSnap.data() : null;
+          if (tData && (tData.adminUsername === oldCleanId || tData.adminUsername === targetCleanId)) {
+            await updateDoc(doc(db, 'tenants', tenantId), {
+              adminPassword: updates.password,
+              updatedAt: serverTimestamp(),
+            });
+          }
+        } catch (_) {}
       }
 
       return oldCleanId;

@@ -4,6 +4,8 @@ export interface ParsedAggregatorOrder {
   restaurantEmail: string;
   aggregatorPlatform: 'ZOMATO' | 'SWIGGY';
   aggregatorOrderId: string;
+  isCancellation?: boolean;
+  cancellationReason?: string;
   customerName?: string;
   customerPhone?: string;
   deliveryRiderName?: string;
@@ -30,6 +32,11 @@ export class AggregatorParserService {
     }
 
     const platform: 'ZOMATO' | 'SWIGGY' = isZomato ? 'ZOMATO' : 'SWIGGY';
+
+    // Detect if this email is a cancellation notification from Zomato / Swiggy
+    const isCancellation = /cancell?ed|cancell?ation/i.test(subject) ||
+      /(?:order|delivery|item).*(?:hass*beens*cancell?ed|iss*cancell?ed)/i.test(bodyText) ||
+      /cancellations*notice/i.test(bodyText);
 
     // 1. Extract Order ID
     let orderId = '';
@@ -98,6 +105,8 @@ export class AggregatorParserService {
       restaurantEmail: recipientEmail.trim().toLowerCase(),
       aggregatorPlatform: platform,
       aggregatorOrderId: orderId,
+      isCancellation,
+      cancellationReason: isCancellation ? `Cancelled by ${platform} (${subject.slice(0, 40)})` : undefined,
       customerName,
       customerPhone,
       deliveryRiderName: riderName,

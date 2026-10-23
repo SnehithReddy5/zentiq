@@ -358,7 +358,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       <View className="flex-1">
         <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
           <Text className="text-white font-black text-lg">
-            {tableNo === 0 ? (orderType === 'PICKUP' ? 'Pick Up Cart' : 'Takeaway Cart') : `Table ${tableNo} Cart`}
+            {tableNo === 0 ? (orderType === 'PICKUP' ? 'Pick Up Cart' : (orderType === 'COUNTER' ? 'Counter Cart' : 'Takeaway Cart')) : `Table ${tableNo} Cart`}
           </Text>
           <TouchableOpacity onPress={() => clearCart(tableNo)} className="px-2 py-1 bg-rose-500/10 rounded">
             <Text className="text-rose-400 text-xs font-bold">Clear</Text>
@@ -434,12 +434,12 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 py-3 bg-[#111827] border-b border-slate-800">
         <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => navigation.goBack()} className="p-1 rounded-lg bg-slate-800 mr-3">
+          <TouchableOpacity onPress={() => { if (navigation.canGoBack()) { navigation.goBack(); } else { navigation.navigate(Routes.HOME); } }} className="p-1 rounded-lg bg-slate-800 mr-3">
             <ArrowLeft size={20} color="#CBD5E1" />
           </TouchableOpacity>
           <View>
             <Text className="text-white font-bold text-base">
-              {tableNo === 0 ? (orderType === 'PICKUP' ? 'Pick Up Order' : 'Takeaway Order') : `Table ${tableNo} (Dine In)`}
+              {tableNo === 0 ? (orderType === 'PICKUP' ? 'Pick Up Order' : (orderType === 'COUNTER' ? 'Quick Counter Sale' : 'Takeaway Order')) : `Table ${tableNo} (Dine In)`}
             </Text>
             <Text className="text-slate-400 text-xs">Tap items to add to order</Text>
           </View>
@@ -712,7 +712,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             <View className="flex-row items-center gap-2">
               <View className="bg-indigo-500/20 px-2 py-0.5 rounded-md border border-indigo-500/30">
                 <Text className="text-indigo-300 text-xs font-black">
-                  {tableNo ? `Table ${tableNo}` : (orderType === 'PICKUP' ? 'Pick Up' : 'Takeaway')}
+                  {tableNo ? `Table ${tableNo}` : (orderType === 'PICKUP' ? 'Pick Up' : (orderType === 'COUNTER' ? 'Counter Sale' : 'Takeaway'))}
                 </Text>
               </View>
               <Text className="text-slate-400 text-xs font-semibold">
