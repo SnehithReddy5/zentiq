@@ -108,9 +108,12 @@ const OrderCard = React.memo(({
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={() => onPress(item)}
-      className={`p-4 rounded-3xl m-1.5 justify-between active:bg-slate-850 ${isHighest
-        ? 'bg-slate-900 border-2 border-emerald-500'
-        : isLowest
+      className={`p-4 rounded-3xl m-1.5 justify-between active:bg-slate-850 ${
+        item.billRequested
+          ? 'bg-amber-950/30 border-2 border-amber-400 shadow-lg shadow-amber-500/20'
+          : isHighest
+          ? 'bg-slate-900 border-2 border-emerald-500'
+          : isLowest
           ? 'bg-slate-900 border-2 border-rose-500'
           : 'bg-slate-900 border border-slate-800 hover:border-slate-700'
         }`}
@@ -118,6 +121,19 @@ const OrderCard = React.memo(({
     >
       <View>
         {/* Top & Least Badges */}
+        {item.billRequested && (
+          <View className="flex-row items-center mb-2 self-start bg-amber-500/25 border border-amber-500/60 px-2.5 py-1 rounded-full">
+            <Receipt size={11} color="#FBBF24" />
+            <Text className="text-amber-300 font-black text-[10px] ml-1 tracking-wide">
+              BILL REQUESTED (TABLE {item.tableNo})
+            </Text>
+          </View>
+        )}
+        {item.orderSource === 'QR_SELF_ORDER' && !item.billRequested && (
+          <View className="flex-row items-center mb-2 self-start bg-teal-500/20 border border-teal-500/40 px-2 py-0.5 rounded-full">
+            <Text className="text-teal-300 font-bold text-[9px]">QR SELF-ORDER</Text>
+          </View>
+        )}
         {isHighest && (
           <View className="flex-row items-center mb-2 self-start bg-emerald-500/20 border border-emerald-500/50 px-2 py-0.5 rounded-full">
             <TrendingUp size={11} color="#34D399" />
@@ -1132,15 +1148,55 @@ export const RunningOrdersScreen = () => {
     }
   };
 
+  // Settle Order, Print Bill Receipt & Clear Table
+  const handleSettleAndClearOrder = async (order: any) => {
+    setIsReprinting(true);
+    try {
+      // 1. Print Receipt Bill to Billing printer
+      await handleReprintBill(order);
+
+      // 2. Mark order as COMPLETED
+      await DBServices.updateOrderStatus(order.id, 'COMPLETED', tenant?.id, order.locationId || activeLocationId);
+
+      // 3. Clear table and cart
+      if (order.tableNo) {
+        await DBServices.updateTableStatusByNo(order.tableNo, 'available', tenant?.id, order.locationId || activeLocationId);
+        try {
+          const { useCartStore } = require('../../store/cart.store');
+          useCartStore.getState().clearCart(order.tableNo);
+        } catch (_) {}
+      }
+
+      setSelectedOrder(null);
+      toast.success(
+        order.tableNo
+          ? `Bill printed! Table ${order.tableNo} settled and cleared.`
+          : `Bill #${order.orderNumber || order.kotNo} printed & settled!`,
+        'Order Settled'
+      );
+    } catch (err: any) {
+      toast.error(`Error settling order: ${err.message}`);
+    } finally {
+      setIsReprinting(false);
+    }
+  };
+
   // Mark Food Ready / Handed to Delivery Partner
   const handleMarkFoodReady = async (order: any) => {
     try {
       await DBServices.updateOrderStatus(order.id, 'COMPLETED', tenant?.id, order.locationId || activeLocationId);
+      if (order.tableNo) {
+        await DBServices.updateTableStatusByNo(order.tableNo, 'available', tenant?.id, order.locationId || activeLocationId);
+        try {
+          const { useCartStore } = require('../../store/cart.store');
+          useCartStore.getState().clearCart(order.tableNo);
+        } catch (_) {}
+      }
       setSelectedOrder((prev: any) => prev ? { ...prev, status: 'COMPLETED' } : null);
       toast.success(
         order.orderType?.includes('ONLINE')
           ? `Order #${order.aggregatorOrderId || order.kotNo} marked Food Ready & Dispatched!`
-          : `Order #${order.kotNo} marked Completed!`
+          : `Order #${order.kotNo} marked Completed & Table cleared!`
       );
     } catch (e: any) {
       toast.error(`Could not update order status: ${e.message}`);
@@ -1163,8 +1219,15 @@ export const RunningOrdersScreen = () => {
           onPress: async () => {
             try {
               await DBServices.updateOrderStatus(order.id, 'CANCELLED', tenant?.id, order.locationId || activeLocationId);
+              if (order.tableNo) {
+                await DBServices.updateTableStatusByNo(order.tableNo, 'available', tenant?.id, order.locationId || activeLocationId);
+                try {
+                  const { useCartStore } = require('../../store/cart.store');
+                  useCartStore.getState().clearCart(order.tableNo);
+                } catch (_) {}
+              }
               setSelectedOrder((prev: any) => prev ? { ...prev, status: 'CANCELLED' } : null);
-              toast.info(`Order #${order.aggregatorOrderId || order.kotNo} has been cancelled.`);
+              toast.info(`Order #${order.aggregatorOrderId || order.kotNo} has been cancelled & Table cleared.`);
             } catch (e: any) {
               toast.error(`Could not cancel order: ${e.message}`);
             }
@@ -1386,7 +1449,7 @@ export const RunningOrdersScreen = () => {
           key={ordersGridColumns}
           data={filteredOrders}
           numColumns={ordersGridColumns}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => `${item.id || 'order'}-${index}`}
           initialNumToRender={8}
           maxToRenderPerBatch={8}
           windowSize={5}
@@ -1412,7 +1475,7 @@ export const RunningOrdersScreen = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
-            ) : null
+            ) : undefined
           }
           renderItem={renderOrderItem}
           ListEmptyComponent={
@@ -1489,6 +1552,26 @@ export const RunningOrdersScreen = () => {
             </View>
 
             <ScrollView className="flex-1 px-4 py-4" contentContainerStyle={{ paddingBottom: 60 }}>
+              {selectedOrder.billRequested && (
+                <View className="bg-amber-950/60 border border-amber-500/50 p-4 rounded-3xl mb-4 flex-row items-center justify-between">
+                  <View className="flex-1 mr-3">
+                    <View className="flex-row items-center mb-1">
+                      <Receipt size={16} color="#FBBF24" />
+                      <Text className="text-amber-300 font-black text-sm ml-1.5">Customer Requested Bill!</Text>
+                    </View>
+                    <Text className="text-slate-300 text-xs">
+                      Diner at Table {selectedOrder.tableNo} is ready to settle bill at table.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleSettleAndClearOrder(selectedOrder)}
+                    className="bg-emerald-500 px-3.5 py-2.5 rounded-xl active:bg-emerald-600 shadow-md shadow-emerald-500/30 flex-row items-center"
+                  >
+                    <Printer size={14} color="#022c22" />
+                    <Text className="text-emerald-950 font-black text-xs ml-1.5">🖨️ Print Bill & Settle Table</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
               {(selectedOrder.orderType === 'ONLINE_ZOMATO' || selectedOrder.orderType === 'ONLINE_SWIGGY') && (
                 <View className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-2xl mb-4">
                   <View className="flex-row items-center justify-between mb-2">
@@ -1670,7 +1753,7 @@ export const RunningOrdersScreen = () => {
               <View className="gap-3 mt-2">
                 <View className="flex-row gap-3">
                   <TouchableOpacity
-                    onPress={() => handleReprintBill(selectedOrder)}
+                    onPress={() => (selectedOrder.status === 'RUNNING' || selectedOrder.status === 'running') ? handleSettleAndClearOrder(selectedOrder) : handleReprintBill(selectedOrder)}
                     disabled={isReprinting}
                     className="flex-1 bg-emerald-600 py-4 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-lg shadow-emerald-600/30"
                   >
@@ -1679,7 +1762,7 @@ export const RunningOrdersScreen = () => {
                     ) : (
                       <View className="flex-row items-center justify-center">
                         <Printer size={18} color="white" />
-                        <Text className="text-white font-black text-sm ml-2">Reprint Bill Receipt</Text>
+                        <Text className="text-white font-black text-sm ml-2">{selectedOrder.status === 'RUNNING' || selectedOrder.status === 'running' ? '🖨️ Settle Bill & Free Table' : 'Reprint Bill Receipt'}</Text>
                       </View>
                     )}
                   </TouchableOpacity>

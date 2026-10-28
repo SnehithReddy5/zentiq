@@ -34,7 +34,17 @@ interface CentralKitchenState {
   updateMenuItem: (itemId: string, updates: Partial<CKMenuItem>) => Promise<void>;
   deleteMenuItem: (itemId: string) => Promise<void>;
   updatePartnerStatus: (ckTenantId: string, partnerTenantId: string, status: CKPartnerStatus) => Promise<void>;
-  updateOrderStatus: (orderId: string, status: CKOrderStatus, rejectionReason?: string, paymentStatus?: CKPaymentStatus) => Promise<void>;
+  updateOrderStatus: (
+    orderId: string,
+    status: CKOrderStatus,
+    rejectionReason?: string,
+    paymentStatus?: CKPaymentStatus,
+    paymentMode?: 'UPI' | 'NEFT' | 'CASH' | 'LEDGER',
+    invoiceNumber?: string
+  ) => Promise<void>;
+  recordPaymentReceived: (order: CKOrder, paymentMode: 'UPI' | 'NEFT' | 'CASH' | 'LEDGER') => Promise<string>;
+  confirmOrderDelivery: (orderId: string) => Promise<void>;
+  cancelOrder: (order: CKOrder, reason?: string) => Promise<void>;
   subscribeToIncomingOrders: (sellerTenantId: string) => () => void;
 
   // Actions for Ordering Outlets (Buyer)
@@ -146,15 +156,58 @@ export const useCentralKitchenStore = create<CentralKitchenState>((set, get) => 
     }
   },
 
-  updateOrderStatus: async (orderId, status, rejectionReason, paymentStatus) => {
+  updateOrderStatus: async (orderId, status, rejectionReason, paymentStatus, paymentMode, invoiceNumber) => {
     try {
-      await DBServices.updateCKOrderStatus(orderId, status, rejectionReason, paymentStatus);
-      if (status === 'ACCEPTED') toast.success('✓ Order accepted! Kitchen notified for cooking.');
-      else if (status === 'REJECTED') toast.warning('Order has been rejected.');
-      else if (status === 'DISPATCHED') toast.success('✓ Order marked as dispatched with delivery slip!');
-      else if (status === 'DELIVERED') toast.success('✓ Delivery confirmed!');
+      await DBServices.updateCKOrderStatus(orderId, status, rejectionReason, paymentStatus, paymentMode, invoiceNumber);
+      if (status === 'ACCEPTED') toast.success('Order accepted! Kitchen notified for cooking.');
+      else if (status === 'REJECTED') toast.warning('Order has been rejected / cancelled.');
+      else if (status === 'DISPATCHED') toast.success('Order marked as dispatched with delivery slip!');
+      else if (status === 'DELIVERED') toast.success('Delivery confirmed & received!');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update order status', 'Error');
+      throw e;
+    }
+  },
+
+  recordPaymentReceived: async (order, paymentMode) => {
+    try {
+      const invoiceNo = order.invoiceNumber || `INV-CK-${order.orderNumber}`;
+      await DBServices.updateCKOrderStatus(
+        order.id,
+        order.status,
+        undefined,
+        'PAID',
+        paymentMode,
+        invoiceNo
+      );
+      toast.success(`Payment of ₹${order.totalAmount.toFixed(2)} recorded via ${paymentMode}!`, 'Payment Captured');
+      return invoiceNo;
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to record payment', 'Error');
+      throw e;
+    }
+  },
+
+  confirmOrderDelivery: async (orderId) => {
+    try {
+      await DBServices.updateCKOrderStatus(orderId, 'DELIVERED');
+      toast.success('Food batch delivery confirmed! Stock verified.', 'Delivery Received');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to confirm delivery', 'Error');
+      throw e;
+    }
+  },
+
+  cancelOrder: async (order, reason) => {
+    if (order.status !== 'PENDING') {
+      toast.warning('Order has already been accepted/processed and cannot be cancelled.', 'Cancellation Locked');
+      throw new Error('Order cannot be cancelled once accepted');
+    }
+    try {
+      await DBServices.updateCKOrderStatus(order.id, 'REJECTED', reason || 'Cancelled by buyer before preparation');
+      toast.success('Order cancelled successfully.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to cancel order', 'Error');
       throw e;
     }
   },

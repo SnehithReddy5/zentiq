@@ -141,9 +141,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Windows Executables
+      - name: Upload Windows Executables (Internal Artifact)
         uses: actions/upload-artifact@v4
         with:
           name: windows-desktop-installer
           path: dist-electron/*.exe
           retention-days: 30
+
+      # Public Release: Allows 1-click anonymous direct download on client PCs without any GitHub login
+      - name: Publish Windows Installer to Public GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release]')
+        with:
+          tag_name: pos-desktop-latest
+          name: Zentiq POS Desktop Latest (Windows)
+          files: dist-electron/*.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

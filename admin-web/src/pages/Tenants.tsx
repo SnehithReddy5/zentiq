@@ -1,4 +1,5 @@
 import { simulateAdminTestOrder } from '../utils/aggregatorParser';
+import { TableQrModal } from '../components/TableQrModal';
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
@@ -33,7 +34,8 @@ import {
   Copy,
   Check,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  QrCode
 } from 'lucide-react';
 
 // Subcomponent to display and control branches for each tenant
@@ -158,6 +160,7 @@ export const Tenants = () => {
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<'RESTAURANT' | 'CURRY_POINT' | 'TIFFIN_CENTER' | 'CAFE' | 'FOOD_TRUCK'>('RESTAURANT');
   const [editAdminEmail, setEditAdminEmail] = useState('');
+  const [tableQrModal, setTableQrModal] = useState<{ isOpen: boolean; tenant: any | null }>({ isOpen: false, tenant: null });
   const [testAggregatorModal, setTestAggregatorModal] = useState<{
     isOpen: boolean;
     tenant: any | null;
@@ -842,6 +845,14 @@ Zentiq Platform Team`;
                     >
                       <span>⚡</span>
                       Test Zomato / Swiggy Live Order
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTableQrModal({ isOpen: true, tenant })}
+                      className="w-full mt-2 flex items-center justify-center gap-1.5 bg-gradient-to-r from-emerald-600/15 to-teal-600/15 hover:from-emerald-600/25 hover:to-teal-600/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer shadow-sm"
+                    >
+                      <QrCode size={13} />
+                      Download Table QR Standees (Ultra High-Res)
                     </button>
                   </div>
                 </div>

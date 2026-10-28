@@ -4,7 +4,7 @@ export type OrderStatus = 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'running' | 'c
 
 export type PaymentStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
 
-export type PaymentMethod = 'CASH' | 'UPI' | 'CARD' | 'OTHER';
+export type PaymentMethod = 'CASH' | 'UPI' | 'CARD' | 'OTHER' | 'ZOMATO_PAY' | 'SWIGGY_PAY';
 
 export interface OrderPayment {
   id: string;

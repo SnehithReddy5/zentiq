@@ -4,6 +4,7 @@ import { Tenants } from './pages/Tenants';
 import { LocationRequests } from './pages/LocationRequests';
 import { AppReleases } from './pages/AppReleases';
 import { AdminLogin } from './pages/Login';
+import { CustomerOrderPortal } from './pages/CustomerOrderPortal';
 import { CommunicationSettingsModal } from './components/CommunicationSettingsModal';
 import { db } from './firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -28,6 +29,16 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+
+  // 1. Direct Dine-In Table Ordering Route: If URL contains /order or table/tenant query parameters, render customer portal directly
+  const searchParams = new URLSearchParams(window.location.search);
+  const isCustomerOrderRoute =
+    window.location.pathname.startsWith('/order') ||
+    (searchParams.has('table') && (searchParams.has('t') || searchParams.has('tenantId')));
+
+  if (isCustomerOrderRoute) {
+    return <CustomerOrderPortal />;
+  }
 
   const handleLogout = () => {
     if (window.confirm('Log out of Platform Admin portal?')) {
@@ -112,7 +123,7 @@ export default function App() {
             >
               <div className="flex items-center space-x-3">
                 <Smartphone className="w-4 h-4" />
-                <span>APK Releases</span>
+                <span>APK & Windows Releases</span>
               </div>
               {currentPage === 'releases' && <ChevronRight className="w-3.5 h-3.5" />}
             </button>

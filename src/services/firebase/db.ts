@@ -17,14 +17,26 @@ import {
   limit,
 } from 'firebase/firestore';
 import { db } from './config';
-function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
-  const clean: any = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) {
-      clean[key] = value;
-    }
+export function cleanFirestoreData<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
   }
-  return clean;
+  if (Array.isArray(data)) {
+    return data.map(item => cleanFirestoreData(item)) as unknown as T;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    if ((data as any)._methodName || (data as any).constructor?.name === 'FieldValue') {
+      return data;
+    }
+    const clean: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        clean[key] = cleanFirestoreData(value);
+      }
+    }
+    return clean as T;
+  }
+  return data;
 }
 
 import { Table } from '../../types/table.types';
@@ -189,16 +201,26 @@ export const DBServices = {
 
   async updateTableStatusByNo(tableNo: number | string, status: Table['status'], tenantId?: string, locationId?: string): Promise<void> {
     const numericTableNo = Number(tableNo);
+    const stringTableNo = String(tableNo);
     const colRef = (tenantId && locationId)
       ? collection(db, 'tenants', tenantId, 'locations', locationId, 'tables')
       : collection(db, 'tables');
 
-    const q = query(colRef, where('tableNo', '==', numericTableNo));
-    const snapshot = await getDocs(q);
+    let snapshot = await getDocs(query(colRef, where('tableNo', '==', numericTableNo)));
+    if (snapshot.empty) {
+      snapshot = await getDocs(query(colRef, where('tableNo', '==', stringTableNo)));
+    }
     const updatePromises = snapshot.docs.map(d =>
       updateDoc(d.ref, {
         status,
-        ...(status === 'available' ? { cartItems: [], activeWaiterName: null, activeWaiterId: null, currentOrderId: null } : {}),
+        ...(status === 'available' ? {
+          cartItems: [],
+          activeWaiterName: null,
+          activeWaiterId: null,
+          currentOrderId: null,
+          billRequested: false,
+          billRequestedAt: null
+        } : {}),
         updatedAt: serverTimestamp()
       })
     );
@@ -378,7 +400,7 @@ export const DBServices = {
       : collection(db, 'orders');
 
     const orderRef = doc(ordersCol);
-    await setDoc(orderRef, {
+    const sanitizedOrderPayload = cleanFirestoreData({
       ...orderData,
       id: orderRef.id,
       tenantId: tenantId || null,
@@ -386,6 +408,7 @@ export const DBServices = {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    await setDoc(orderRef, sanitizedOrderPayload);
 
     // Automatically deduct inventory stock for sold items
     if (orderData.items && orderData.items.length > 0) {
@@ -497,9 +520,10 @@ export const DBServices = {
       const snapshot = await getDocs(q);
       const isRunning = items.length > 0;
 
+      const cleanItems = cleanFirestoreData(items);
       const updatePromises = snapshot.docs.map(d =>
         updateDoc(d.ref, {
-          cartItems: items,
+          cartItems: cleanItems,
           status: isRunning ? 'running' : 'available',
           activeWaiterName: isRunning ? (currentUser?.name || 'Staff') : null,
           activeWaiterId: isRunning ? (currentUser?.id || 'staff') : null,
@@ -896,9 +920,18 @@ export const DBServices = {
   },
 
   async getCKProfileByPartnerCode(partnerCode: string): Promise<CKProfile | null> {
-    const q = query(collection(db, 'ckProfiles'), where('partnerCode', '==', partnerCode.trim().toUpperCase()));
+    const cleanCode = (partnerCode || '').trim().toUpperCase();
+    if (!cleanCode) return null;
+    const q = query(collection(db, 'ckProfiles'), where('partnerCode', '==', cleanCode));
     const snap = await getDocs(q);
-    if (snap.empty) return null;
+    if (snap.empty) {
+      // Direct tenantId fallback
+      const directDoc = await getDoc(doc(db, 'ckProfiles', cleanCode.toLowerCase()));
+      if (directDoc.exists()) {
+        return { id: directDoc.id, ...directDoc.data() } as CKProfile;
+      }
+      return null;
+    }
     const docData = snap.docs[0];
     return { id: docData.id, ...docData.data() } as CKProfile;
   },
@@ -910,9 +943,10 @@ export const DBServices = {
     buyerBusinessName: string,
     contactNumber?: string
   ): Promise<{ success: boolean; profile: CKProfile; status: CKPartnerStatus }> {
-    const profile = await this.getCKProfileByPartnerCode(partnerCode);
+    const cleanCode = (partnerCode || '').trim().toUpperCase();
+    const profile = await this.getCKProfileByPartnerCode(cleanCode);
     if (!profile) {
-      throw new Error('Invalid Partner Code. No Central Kitchen found with this code.');
+      throw new Error(`Invalid Partner Code: "${cleanCode}". Please verify code with Central Kitchen head.`);
     }
 
     if (profile.tenantId === buyerTenantId) {
@@ -923,27 +957,43 @@ export const DBServices = {
     const partners = profile.whitelistedPartners || [];
     const existingIndex = partners.findIndex((p: CKPartner) => p.tenantId === buyerTenantId);
 
+    const nowIso = new Date().toISOString();
     const newPartner: CKPartner = {
-      tenantId: buyerTenantId,
-      locationId: buyerLocationId,
-      businessName: buyerBusinessName,
+      tenantId: buyerTenantId || 'outlet',
+      locationId: buyerLocationId || 'main',
+      businessName: buyerBusinessName || 'Outlet',
       contactNumber: contactNumber || '',
       status: 'APPROVED',
       isInternalBranch: false,
-      approvedAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
+      approvedAt: nowIso,
+      createdAt: nowIso,
     };
 
     let updatedPartners: CKPartner[] = [];
     if (existingIndex >= 0) {
       updatedPartners = [...partners];
-      updatedPartners[existingIndex] = { ...updatedPartners[existingIndex], status: 'APPROVED', approvedAt: serverTimestamp() };
+      updatedPartners[existingIndex] = {
+        ...updatedPartners[existingIndex],
+        status: 'APPROVED',
+        approvedAt: nowIso,
+      };
     } else {
       updatedPartners = [newPartner, ...partners];
     }
 
+    const cleanedPartners = updatedPartners.map((p) => ({
+      tenantId: p.tenantId || '',
+      locationId: p.locationId || 'main',
+      businessName: p.businessName || 'Outlet',
+      contactNumber: p.contactNumber || '',
+      status: p.status || 'APPROVED',
+      isInternalBranch: !!p.isInternalBranch,
+      approvedAt: p.approvedAt || nowIso,
+      createdAt: p.createdAt || nowIso,
+    }));
+
     await updateDoc(profileRef, {
-      whitelistedPartners: cleanFirestoreData(updatedPartners),
+      whitelistedPartners: cleanedPartners,
       updatedAt: serverTimestamp(),
     });
 
@@ -957,10 +1007,20 @@ export const DBServices = {
 
     const profile = snap.data() as CKProfile;
     const partners = profile.whitelistedPartners || [];
-    const updated = partners.map((p: CKPartner) => (p.tenantId === partnerTenantId ? { ...p, status: newStatus } : p));
+    const nowIso = new Date().toISOString();
+    const updated = partners.map((p: CKPartner) => ({
+      tenantId: p.tenantId || '',
+      locationId: p.locationId || 'main',
+      businessName: p.businessName || 'Outlet',
+      contactNumber: p.contactNumber || '',
+      status: p.tenantId === partnerTenantId ? newStatus : (p.status || 'APPROVED'),
+      isInternalBranch: !!p.isInternalBranch,
+      approvedAt: p.approvedAt || nowIso,
+      createdAt: p.createdAt || nowIso,
+    }));
 
     await updateDoc(profileRef, {
-      whitelistedPartners: cleanFirestoreData(updated),
+      whitelistedPartners: updated,
       updatedAt: serverTimestamp(),
     });
   },
@@ -1019,7 +1079,8 @@ export const DBServices = {
     status: CKOrderStatus,
     rejectionReason?: string,
     paymentStatus?: CKPaymentStatus,
-    paymentMode?: 'UPI' | 'NEFT' | 'CASH' | 'LEDGER'
+    paymentMode?: 'UPI' | 'NEFT' | 'CASH' | 'LEDGER',
+    invoiceNumber?: string
   ): Promise<void> {
     const orderRef = doc(db, 'ckOrders', orderId);
     const updates: any = {
@@ -1027,8 +1088,14 @@ export const DBServices = {
       updatedAt: serverTimestamp(),
     };
     if (rejectionReason) updates.rejectionReason = rejectionReason;
-    if (paymentStatus) updates.paymentStatus = paymentStatus;
+    if (paymentStatus) {
+      updates.paymentStatus = paymentStatus;
+      if (paymentStatus === 'PAID') {
+        updates.paidAt = serverTimestamp();
+      }
+    }
     if (paymentMode) updates.paymentMode = paymentMode;
+    if (invoiceNumber) updates.invoiceNumber = invoiceNumber;
     if (status === 'DISPATCHED') updates.dispatchedAt = serverTimestamp();
     if (status === 'DELIVERED') updates.deliveredAt = serverTimestamp();
 
@@ -1038,25 +1105,45 @@ export const DBServices = {
   subscribeToCKOrdersForSeller(sellerTenantId: string, callback: (orders: CKOrder[]) => void): () => void {
     const q = query(
       collection(db, 'ckOrders'),
-      where('sellerTenantId', '==', sellerTenantId),
-      orderBy('createdAt', 'desc')
+      where('sellerTenantId', '==', sellerTenantId)
     );
-    return onSnapshot(q, (snap) => {
-      const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CKOrder));
-      callback(orders);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CKOrder));
+        orders.sort((a, b) => {
+          const tA = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : (a.createdAt && a.createdAt.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime());
+          const tB = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : (b.createdAt && b.createdAt.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime());
+          return tB - tA;
+        });
+        callback(orders);
+      },
+      (err) => {
+        console.error('Error in subscribeToCKOrdersForSeller snapshot:', err);
+      }
+    );
   },
 
   subscribeToCKOrdersForBuyer(buyerTenantId: string, callback: (orders: CKOrder[]) => void): () => void {
     const q = query(
       collection(db, 'ckOrders'),
-      where('buyerTenantId', '==', buyerTenantId),
-      orderBy('createdAt', 'desc')
+      where('buyerTenantId', '==', buyerTenantId)
     );
-    return onSnapshot(q, (snap) => {
-      const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CKOrder));
-      callback(orders);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CKOrder));
+        orders.sort((a, b) => {
+          const tA = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : (a.createdAt && a.createdAt.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime());
+          const tB = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : (b.createdAt && b.createdAt.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime());
+          return tB - tA;
+        });
+        callback(orders);
+      },
+      (err) => {
+        console.error('Error in subscribeToCKOrdersForBuyer snapshot:', err);
+      }
+    );
   },
 
   async seedStarterCKMenu(ckTenantId: string): Promise<void> {
@@ -1124,6 +1211,8 @@ export const DBServices = {
     restaurantEmail: string;
     aggregatorPlatform: 'ZOMATO' | 'SWIGGY';
     aggregatorOrderId: string;
+    isCancellation?: boolean;
+    cancellationReason?: string;
     customerName?: string;
     customerPhone?: string;
     deliveryRiderName?: string;
@@ -1141,6 +1230,28 @@ export const DBServices = {
     }
 
     const { tenantId, locationId, businessName } = tenantInfo;
+
+    // Automated Cancellation Handling: If this payload is a cancellation notification, mark matching order CANCELLED
+    if (payload.isCancellation) {
+      const ordersRef = collection(db, 'tenants', tenantId, 'locations', locationId, 'orders');
+      const cancelQ = query(ordersRef, where('aggregatorOrderId', '==', payload.aggregatorOrderId), limit(1));
+      const cancelSnap = await getDocs(cancelQ);
+      if (!cancelSnap.empty) {
+        const orderDoc = cancelSnap.docs[0];
+        await updateDoc(orderDoc.ref, {
+          status: 'CANCELLED',
+          specialNote: payload.cancellationReason || `Cancelled by ${payload.aggregatorPlatform}`,
+          updatedAt: serverTimestamp(),
+        });
+        return {
+          success: true,
+          orderId: orderDoc.id,
+          kotNo: (orderDoc.data() as any).kotNo || 0,
+          message: `Successfully marked ${payload.aggregatorPlatform} Order #${payload.aggregatorOrderId} as CANCELLED for ${businessName} (Excluded from sales)`,
+        };
+      }
+    }
+
     const kotNo = await this.getNextSequenceNumber(tenantId, locationId);
     const computedTotal = payload.totalAmount ?? payload.items.reduce((sum, it) => sum + (it.price * it.qty), 0);
 
@@ -1177,11 +1288,11 @@ export const DBServices = {
       captainName: payload.aggregatorPlatform === 'ZOMATO' ? 'Zomato Online' : 'Swiggy Online',
       status: 'RUNNING',
       paymentStatus: 'PAID',
-      paymentMethod: 'OTHER',
+      paymentMethod: payload.aggregatorPlatform === 'ZOMATO' ? 'ZOMATO_PAY' : 'SWIGGY_PAY',
       payments: [
         {
           id: `pay-${Date.now()}`,
-          method: 'OTHER',
+          method: payload.aggregatorPlatform === 'ZOMATO' ? 'ZOMATO_PAY' : 'SWIGGY_PAY',
           amount: computedTotal,
           timestamp: new Date().toISOString(),
           reference: `${payload.aggregatorPlatform} Paid #${payload.aggregatorOrderId}`,
@@ -1248,11 +1359,11 @@ export const DBServices = {
       captainName: isZomato ? 'Zomato Online' : 'Swiggy Online',
       status: 'RUNNING',
       paymentStatus: 'PAID',
-      paymentMethod: 'OTHER',
+      paymentMethod: isZomato ? 'ZOMATO_PAY' : 'SWIGGY_PAY',
       payments: [
         {
           id: `pay-sim-${Date.now()}`,
-          method: 'OTHER',
+          method: isZomato ? 'ZOMATO_PAY' : 'SWIGGY_PAY',
           amount: totalAmount,
           timestamp: new Date().toISOString(),
           reference: `${platform} Paid #${isZomato ? 'ZOM-' : 'SWIG-'}${randSuffix}`,

@@ -65,15 +65,38 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     .filter(i => i.qty > 0);
 
   
-  // Pre-populate table cart from remote store if entering an already-running table
+  // Pre-populate table cart from live running orders OR table cart items if entering an already-running table
   useEffect(() => {
     if (tableNo !== 0 && cartItems.length === 0) {
-      const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
-      if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
-        useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
+      try {
+        const { useOrderStore } = require('../../store/order.store');
+        const runningOrder = useOrderStore.getState().orders.find(
+          (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
+        );
+        if (runningOrder && runningOrder.items && runningOrder.items.length > 0) {
+          const formatted = runningOrder.items.map((it: any, idx: number) => ({
+            itemId: it.itemId || it.id || `item-${idx}-${Date.now()}`,
+            itemName: it.itemName || it.name,
+            price: Number(it.price || 0),
+            qty: Number(it.qty || 1),
+            sentQty: Number(it.qty || 1),
+            variantId: it.variantId || null,
+            variantName: it.variantName || null,
+            note: it.note || '',
+          }));
+          useCartStore.getState().syncRemoteCarts({ [tableNo]: formatted });
+          return;
+        }
+
+        const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
+        if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
+          useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
+        }
+      } catch (err) {
+        console.warn('Error syncing table running order into cart:', err);
       }
     }
-  }, [tableNo]);
+  }, [tableNo, cartItems.length]);
 
   const { cartTotal, cartItemCount } = useMemo(() => {
     let total = 0;
@@ -558,7 +581,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           {/* Items List */}
           <FlatList
             data={filteredItems}
-            keyExtractor={item => item.id}
+            keyExtractor={(item, index) => `${item.id || 'item'}-${index}`}
             renderItem={renderItemCard}
             initialNumToRender={10}
             maxToRenderPerBatch={10}

@@ -15,6 +15,7 @@ import {
   MapPin,
   Building,
   LayoutGrid,
+  QrCode,
   ChevronRight,
   Printer,
   Sparkles,
@@ -100,6 +101,20 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
                   <View className="flex-row items-center">
                     <LayoutGrid size={18} color="#818CF8" />
                     <Text className="text-slate-200 text-sm font-semibold ml-3">Floor Plan & Tables</Text>
+                  </View>
+                  <ChevronRight size={16} color="#64748B" />
+                </TouchableOpacity>
+              )}
+
+              {/* Table QR Codes & Standees */}
+              {features.tablesEnabled && (
+                <TouchableOpacity
+                  onPress={() => navigateTo(Routes.TABLES)}
+                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                >
+                  <View className="flex-row items-center">
+                    <QrCode size={18} color="#34D399" />
+                    <Text className="text-emerald-300 text-sm font-semibold ml-3">Table QR Codes & Standees</Text>
                   </View>
                   <ChevronRight size={16} color="#64748B" />
                 </TouchableOpacity>

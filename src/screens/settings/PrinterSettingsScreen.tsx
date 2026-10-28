@@ -7,6 +7,7 @@ import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { usePrinterStore } from '../../store/printer.store';
 import { useTenantStore } from '../../store/tenant.store';
+import { useAuthStore } from '../../store/auth.store';
 import { useToastStore } from '../../store/toast.store';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
@@ -124,10 +125,11 @@ export const PrinterSettingsScreen = () => {
 
     setSettings(newSettings);
 
-    // Save to Cloud Firestore so settings survive app reinstallation
+    // Save to Cloud Firestore scoped to this user/station
     const { tenant, activeLocationId } = useTenantStore.getState();
+    const { user } = useAuthStore.getState();
     if (tenant?.id) {
-      await usePrinterStore.getState().saveSettingsToCloud(tenant.id, activeLocationId);
+      await usePrinterStore.getState().saveSettingsToCloud(tenant.id, activeLocationId, user?.id);
     }
 
     useToastStore.getState().showToast({

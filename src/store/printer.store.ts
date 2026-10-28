@@ -8,8 +8,8 @@ import { db } from '../services/firebase/config';
 interface PrinterState {
   settings: PrinterSettings;
   setSettings: (settings: PrinterSettings) => void;
-  saveSettingsToCloud: (tenantId: string, locationId?: string | null) => Promise<void>;
-  fetchSettingsFromCloud: (tenantId: string, locationId?: string | null) => Promise<void>;
+  saveSettingsToCloud: (tenantId: string, locationId?: string | null, userId?: string | null) => Promise<void>;
+  fetchSettingsFromCloud: (tenantId: string, locationId?: string | null, userId?: string | null, forceOverwrite?: boolean) => Promise<void>;
 }
 
 export const usePrinterStore = create<PrinterState>()(
@@ -26,17 +26,22 @@ export const usePrinterStore = create<PrinterState>()(
       },
       setSettings: (settings) => set({ settings }),
 
-      // Persist printer settings to Cloud Firestore so they survive app reinstallation
-      saveSettingsToCloud: async (tenantId: string, locationId?: string | null) => {
+      // Persist printer settings to Cloud Firestore scoped per user/station so users never disturb each other
+      saveSettingsToCloud: async (tenantId: string, locationId?: string | null, userId?: string | null) => {
         if (!tenantId) return;
         try {
           const currentSettings = get().settings;
-          // 1. Save under location doc if locationId is given
+          // 1. Save user-specific printer doc so User A never overwrites User B in the same branch
+          if (locationId && userId) {
+            const userDocRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'userPrinters', userId);
+            await setDoc(userDocRef, currentSettings, { merge: true });
+          }
+          // 2. Save branch fallback
           if (locationId) {
             const locDocRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'settings', 'printer');
             await setDoc(locDocRef, currentSettings, { merge: true });
           }
-          // 2. Also save to tenant global printer fallback
+          // 3. Global fallback
           const tenantDocRef = doc(db, 'tenants', tenantId, 'settings', 'printer');
           await setDoc(tenantDocRef, currentSettings, { merge: true });
         } catch (err) {
@@ -44,21 +49,38 @@ export const usePrinterStore = create<PrinterState>()(
         }
       },
 
-      // Fetch printer settings from Cloud Firestore on login or app reinstall
-      fetchSettingsFromCloud: async (tenantId: string, locationId?: string | null) => {
+      // Fetch printer settings safely without disturbing active device-level settings
+      fetchSettingsFromCloud: async (tenantId: string, locationId?: string | null, userId?: string | null, forceOverwrite = false) => {
         if (!tenantId) return;
         try {
+          // Device-level protection: If this physical device ALREADY has its own working printer configured in AsyncStorage,
+          // DO NOT overwrite or disturb it with another user's cloud settings!
+          const current = get().settings;
+          const hasLocalPrinter = (current.printerType === 'USB' && current.printerName) ||
+                                  (current.ipAddress && current.ipAddress.trim().length > 0);
+          if (hasLocalPrinter && !forceOverwrite) {
+            return;
+          }
+
           let cloudSettings: PrinterSettings | null = null;
-          // 1. Try location-specific printer doc first
-          if (locationId) {
+          // 1. Try user-specific printer doc first
+          if (locationId && userId) {
+            const userDocRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'userPrinters', userId);
+            const userSnap = await getDoc(userDocRef);
+            if (userSnap.exists()) {
+              cloudSettings = userSnap.data() as PrinterSettings;
+            }
+          }
+          // 2. Try location-specific printer doc
+          if (!cloudSettings && locationId) {
             const locDocRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'settings', 'printer');
             const locSnap = await getDoc(locDocRef);
             if (locSnap.exists()) {
               cloudSettings = locSnap.data() as PrinterSettings;
             }
           }
-          // 2. Fallback to tenant global printer doc
-          if (!cloudSettings || !cloudSettings.ipAddress) {
+          // 3. Fallback to tenant global printer doc
+          if (!cloudSettings || (!cloudSettings.ipAddress && cloudSettings.printerType !== 'USB')) {
             const tenantDocRef = doc(db, 'tenants', tenantId, 'settings', 'printer');
             const tenantSnap = await getDoc(tenantDocRef);
             if (tenantSnap.exists()) {
@@ -66,7 +88,7 @@ export const usePrinterStore = create<PrinterState>()(
             }
           }
 
-          if (cloudSettings && cloudSettings.ipAddress) {
+          if (cloudSettings && (cloudSettings.ipAddress || cloudSettings.printerType === 'USB')) {
             set((state) => ({
               settings: {
                 ...state.settings,

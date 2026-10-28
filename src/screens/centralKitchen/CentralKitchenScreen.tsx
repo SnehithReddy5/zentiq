@@ -9,7 +9,6 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
-  Share,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -33,8 +32,13 @@ import {
   SlidersHorizontal,
   Sparkles,
   ArrowRight,
-  Printer,
-  Calendar,
+  Receipt,
+  Download,
+  CreditCard,
+  Banknote,
+  Building2,
+  QrCode,
+  Lock,
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { useTenantStore } from '../../store/tenant.store';
@@ -42,6 +46,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useCentralKitchenStore } from '../../store/centralKitchen.store';
 import { DBServices } from '../../services/firebase/db';
 import { toast } from '../../utils/toast';
+import { B2BInvoicePdfService } from '../../services/invoice/b2bInvoicePdf.service';
 import { CKMenuItem, CKOrder, CKPartner, CKOrderStatus } from '../../types/centralKitchen.types';
 
 const COMMON_CATEGORIES = [
@@ -54,6 +59,93 @@ const COMMON_CATEGORIES = [
 ];
 
 const COMMON_UNITS = ['kg', 'litres', 'deg', 'portions', 'pcs', 'packets'];
+
+// Visual 4-Step Timeline Component
+const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
+  if (status === 'REJECTED') {
+    return (
+      <View className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-2.5 my-2 flex-row items-center">
+        <XCircle size={15} color="#F43F5E" />
+        <Text className="text-rose-400 font-bold text-xs ml-2">Order Declined / Cancelled</Text>
+      </View>
+    );
+  }
+
+  const steps = [
+    { key: 'PLACED', label: 'Placed' },
+    { key: 'ACCEPTED', label: 'In Prep' },
+    { key: 'DISPATCHED', label: 'Dispatched' },
+    { key: 'DELIVERED', label: 'Received' },
+  ];
+
+  const getStepIndex = (st: CKOrderStatus) => {
+    switch (st) {
+      case 'PENDING': return 0;
+      case 'ACCEPTED': return 1;
+      case 'DISPATCHED': return 2;
+      case 'DELIVERED': return 3;
+      default: return 0;
+    }
+  };
+
+  const currentIdx = getStepIndex(status);
+
+  return (
+    <View className="my-2.5 py-2 px-1 bg-slate-950/80 rounded-2xl border border-slate-800/70">
+      <View className="flex-row items-center justify-between">
+        {steps.map((step, idx) => {
+          const isDone = idx < currentIdx;
+          const isCurrent = idx === currentIdx;
+
+          return (
+            <View key={step.key} className="flex-1 flex-row items-center">
+              {/* Step Node */}
+              <View className="items-center flex-1">
+                <View
+                  className={`w-6 h-6 rounded-full items-center justify-center border ${
+                    isDone
+                      ? 'bg-emerald-500 border-emerald-400'
+                      : isCurrent
+                      ? 'bg-[#5D3FD3] border-indigo-400 shadow-md shadow-indigo-500/40'
+                      : 'bg-slate-900 border-slate-800'
+                  }`}
+                >
+                  {isDone ? (
+                    <CheckCircle2 size={13} color="white" />
+                  ) : isCurrent ? (
+                    <View className="w-2 h-2 rounded-full bg-white" />
+                  ) : (
+                    <View className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                  )}
+                </View>
+                <Text
+                  className={`text-[9px] mt-1 font-bold ${
+                    isCurrent
+                      ? 'text-indigo-400'
+                      : isDone
+                      ? 'text-emerald-400'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  {step.label}
+                </Text>
+              </View>
+
+              {/* Connecting line */}
+              {idx < steps.length - 1 && (
+                <View
+                  className={`h-0.5 flex-1 -mt-3 ${
+                    idx < currentIdx ? 'bg-emerald-500' : 'bg-slate-800'
+                  }`}
+                />
+              )}
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
 
 export const CentralKitchenScreen = () => {
   const insets = useSafeAreaInsets();
@@ -72,6 +164,7 @@ export const CentralKitchenScreen = () => {
     deleteMenuItem,
     updatePartnerStatus,
     updateOrderStatus,
+    recordPaymentReceived,
     subscribeToIncomingOrders,
   } = useCentralKitchenStore();
 
@@ -87,6 +180,12 @@ export const CentralKitchenScreen = () => {
   const [isRejectModalOpen, setRejectModalOpen] = useState(false);
   const [orderToReject, setOrderToReject] = useState<CKOrder | null>(null);
   const [rejectionReason, setRejectionReason] = useState('Central Kitchen capacity full for this shift');
+
+  // Payment Recording Modal State
+  const [orderForPayment, setOrderForPayment] = useState<CKOrder | null>(null);
+  const [selectedPaymentMode, setSelectedPaymentMode] = useState<'UPI' | 'NEFT' | 'CASH' | 'LEDGER'>('UPI');
+  const [isRecordingPayment, setIsRecordingPayment] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   // Form state for adding/editing B2B menu item
   const [formName, setFormName] = useState('');
@@ -255,6 +354,33 @@ export const CentralKitchenScreen = () => {
     );
   };
 
+  // Open Record Payment Modal
+  const handleOpenRecordPayment = (order: CKOrder) => {
+    setOrderForPayment(order);
+    setSelectedPaymentMode('UPI');
+  };
+
+  // Confirm Payment Received
+  const handleConfirmPaymentReceived = async () => {
+    if (!orderForPayment) return;
+    setIsRecordingPayment(true);
+    try {
+      const invNo = await recordPaymentReceived(orderForPayment, selectedPaymentMode);
+      const updatedOrder = {
+        ...orderForPayment,
+        paymentStatus: 'PAID' as const,
+        paymentMode: selectedPaymentMode,
+        invoiceNumber: invNo,
+      };
+      setOrderForPayment(null);
+      // Immediately open the official Tax Invoice with PAID stamp
+      setSelectedOrderForInvoice(updatedOrder);
+    } catch (e) {
+    } finally {
+      setIsRecordingPayment(false);
+    }
+  };
+
   // Filtered menu items
   const filteredMenuItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -264,10 +390,6 @@ export const CentralKitchenScreen = () => {
       return item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q);
     });
   }, [menuItems, selectedCategory, searchQuery]);
-
-  // Order counts
-  const pendingOrdersCount = incomingOrders.filter((o) => o.status === 'PENDING').length;
-  const acceptedOrdersCount = incomingOrders.filter((o) => o.status === 'ACCEPTED').length;
 
   return (
     <SafeAreaView className="flex-1 bg-[#090D1A]">
@@ -282,34 +404,31 @@ export const CentralKitchenScreen = () => {
                 className="bg-indigo-600/20 border border-indigo-500/40 px-3 py-1.5 rounded-xl flex-row items-center"
               >
                 <ShieldCheck size={14} color="#818CF8" />
-                <Text className="text-indigo-300 font-bold text-xs ml-1.5">
-                  Code: {ckProfile.partnerCode}
+                <Text className="text-indigo-300 font-mono font-bold text-xs ml-1.5">
+                  {copiedCode ? 'Copied!' : ckProfile.partnerCode}
                 </Text>
-                {copiedCode ? (
-                  <Check size={12} color="#34D399" className="ml-1" />
-                ) : (
-                  <Copy size={12} color="#818CF8" className="ml-1" />
-                )}
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity
-              onPress={handleOpenAddItem}
-              className="bg-emerald-600 px-3 py-1.5 rounded-xl flex-row items-center active:bg-emerald-700"
-            >
-              <Plus size={15} color="white" />
-              <Text className="text-white font-bold text-xs ml-1">+ New Food Item</Text>
-            </TouchableOpacity>
+            {activeTab === 'MENU' && (
+              <TouchableOpacity
+                onPress={handleOpenAddItem}
+                className="bg-emerald-600 px-3 py-1.5 rounded-xl flex-row items-center shadow-md shadow-emerald-600/30"
+              >
+                <Plus size={14} color="white" />
+                <Text className="text-white font-bold text-xs ml-1">New Item</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
 
-      {/* Top 3 View Tabs with Horizontal ScrollView */}
+      {/* Main Tabs */}
       <View className="px-4 py-2.5 bg-slate-900 border-b border-slate-800">
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingVertical: 2 }}
+          contentContainerStyle={{ flexDirection: 'row', gap: 8 }}
         >
           <TouchableOpacity
             onPress={() => setActiveTab('ORDERS')}
@@ -319,19 +438,14 @@ export const CentralKitchenScreen = () => {
           >
             <ChefHat size={14} color={activeTab === 'ORDERS' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'ORDERS' ? 'text-white' : 'text-slate-400'}`}>
-              Incoming Orders ({incomingOrders.length})
+              Incoming Food Orders ({incomingOrders.length})
             </Text>
-            {pendingOrdersCount > 0 && (
-              <View className="ml-2 bg-amber-500 px-2 py-0.5 rounded-full">
-                <Text className="text-slate-950 font-black text-[10px]">{pendingOrdersCount} NEW</Text>
-              </View>
-            )}
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => setActiveTab('MENU')}
             className={`px-4 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'MENU' ? 'bg-emerald-600' : 'bg-slate-950 border border-slate-800'
+              activeTab === 'MENU' ? 'bg-indigo-600' : 'bg-slate-950 border border-slate-800'
             }`}
           >
             <UtensilsCrossed size={14} color={activeTab === 'MENU' ? '#FFFFFF' : '#94A3B8'} />
@@ -373,74 +487,63 @@ export const CentralKitchenScreen = () => {
               const isDispatched = item.status === 'DISPATCHED';
               const isDelivered = item.status === 'DELIVERED';
               const isRejected = item.status === 'REJECTED';
+              const isPaid = item.paymentStatus === 'PAID';
 
               return (
-                <View className="bg-slate-900 border border-slate-800 rounded-3xl p-4 mb-3 shadow-md">
-                  {/* Order Header */}
-                  <View className="flex-row items-start justify-between pb-3 border-b border-slate-800">
-                    <View className="flex-1 mr-2">
-                      <View className="flex-row items-center flex-wrap gap-2 mb-1">
-                        <Text className="text-white font-black text-base">#{item.orderNumber}</Text>
-                        <View className={`px-2 py-0.5 rounded-md border ${
-                          item.isInternalBranch
-                            ? 'bg-purple-500/15 border-purple-500/30'
-                            : 'bg-indigo-500/15 border-indigo-500/30'
+                <View className="bg-slate-900 border border-slate-800 rounded-3xl p-4 mb-3.5 shadow-md">
+                  {/* Order Header: Order #, Tags, and Total Amount (NO OVERLAPPING) */}
+                  <View className="flex-row items-center justify-between pb-2.5 border-b border-slate-800/80">
+                    <View className="flex-row items-center gap-1.5 flex-wrap flex-1 mr-2">
+                      <Text className="text-white font-black text-base">#{item.orderNumber}</Text>
+                      <View className={`px-2 py-0.5 rounded-md border ${
+                        item.isInternalBranch
+                          ? 'bg-purple-500/15 border-purple-500/30'
+                          : 'bg-indigo-500/15 border-indigo-500/30'
+                      }`}>
+                        <Text className={`text-[9px] font-bold uppercase ${
+                          item.isInternalBranch ? 'text-purple-300' : 'text-indigo-300'
                         }`}>
-                          <Text className={`text-[10px] font-bold uppercase ${
-                            item.isInternalBranch ? 'text-purple-300' : 'text-indigo-300'
-                          }`}>
-                            {item.isInternalBranch ? 'Internal Branch' : 'External Partner'}
-                          </Text>
-                        </View>
-                        <View className="bg-slate-800 px-2 py-0.5 rounded-md">
-                          <Text className="text-slate-300 text-[10px] font-semibold">
-                            {item.deliveryShift.replace(/_/g, ' ')}
-                          </Text>
-                        </View>
+                          {item.isInternalBranch ? 'Internal Branch' : 'External Partner'}
+                        </Text>
                       </View>
-                      <Text className="text-slate-300 font-bold text-sm">{item.buyerBusinessName}</Text>
-                      {item.shiftDate && (
-                        <Text className="text-slate-400 text-xs mt-0.5">Required for: {item.shiftDate}</Text>
-                      )}
+                      <View className="bg-slate-800 border border-slate-700/60 px-2 py-0.5 rounded-md">
+                        <Text className="text-slate-300 text-[9px] font-semibold tracking-wide uppercase">
+                          {item.deliveryShift.replace(/_/g, ' ')}
+                        </Text>
+                      </View>
                     </View>
 
-                    {/* Status Pill */}
-                    <View className={`px-3 py-1 rounded-xl border items-end ${
-                      isPending
-                        ? 'bg-amber-500/15 border-amber-500/30'
-                        : isAccepted
-                        ? 'bg-indigo-500/15 border-indigo-500/30'
-                        : isDispatched
-                        ? 'bg-sky-500/15 border-sky-500/30'
-                        : isDelivered
-                        ? 'bg-emerald-500/15 border-emerald-500/30'
-                        : 'bg-rose-500/15 border-rose-500/30'
-                    }`}>
-                      <Text className={`text-xs font-black ${
-                        isPending
-                          ? 'text-amber-400'
-                          : isAccepted
-                          ? 'text-indigo-400'
-                          : isDispatched
-                          ? 'text-sky-400'
-                          : isDelivered
-                          ? 'text-emerald-400'
-                          : 'text-rose-400'
-                      }`}>
-                        {item.status}
-                      </Text>
-                      <Text className="text-white font-black text-sm mt-0.5">₹{item.totalAmount.toFixed(2)}</Text>
+                    {/* Amount & Status Indicator */}
+                    <View className="items-end">
+                      <Text className="text-white font-black text-base">₹{item.totalAmount.toFixed(2)}</Text>
+                      <View className="flex-row items-center mt-0.5">
+                        <View className={`w-1.5 h-1.5 rounded-full mr-1 ${isPaid ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                        <Text className={`text-[10px] font-bold ${isPaid ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {isPaid ? `PAID (${item.paymentMode || 'ONLINE'})` : 'PAYMENT PENDING'}
+                        </Text>
+                      </View>
                     </View>
                   </View>
 
+                  {/* Ordering Restaurant Info */}
+                  <View className="pt-2 flex-row items-center justify-between">
+                    <Text className="text-slate-300 font-bold text-sm">{item.buyerBusinessName}</Text>
+                    {item.shiftDate && (
+                      <Text className="text-slate-400 text-xs font-medium">Req for: {item.shiftDate}</Text>
+                    )}
+                  </View>
+
+                  {/* Visual 4-Step Timeline */}
+                  <CKTimeline status={item.status} />
+
                   {/* Order Items Table */}
-                  <View className="my-3 bg-slate-950/80 rounded-2xl p-3 border border-slate-800/80">
+                  <View className="my-2 bg-slate-950/80 rounded-2xl p-3 border border-slate-800/80">
                     {item.items.map((i, idx) => (
                       <View key={idx} className="flex-row items-center justify-between py-1.5 border-b border-slate-800/40 last:border-b-0">
                         <View className="flex-1 mr-2">
                           <Text className="text-white font-bold text-xs">{i.name}</Text>
                           <Text className="text-slate-400 text-[10px]">
-                            {i.quantity} {i.unit} × ₹{i.ratePerUnit}/{i.unit}
+                            {i.quantity} {i.unit} × ₹{i.ratePerUnit}/{i.unit} (HSN: 2106)
                           </Text>
                         </View>
                         <Text className="text-slate-200 font-bold text-xs">₹{i.amount.toFixed(2)}</Text>
@@ -451,15 +554,21 @@ export const CentralKitchenScreen = () => {
                         <Text className="text-amber-400 text-[11px] italic">Note: "{item.notes}"</Text>
                       </View>
                     ) : null}
+                    {item.rejectionReason ? (
+                      <View className="mt-2 pt-2 border-t border-slate-800 flex-row items-center">
+                        <Text className="text-rose-400 text-[11px] font-bold">Decline Reason: "{item.rejectionReason}"</Text>
+                      </View>
+                    ) : null}
                   </View>
 
                   {/* Action Buttons */}
-                  <View className="flex-row items-center gap-2 pt-1">
+                  <View className="flex-row items-center gap-2 pt-1 flex-wrap">
+                    {/* Cooking actions */}
                     {isPending && (
-                      <>
+                      <View className="flex-row items-center gap-2 flex-1">
                         <TouchableOpacity
                           onPress={() => handleAcceptOrder(item)}
-                          className="flex-1 bg-emerald-600 py-2.5 rounded-2xl flex-row items-center justify-center active:bg-emerald-700"
+                          className="flex-1 min-w-[120px] bg-emerald-600 py-2.5 rounded-2xl flex-row items-center justify-center active:bg-emerald-700 shadow-md shadow-emerald-600/30"
                         >
                           <CheckCircle2 size={15} color="white" />
                           <Text className="text-white font-black text-xs ml-1.5">Accept & Cook</Text>
@@ -467,30 +576,51 @@ export const CentralKitchenScreen = () => {
 
                         <TouchableOpacity
                           onPress={() => handleOpenRejectOrder(item)}
-                          className="flex-1 bg-rose-500/15 border border-rose-500/30 py-2.5 rounded-2xl flex-row items-center justify-center active:bg-rose-500/25"
+                          className="px-3 py-2.5 bg-rose-500/15 border border-rose-500/30 rounded-2xl flex-row items-center justify-center active:bg-rose-500/25"
                         >
                           <XCircle size={15} color="#F43F5E" />
                           <Text className="text-rose-400 font-bold text-xs ml-1.5">Reject</Text>
                         </TouchableOpacity>
-                      </>
+                      </View>
                     )}
 
                     {isAccepted && (
                       <TouchableOpacity
                         onPress={() => handleDispatchOrder(item)}
-                        className="flex-1 bg-sky-600 py-2.5 rounded-2xl flex-row items-center justify-center active:bg-sky-700"
+                        className="flex-1 min-w-[130px] bg-sky-600 py-2.5 rounded-2xl flex-row items-center justify-center active:bg-sky-700 shadow-md shadow-sky-600/30"
                       >
                         <Truck size={15} color="white" />
                         <Text className="text-white font-black text-xs ml-1.5">Mark Dispatched</Text>
                       </TouchableOpacity>
                     )}
 
+                    {/* Payment Capture Button for CK Manager */}
+                    {!isRejected && (
+                      !isPaid ? (
+                        <TouchableOpacity
+                          onPress={() => handleOpenRecordPayment(item)}
+                          className="flex-1 min-w-[140px] bg-emerald-500/20 border border-emerald-500/40 py-2.5 px-3 rounded-2xl flex-row items-center justify-center active:bg-emerald-500/30"
+                        >
+                          <Banknote size={15} color="#34D399" />
+                          <Text className="text-emerald-300 font-black text-xs ml-1.5">Record Payment</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View className="px-3 py-2 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex-row items-center">
+                          <CheckCircle2 size={13} color="#10B981" />
+                          <Text className="text-emerald-400 font-bold text-xs ml-1.5">PAID ({item.paymentMode})</Text>
+                        </View>
+                      )
+                    )}
+
+                    {/* Bill / Invoice View */}
                     <TouchableOpacity
                       onPress={() => setSelectedOrderForInvoice(item)}
                       className="p-2.5 bg-slate-800 border border-slate-700 rounded-2xl active:bg-slate-750 flex-row items-center"
                     >
                       <FileText size={15} color="#CBD5E1" />
-                      <Text className="text-slate-300 font-bold text-xs ml-1.5">B2B Bill</Text>
+                      <Text className="text-slate-300 font-bold text-xs ml-1.5">
+                        {isPaid ? 'Tax Invoice' : 'B2B Bill'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -654,7 +784,7 @@ export const CentralKitchenScreen = () => {
             </View>
 
             <Text className="text-slate-400 text-xs mt-3 leading-5">
-              🛡️ <Text className="font-bold text-slate-300">How Whitelisting Works:</Text> External restaurants or cafes must enter this partner code on their POS terminal before they can view your wholesale menu or place bulk food orders.
+              💡 <Text className="font-bold text-slate-300">How Whitelisting Works:</Text> External restaurants or cafes must enter this partner code on their POS terminal before they can view your wholesale menu or place bulk food orders.
             </Text>
           </View>
 
@@ -687,15 +817,15 @@ export const CentralKitchenScreen = () => {
                     }`}
                   >
                     {isApproved ? (
-                      <>
+                      <View className="flex-row items-center">
                         <Ban size={12} color="#F43F5E" />
                         <Text className="text-rose-400 font-bold text-xs ml-1">Block</Text>
-                      </>
+                      </View>
                     ) : (
-                      <>
+                      <View className="flex-row items-center">
                         <CheckCircle2 size={12} color="#34D399" />
                         <Text className="text-emerald-400 font-bold text-xs ml-1">Approve</Text>
-                      </>
+                      </View>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -749,7 +879,7 @@ export const CentralKitchenScreen = () => {
                           key={c}
                           onPress={() => setFormCategory(c)}
                           className={`px-3 py-1.5 rounded-xl border ${
-                            formCategory === c ? 'bg-emerald-600 border-emerald-400' : 'bg-slate-950 border-slate-800'
+                            formCategory === c ? 'bg-[#5D3FD3] border-indigo-400' : 'bg-slate-950 border-slate-800'
                           }`}
                         >
                           <Text className={`text-xs font-bold ${formCategory === c ? 'text-white' : 'text-slate-400'}`}>{c}</Text>
@@ -759,7 +889,7 @@ export const CentralKitchenScreen = () => {
                   </View>
 
                   <View>
-                    <Text className="text-slate-300 text-xs font-bold mb-1">Unit of Measure</Text>
+                    <Text className="text-slate-300 text-xs font-bold mb-1">Unit of Measurement</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6 }}>
                       {COMMON_UNITS.map((u) => (
                         <TouchableOpacity
@@ -822,7 +952,7 @@ export const CentralKitchenScreen = () => {
                   >
                     <Text className="text-white font-bold text-xs">Stock Availability Status</Text>
                     <Text className={`text-xs font-black ${formAvailable ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {formAvailable ? '✓ In Stock' : '✕ Out of Stock'}
+                      {formAvailable ? '✅ In Stock' : '❌ Out of Stock'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -853,68 +983,247 @@ export const CentralKitchenScreen = () => {
         </Modal>
       )}
 
-      {/* MODAL 2: B2B INVOICE VIEW */}
-      {selectedOrderForInvoice && (
-        <Modal visible={!!selectedOrderForInvoice} transparent animationType="fade" onRequestClose={() => setSelectedOrderForInvoice(null)}>
-          <View className="flex-1 bg-black/80 items-center justify-center p-4">
+      {/* MODAL 2: RECORD PAYMENT RECEIVED MODAL */}
+      {orderForPayment && (
+        <Modal
+          visible={!!orderForPayment}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOrderForPayment(null)}
+        >
+          <View className="flex-1 bg-black/85 items-center justify-center p-4">
             <View className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 shadow-2xl">
               <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
                 <View>
-                  <Text className="text-white font-black text-base">B2B Delivery Invoice</Text>
-                  <Text className="text-slate-400 text-xs">#{selectedOrderForInvoice.orderNumber}</Text>
+                  <Text className="text-white font-black text-base">Record Payment Received</Text>
+                  <Text className="text-slate-400 text-xs">Order #{orderForPayment.orderNumber}</Text>
+                </View>
+                <TouchableOpacity onPress={() => setOrderForPayment(null)}>
+                  <X size={18} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+
+              <View className="my-3 gap-2.5">
+                {/* Total amount highlight */}
+                <View className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 flex-row items-center justify-between">
+                  <View>
+                    <Text className="text-slate-400 text-xs">Buyer Outlet:</Text>
+                    <Text className="text-white font-black text-sm">{orderForPayment.buyerBusinessName}</Text>
+                  </View>
+                  <View className="items-end">
+                    <Text className="text-slate-400 text-xs">Total Bill Amount:</Text>
+                    <Text className="text-emerald-400 font-black text-lg">₹{orderForPayment.totalAmount.toFixed(2)}</Text>
+                  </View>
+                </View>
+
+                {/* Payment Mode Selector */}
+                <Text className="text-slate-300 text-xs font-bold mt-1">Select Payment Settlement Mode:</Text>
+                <View className="gap-2">
+                  {[
+                    { id: 'UPI' as const, label: 'UPI / QR / GPay / PhonePe', icon: QrCode, desc: 'Instant UPI settlement' },
+                    { id: 'NEFT' as const, label: 'Bank Transfer / NEFT / RTGS', icon: Building2, desc: 'Direct corporate account transfer' },
+                    { id: 'CASH' as const, label: 'Cash on Delivery / Dispatch', icon: Banknote, desc: 'Hand-to-hand physical cash payment' },
+                    { id: 'LEDGER' as const, label: 'B2B Credit Ledger Account', icon: Receipt, desc: 'Logged against buyer monthly ledger' },
+                  ].map((mode) => {
+                    const IconComp = mode.icon;
+                    const isSelected = selectedPaymentMode === mode.id;
+
+                    return (
+                      <TouchableOpacity
+                        key={mode.id}
+                        onPress={() => setSelectedPaymentMode(mode.id)}
+                        className={`p-3 rounded-2xl border flex-row items-center justify-between ${
+                          isSelected
+                            ? 'bg-[#5D3FD3]/20 border-indigo-500 shadow-md shadow-indigo-500/20'
+                            : 'bg-slate-950 border-slate-800'
+                        }`}
+                      >
+                        <View className="flex-row items-center flex-1 mr-2">
+                          <View className={`w-8 h-8 rounded-xl items-center justify-center mr-2.5 ${
+                            isSelected ? 'bg-indigo-600' : 'bg-slate-800'
+                          }`}>
+                            <IconComp size={16} color="white" />
+                          </View>
+                          <View className="flex-1">
+                            <Text className={`text-xs font-bold ${isSelected ? 'text-indigo-200' : 'text-slate-200'}`}>
+                              {mode.label}
+                            </Text>
+                            <Text className="text-slate-500 text-[10px]">{mode.desc}</Text>
+                          </View>
+                        </View>
+                        {isSelected && <CheckCircle2 size={18} color="#818CF8" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View className="flex-row gap-2 pt-2 border-t border-slate-800">
+                <TouchableOpacity
+                  onPress={() => setOrderForPayment(null)}
+                  className="flex-1 py-3 bg-slate-800 rounded-xl items-center"
+                >
+                  <Text className="text-slate-300 font-bold text-xs">Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleConfirmPaymentReceived}
+                  disabled={isRecordingPayment}
+                  className="flex-1 py-3 bg-emerald-600 rounded-xl items-center active:bg-emerald-700 shadow-md shadow-emerald-600/30"
+                >
+                  {isRecordingPayment ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text className="text-white font-black text-xs">Confirm & Issue Invoice</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* MODAL 3: B2B TAX INVOICE & DELIVERY SLIP VIEW */}
+      {selectedOrderForInvoice && (
+        <Modal
+          visible={!!selectedOrderForInvoice}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedOrderForInvoice(null)}
+        >
+          <View className="flex-1 bg-black/85 items-center justify-center p-4">
+            <View className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 shadow-2xl max-h-[85%]">
+              <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
+                <View>
+                  <Text className="text-white font-black text-base">
+                    {selectedOrderForInvoice.paymentStatus === 'PAID' ? 'B2B GST Tax Invoice' : 'B2B Delivery Slip'}
+                  </Text>
+                  <Text className="text-slate-400 text-xs font-mono">
+                    {selectedOrderForInvoice.invoiceNumber || `#${selectedOrderForInvoice.orderNumber}`}
+                  </Text>
                 </View>
                 <TouchableOpacity onPress={() => setSelectedOrderForInvoice(null)}>
                   <X size={18} color="#94A3B8" />
                 </TouchableOpacity>
               </View>
 
-              <View className="my-3 gap-2">
+              <ScrollView className="my-3 gap-2">
+                {/* Payment Badge Stamp */}
+                <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${
+                  selectedOrderForInvoice.paymentStatus === 'PAID'
+                    ? 'bg-emerald-500/15 border-emerald-500/40'
+                    : 'bg-amber-500/15 border-amber-500/40'
+                }`}>
+                  <View className="flex-row items-center">
+                    {selectedOrderForInvoice.paymentStatus === 'PAID' ? (
+                      <CheckCircle2 size={18} color="#10B981" />
+                    ) : (
+                      <Clock size={18} color="#F59E0B" />
+                    )}
+                    <View className="ml-2.5">
+                      <Text className={`text-xs font-black ${
+                        selectedOrderForInvoice.paymentStatus === 'PAID' ? 'text-emerald-400' : 'text-amber-400'
+                      }`}>
+                        {selectedOrderForInvoice.paymentStatus === 'PAID'
+                          ? `PAID IN FULL - ${selectedOrderForInvoice.paymentMode || 'ONLINE'}`
+                          : 'PAYMENT PENDING / ON CREDIT'}
+                      </Text>
+                      <Text className="text-slate-400 text-[10px]">
+                        Order Status: {selectedOrderForInvoice.status}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text className="text-white font-black text-base">₹{selectedOrderForInvoice.totalAmount.toFixed(2)}</Text>
+                </View>
+
+                {/* Parties Details */}
                 <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
-                  <Text className="text-slate-400 text-[10px] font-bold uppercase">SUPPLIER (CENTRAL KITCHEN):</Text>
+                  <Text className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">SUPPLIER (CENTRAL KITCHEN):</Text>
                   <Text className="text-white font-black text-sm">{selectedOrderForInvoice.sellerBusinessName}</Text>
-                  <Text className="text-slate-400 text-[10px] font-bold uppercase mt-2">DELIVER TO (BUYER):</Text>
+                  {ckProfile?.partnerCode && (
+                    <Text className="text-indigo-400 text-[10px] font-bold mt-0.5">Code: {ckProfile.partnerCode}</Text>
+                  )}
+                  <Text className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mt-2.5">DELIVER TO (RESTAURANT BUYER):</Text>
                   <Text className="text-white font-black text-sm">{selectedOrderForInvoice.buyerBusinessName}</Text>
-                  <Text className="text-slate-400 text-xs mt-1">Shift: {selectedOrderForInvoice.deliveryShift.replace(/_/g, ' ')}</Text>
+                  <Text className="text-slate-400 text-xs mt-1">Shift: {selectedOrderForInvoice.deliveryShift.replace(/_/g, ' ')} ({selectedOrderForInvoice.shiftDate})</Text>
                 </View>
 
                 {/* Items */}
-                <ScrollView className="max-h-48 my-1">
+                <Text className="text-slate-300 text-xs font-bold mt-1">Itemized Batch Indent:</Text>
+                <View className="bg-slate-950 rounded-2xl p-3 border border-slate-800">
                   {selectedOrderForInvoice.items.map((it, idx) => (
-                    <View key={idx} className="flex-row justify-between py-1.5 border-b border-slate-800/40">
-                      <Text className="text-white text-xs font-bold">{it.quantity} {it.unit} × {it.name}</Text>
+                    <View key={idx} className="flex-row justify-between py-1.5 border-b border-slate-800/40 last:border-b-0">
+                      <View className="flex-1 mr-2">
+                        <Text className="text-white text-xs font-bold">{it.name}</Text>
+                        <Text className="text-slate-400 text-[10px]">
+                          {it.quantity} {it.unit} × ₹{it.ratePerUnit}/{it.unit} (HSN: 2106)
+                        </Text>
+                      </View>
                       <Text className="text-slate-200 text-xs font-bold">₹{it.amount.toFixed(2)}</Text>
                     </View>
                   ))}
-                </ScrollView>
+                </View>
 
-                <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 gap-1">
+                {/* Tax Breakdown */}
+                <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 gap-1.5">
                   <View className="flex-row justify-between">
-                    <Text className="text-slate-400 text-xs">Subtotal:</Text>
+                    <Text className="text-slate-400 text-xs">Wholesale Subtotal:</Text>
                     <Text className="text-slate-200 text-xs font-bold">₹{selectedOrderForInvoice.subtotal.toFixed(2)}</Text>
                   </View>
                   <View className="flex-row justify-between">
-                    <Text className="text-slate-400 text-xs">GST (5% B2B Food):</Text>
-                    <Text className="text-slate-200 text-xs font-bold">₹{selectedOrderForInvoice.taxAmount.toFixed(2)}</Text>
+                    <Text className="text-slate-400 text-xs">CGST (2.5%):</Text>
+                    <Text className="text-slate-200 text-xs font-bold">₹{(selectedOrderForInvoice.taxAmount / 2).toFixed(2)}</Text>
                   </View>
-                  <View className="flex-row justify-between pt-1 border-t border-slate-800">
-                    <Text className="text-white text-sm font-black">Total Bill Amount:</Text>
+                  <View className="flex-row justify-between">
+                    <Text className="text-slate-400 text-xs">SGST (2.5%):</Text>
+                    <Text className="text-slate-200 text-xs font-bold">₹{(selectedOrderForInvoice.taxAmount / 2).toFixed(2)}</Text>
+                  </View>
+                  <View className="flex-row justify-between pt-1.5 border-t border-slate-800">
+                    <Text className="text-white text-sm font-black">Total Invoice Value:</Text>
                     <Text className="text-emerald-400 text-sm font-black">₹{selectedOrderForInvoice.totalAmount.toFixed(2)}</Text>
                   </View>
                 </View>
-              </View>
+              </ScrollView>
 
-              <TouchableOpacity
-                onPress={() => setSelectedOrderForInvoice(null)}
-                className="py-3 bg-[#5D3FD3] rounded-2xl items-center"
-              >
-                <Text className="text-white font-bold text-xs">Close</Text>
-              </TouchableOpacity>
+              <View className="gap-2 mt-2">
+                <TouchableOpacity
+                  onPress={async () => {
+                    try {
+                      setIsDownloadingPdf(true);
+                      await B2BInvoicePdfService.downloadAndShareInvoicePdf(selectedOrderForInvoice, ckProfile);
+                      toast.success('B2B GST Tax Invoice PDF ready!');
+                    } catch (e: any) {
+                      toast.error(e?.message || 'Failed to download PDF invoice');
+                    } finally {
+                      setIsDownloadingPdf(false);
+                    }
+                  }}
+                  disabled={isDownloadingPdf}
+                  className="py-3 bg-emerald-600 rounded-2xl flex-row items-center justify-center active:bg-emerald-700 shadow-md shadow-emerald-600/30"
+                >
+                  {isDownloadingPdf ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <View className="flex-row items-center justify-center">
+                      <Download size={15} color="white" />
+                      <Text className="text-white font-black text-xs ml-1.5">Download GST Tax Invoice (PDF)</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setSelectedOrderForInvoice(null)}
+                  className="py-3 bg-slate-800 rounded-2xl items-center active:bg-slate-700"
+                >
+                  <Text className="text-slate-300 font-bold text-xs">Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
       )}
 
-      {/* MODAL 3: REJECT ORDER */}
+      {/* MODAL 4: REJECT ORDER */}
       {isRejectModalOpen && (
         <Modal visible={isRejectModalOpen} transparent animationType="fade" onRequestClose={() => setRejectModalOpen(false)}>
           <View className="flex-1 bg-black/80 items-center justify-center p-4">
@@ -937,9 +1246,10 @@ export const CentralKitchenScreen = () => {
                 >
                   <Text className="text-slate-300 font-bold text-xs">Cancel</Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                   onPress={handleConfirmReject}
-                  className="flex-1 py-3 bg-rose-600 rounded-xl items-center active:bg-rose-700"
+                  className="flex-1 py-3 bg-rose-600 rounded-xl items-center"
                 >
                   <Text className="text-white font-bold text-xs">Confirm Reject</Text>
                 </TouchableOpacity>

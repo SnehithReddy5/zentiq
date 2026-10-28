@@ -24,8 +24,8 @@ export class AggregatorParserService {
    * Parse email content received from Zomato / Swiggy order notifications.
    */
   static parseEmail(recipientEmail: string, subject: string, bodyText: string): ParsedAggregatorOrder | null {
-    const isZomato = /zomato/i.test(subject) || /zomato/i.test(bodyText);
-    const isSwiggy = /swiggy/i.test(subject) || /swiggy/i.test(bodyText);
+    const isZomato = /zomato/i.test(subject) || /zomato/i.test(bodyText) || /ZOM-/i.test(subject) || /ZOM-/i.test(bodyText);
+    const isSwiggy = /swiggy/i.test(subject) || /swiggy/i.test(bodyText) || /SWIG-/i.test(subject) || /SWIG-/i.test(bodyText);
 
     if (!isZomato && !isSwiggy) {
       return null;

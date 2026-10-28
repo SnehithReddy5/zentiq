@@ -81,6 +81,9 @@ export interface CKOrder {
   paymentStatus: CKPaymentStatus;
   paymentMode?: 'UPI' | 'NEFT' | 'CASH' | 'LEDGER';
   invoiceNumber?: string;
+  paidAt?: any;
+  cancelledAt?: any;
+  cancellationReason?: string;
   dispatchedAt?: any;
   deliveredAt?: any;
   createdAt: any;

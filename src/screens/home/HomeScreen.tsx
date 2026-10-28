@@ -48,6 +48,7 @@ import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { HamburgerMenu } from '../../components/common/HamburgerMenu';
 import { Button } from '../../components/common/Button';
 import { Routes } from '../../constants/routes';
+import { useLiveOrderNotifications } from '../../hooks/useLiveOrderNotifications';
 
 interface OnlineOrder {
   id: string;
@@ -99,6 +100,7 @@ const INITIAL_ONLINE_ORDERS: OnlineOrder[] = [
 ];
 
 export const HomeScreen = () => {
+  useLiveOrderNotifications();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { tenant, branding, features, locations, activeLocationId, setActiveLocationId, getActiveLocation } = useTenantStore();

@@ -33,6 +33,40 @@ export const CartScreen = () => {
   const { isLargePOS } = useResponsiveLayout();
 
   const cartItems = carts[tableNo] || [];
+
+  // Pre-populate CartScreen from live running orders if diner ordered via QR
+  useEffect(() => {
+    if (tableNo !== 0 && (carts[tableNo] || []).length === 0) {
+      try {
+        const { useOrderStore } = require('../../store/order.store');
+        const runningOrder = useOrderStore.getState().orders.find(
+          (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
+        );
+        if (runningOrder && runningOrder.items && runningOrder.items.length > 0) {
+          const formatted = runningOrder.items.map((it: any, idx: number) => ({
+            itemId: it.itemId || it.id || `item-${idx}-${Date.now()}`,
+            itemName: it.itemName || it.name,
+            price: Number(it.price || 0),
+            qty: Number(it.qty || 1),
+            sentQty: Number(it.qty || 1),
+            variantId: it.variantId || null,
+            variantName: it.variantName || null,
+            note: it.note || '',
+          }));
+          useCartStore.getState().syncRemoteCarts({ [tableNo]: formatted });
+          return;
+        }
+
+        const { useTableStore } = require('../../store/table.store');
+        const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
+        if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
+          useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
+        }
+      } catch (err) {
+        console.warn('Error syncing running order into CartScreen:', err);
+      }
+    }
+  }, [tableNo, carts]);
   const rawItemsSum = cartItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
 
   // Dynamic GST Tax Configuration from Store Settings
@@ -266,6 +300,19 @@ export const CartScreen = () => {
         ? DBServices.updateTableStatusByNo(tableNo, 'available', tenant?.id, activeLocationId || undefined)
         : Promise.resolve();
 
+      // Also complete any active running orders for this table
+      if (tableNo !== 0) {
+        try {
+          const { useOrderStore } = require('../../store/order.store');
+          const runningOrders = useOrderStore.getState().orders.filter(
+            (o: any) => Number(o.tableNo) === Number(tableNo) && (o.status === 'RUNNING' || o.status === 'running')
+          );
+          for (const ro of runningOrders) {
+            DBServices.updateOrderStatus(ro.id, 'COMPLETED', tenant?.id, ro.locationId || activeLocationId);
+          }
+        } catch (_) {}
+      }
+
       // 2. Pre-generate ESC/POS buffers synchronously in memory (< 1ms)
       const activeLoc = locations.find(l => l.id === activeLocationId);
       const branchName = activeLoc ? activeLoc.name : branding?.displayName;
@@ -316,13 +363,18 @@ export const CartScreen = () => {
             await printerService.disconnect();
           }
         } catch (printErr: any) {
-          console.warn('Thermal print background dispatch error:', printErr);
-          useToastStore.getState().showToast({
-            type: 'error',
-            title: 'Print Failed (Saved to Cloud)',
-            message: `Bill #${billNo} recorded, but thermal printer (${settings.ipAddress || 'LAN'}) did not respond: ${printErr?.message || 'offline'}. Check Wi-Fi.`,
-            duration: 7000,
-          });
+          const isExpoGoSocketError = printErr?.message?.includes('Thermal printing over raw TCP sockets is not supported in Expo Go');
+          if (isExpoGoSocketError) {
+            console.log('Expo Go detected: Raw TCP socket thermal print simulation bypassed.');
+          } else {
+            console.warn('Thermal print background dispatch error:', printErr);
+            useToastStore.getState().showToast({
+              type: 'error',
+              title: 'Print Failed (Saved to Cloud)',
+              message: `Bill #${billNo} recorded, but thermal printer (${settings.ipAddress || 'LAN'}) did not respond: ${printErr?.message || 'offline'}. Check Wi-Fi.`,
+              duration: 7000,
+            });
+          }
         }
       };
 
@@ -384,8 +436,8 @@ export const CartScreen = () => {
               </View>
 
               <View className="mt-3">
-                {cartItems.map((item) => (
-                  <View key={item.itemId} className="flex-row justify-between py-2 border-b border-slate-800/60 last:border-b-0">
+                {cartItems.map((item, idx) => (
+                  <View key={`${item.itemId || 'cart'}-${item.variantName || ''}-${idx}`} className="flex-row justify-between py-2 border-b border-slate-800/60 last:border-b-0">
                     <View className="flex-1 mr-3">
                       <Text className="text-white text-xs font-semibold">
                         {item.qty}x {getBaseItemName(item.itemName, item.variantName)}

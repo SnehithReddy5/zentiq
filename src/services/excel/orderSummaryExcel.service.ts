@@ -159,6 +159,25 @@ export class OrderSummaryExcelService {
     sheetData.push(['Total Completed Orders', sortedOrders.length]);
     sheetData.push(['Total Sales Revenue', `INR ${totalRevenue.toFixed(2)}`]);
     sheetData.push(['Average Order Value', `INR ${avgOrder.toFixed(2)}`]);
+
+    // Multi-Branch Breakdown (Automatically included when downloading All Branches or multiple outlets)
+    const branchMap: Record<string, { count: number; revenue: number }> = {};
+    sortedOrders.forEach((o) => {
+      const bName = (o as any).locationName || locationName || 'Main Branch';
+      if (!branchMap[bName]) {
+        branchMap[bName] = { count: 0, revenue: 0 };
+      }
+      branchMap[bName].count += 1;
+      branchMap[bName].revenue += Number(o.totalAmount) || 0;
+    });
+
+    if (Object.keys(branchMap).length > 1) {
+      sheetData.push([]);
+      sheetData.push(['--- BRANCH-WISE SALES BREAKDOWN ---']);
+      Object.entries(branchMap).forEach(([bName, data]) => {
+        sheetData.push([bName, `${data.count} Orders`, `INR ${data.revenue.toFixed(2)}`]);
+      });
+    }
     if (highestIndex >= 0) {
       const hOrder = sortedOrders[highestIndex];
       const hLabel = hOrder.orderNumber ? `Bill #${hOrder.orderNumber}` : `KOT #${hOrder.kotNo}`;
@@ -207,6 +226,7 @@ export class OrderSummaryExcelService {
     sheetData.push([
       'S.No',
       'Date & Time',
+      'Branch / Outlet',
       'Bill #',
       'KOT #',
       'Order Type',
@@ -254,6 +274,7 @@ export class OrderSummaryExcelService {
       sheetData.push([
         idx + 1,
         this.formatDateTime(oDate),
+        (o as any).locationName || locationName || 'Main Branch',
         billNo,
         kotNo,
         orderType,
