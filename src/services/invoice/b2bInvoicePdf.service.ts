@@ -304,29 +304,83 @@ export class B2BInvoicePdfService {
     branding?: TenantBranding | null
   ): Promise<{ success: boolean; method: 'DOWNLOAD' | 'SHARE' }> {
     const html = this.generateInvoiceHtml(order, ckProfile, branding);
-    const { uri } = await Print.printToFileAsync({ html });
     const filename = `Invoice_${order.orderNumber || Date.now()}`;
 
-    // A. Web Browser Direct Download
+    // A. Web Browser Direct File Download (Windows, Mac, Linux)
+    // NEVER call Print.printToFileAsync on web because expo-print calls window.print() (which prints the screen)
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       try {
-        const response = await fetch(uri);
-        const blob = await response.blob();
+        const { jsPDF } = await import('jspdf');
+        const html2canvas = (await import('html2canvas')).default;
+
+        // Create detached off-screen container for rendering the invoice HTML
+        const container = document.createElement('div');
+        container.style.position = 'fixed';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        container.style.width = '794px'; // standard A4 at 96 DPI
+        container.style.backgroundColor = '#ffffff';
+        container.style.color = '#000000';
+        container.innerHTML = html;
+        document.body.appendChild(container);
+
+        // Render to crisp canvas
+        const canvas = await html2canvas(container, {
+          scale: 2, // 2x resolution for razor-sharp text and borders
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+        });
+
+        document.body.removeChild(container);
+
+        // Convert canvas to real A4 PDF document
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'pt',
+          format: 'a4',
+        });
+
+        const imgWidth = 595.28; // A4 width in pt
+        const pageHeight = 841.89; // A4 height in pt
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        // Direct download into Windows / browser Downloads folder!
+        pdf.save(`${filename}.pdf`);
+        return { success: true, method: 'DOWNLOAD' };
+      } catch (webErr) {
+        console.warn('jsPDF generation failed, falling back to clean standalone HTML download:', webErr);
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = blobUrl;
-        a.download = `${filename}.pdf`;
+        a.download = `${filename}.html`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(blobUrl);
         return { success: true, method: 'DOWNLOAD' };
-      } catch (webErr) {
-        console.warn('Web PDF download failed:', webErr);
       }
     }
 
-    // B. Android Direct Storage Download (Downloads folder via StorageAccessFramework)
+    // B. Native Mobile (Android & iOS)
+    const { uri } = await Print.printToFileAsync({ html });
+
+    // B1. Android Direct Storage Download (Downloads folder via StorageAccessFramework)
     if (Platform.OS === 'android') {
       try {
         const legacyFs = require('expo-file-system/legacy');
@@ -354,7 +408,7 @@ export class B2BInvoicePdfService {
       }
     }
 
-    // C. iOS or fallback when user dismisses directory selector
+    // B2. iOS or fallback when user dismisses directory selector
     const isAvailable = await Sharing.isAvailableAsync().catch(() => false);
     if (isAvailable) {
       await Sharing.shareAsync(uri, {
