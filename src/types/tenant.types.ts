@@ -27,6 +27,7 @@ export interface TenantBranding {
   city?: string;
   state?: string;
   gstin?: string;
+  fssaiNumber?: string;
   receiptHeader?: string;
   receiptFooter?: string;
   gstEnabled?: boolean;

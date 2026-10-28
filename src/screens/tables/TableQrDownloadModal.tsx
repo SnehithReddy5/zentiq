@@ -186,6 +186,34 @@ export const TableQrDownloadModal: React.FC<TableQrDownloadModalProps> = ({
       const base64Bmp = generateQrBmpBase64(orderUrl);
       const filename = `${tenantId}_Table_${selectedTableNo}_QR.bmp`;
 
+      // B1. Android Direct Storage Download (Downloads folder via StorageAccessFramework)
+      if (Platform.OS === 'android') {
+        try {
+          const legacyFs = require('expo-file-system/legacy');
+          const saf = legacyFs?.StorageAccessFramework;
+          if (saf) {
+            const initialUri = saf.getUriForDirectoryInRoot('Download');
+            const permission = await saf.requestDirectoryPermissionsAsync(initialUri);
+            if (permission.granted) {
+              const baseName = `${tenantId}_Table_${selectedTableNo}_QR`;
+              const createdFileUri = await saf.createFileAsync(
+                permission.directoryUri,
+                baseName,
+                'image/bmp'
+              );
+              await saf.writeAsStringAsync(createdFileUri, base64Bmp, {
+                encoding: legacyFs.EncodingType?.Base64 || 'base64',
+              });
+              toast.success(`Table ${selectedTableNo} QR Standee saved directly to Downloads!`, 'QR Downloaded');
+              setIsDownloading(false);
+              return;
+            }
+          }
+        } catch (safErr) {
+          console.warn('Android direct SAF download failed, falling back:', safErr);
+        }
+      }
+
       // 1. Try modern Expo SDK 58 File API first
       try {
         const { File, Paths } = require('expo-file-system');

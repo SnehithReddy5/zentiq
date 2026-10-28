@@ -39,7 +39,10 @@ import {
   Building2,
   QrCode,
   Lock,
+  AlertTriangle,
 } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Routes } from '../../constants/routes';
 import { Header } from '../../components/common/Header';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
@@ -149,7 +152,8 @@ const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
 
 export const CentralKitchenScreen = () => {
   const insets = useSafeAreaInsets();
-  const { tenant, activeLocationId } = useTenantStore();
+  const { tenant, activeLocationId, branding } = useTenantStore();
+  const navigation = useNavigation<any>();
   const { user } = useAuthStore();
 
   const {
@@ -167,6 +171,10 @@ export const CentralKitchenScreen = () => {
     recordPaymentReceived,
     subscribeToIncomingOrders,
   } = useCentralKitchenStore();
+
+  const hasGstin = Boolean(branding?.gstin?.trim() || ckProfile?.gstin?.trim());
+  const hasFssai = Boolean(branding?.fssaiNumber?.trim() || ckProfile?.fssaiNumber?.trim());
+  const isB2BCompliant = hasGstin && hasFssai;
 
   const [activeTab, setActiveTab] = useState<'ORDERS' | 'MENU' | 'WHITELIST'>('ORDERS');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -217,6 +225,13 @@ export const CentralKitchenScreen = () => {
 
   // Open Add Item Modal
   const handleOpenAddItem = () => {
+    if (!isB2BCompliant) {
+      toast.warning(
+        `GSTIN (${hasGstin ? '✓' : 'Missing'}) and FSSAI License (${hasFssai ? '✓' : 'Missing'}) must be configured in Settings under GST before adding B2B food items.`,
+        'B2B Setup Required'
+      );
+      return;
+    }
     setEditingItem(null);
     setFormName('');
     setFormCategory('Gravies & Curries');
@@ -243,6 +258,10 @@ export const CentralKitchenScreen = () => {
 
   // Save Item
   const handleSaveItem = async () => {
+    if (!isB2BCompliant) {
+      toast.warning('Cannot save B2B items until GSTIN and FSSAI License are configured in Settings under GST.', 'B2B Setup Required');
+      return;
+    }
     if (!formName.trim() || !formPrice.trim()) {
       toast.warning('Please enter food item name and wholesale price.');
       return;
@@ -316,6 +335,10 @@ export const CentralKitchenScreen = () => {
 
   // Order Accept
   const handleAcceptOrder = (order: CKOrder) => {
+    if (!isB2BCompliant) {
+      toast.warning('Cannot accept B2B wholesale orders without valid GSTIN & FSSAI license numbers in Settings.', 'B2B Compliance Required');
+      return;
+    }
     Alert.alert(
       'Accept B2B Food Order',
       `Accept order #${order.orderNumber} from "${order.buyerBusinessName}" for ${order.deliveryShift.replace(/_/g, ' ')}?`,
@@ -344,6 +367,10 @@ export const CentralKitchenScreen = () => {
 
   // Order Dispatch
   const handleDispatchOrder = (order: CKOrder) => {
+    if (!isB2BCompliant) {
+      toast.warning('Cannot dispatch food batch without valid GSTIN & FSSAI on tax invoice.', 'B2B Compliance Required');
+      return;
+    }
     Alert.alert(
       'Mark as Dispatched',
       `Mark order #${order.orderNumber} as dispatched for delivery to "${order.buyerBusinessName}"?`,
@@ -422,6 +449,29 @@ export const CentralKitchenScreen = () => {
           </View>
         }
       />
+
+      {/* Compliance Warning Banner if FSSAI or GSTIN is missing */}
+      {!isB2BCompliant && (
+        <View className="mx-4 mt-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex-row items-center justify-between">
+          <View className="flex-1 mr-3">
+            <View className="flex-row items-center mb-1">
+              <AlertTriangle size={16} color="#F59E0B" />
+              <Text className="text-amber-400 font-black text-xs ml-1.5 uppercase tracking-wider">
+                B2B Compliance Action Required
+              </Text>
+            </View>
+            <Text className="text-slate-300 text-xs leading-4">
+              GSTIN ({hasGstin ? '✓ Configured' : '❌ Missing'}) & FSSAI License ({hasFssai ? '✓ Configured' : '❌ Missing'}) must be filled in Settings before selling B2B or fulfilling wholesale orders.
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate(Routes.BUSINESS_PROFILE)}
+            className="bg-amber-500 px-3 py-2 rounded-xl active:bg-amber-600 shadow-sm"
+          >
+            <Text className="text-slate-950 font-black text-xs">Configure in Settings ➔</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Main Tabs */}
       <View className="px-4 py-2.5 bg-slate-900 border-b border-slate-800">
@@ -807,6 +857,10 @@ export const CentralKitchenScreen = () => {
                   <TouchableOpacity
                     onPress={() => {
                       if (!tenant?.id) return;
+                      if (!isApproved && !isB2BCompliant) {
+                        toast.warning('Cannot approve buyer restaurants until your Central Kitchen GSTIN & FSSAI License are set up in Settings.', 'B2B Setup Required');
+                        return;
+                      }
                       const newStatus = isApproved ? 'BLOCKED' : 'APPROVED';
                       updatePartnerStatus(tenant.id, item.tenantId, newStatus);
                     }}
@@ -1190,8 +1244,12 @@ export const CentralKitchenScreen = () => {
                   onPress={async () => {
                     try {
                       setIsDownloadingPdf(true);
-                      await B2BInvoicePdfService.downloadAndShareInvoicePdf(selectedOrderForInvoice, ckProfile);
-                      toast.success('B2B GST Tax Invoice PDF ready!');
+                      const res = await B2BInvoicePdfService.downloadAndShareInvoicePdf(selectedOrderForInvoice, ckProfile, branding);
+                      if (res.method === 'DOWNLOAD') {
+                        toast.success('B2B GST Tax Invoice saved to Downloads!', 'Downloaded');
+                      } else {
+                        toast.info('B2B GST Tax Invoice ready!', 'Invoice Ready');
+                      }
                     } catch (e: any) {
                       toast.error(e?.message || 'Failed to download PDF invoice');
                     } finally {

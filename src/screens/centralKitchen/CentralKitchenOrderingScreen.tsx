@@ -143,7 +143,7 @@ export const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
 
 export const CentralKitchenOrderingScreen = () => {
   const insets = useSafeAreaInsets();
-  const { tenant, activeLocationId } = useTenantStore();
+  const { tenant, activeLocationId, branding } = useTenantStore();
   const { user } = useAuthStore();
 
   const {
@@ -968,8 +968,12 @@ export const CentralKitchenOrderingScreen = () => {
                   onPress={async () => {
                     try {
                       setIsDownloadingPdf(true);
-                      await B2BInvoicePdfService.downloadAndShareInvoicePdf(selectedOrderForInvoice, connectedCK);
-                      toast.success('B2B GST Tax Invoice PDF ready!');
+                      const res = await B2BInvoicePdfService.downloadAndShareInvoicePdf(selectedOrderForInvoice, connectedCK, branding);
+                      if (res.method === 'DOWNLOAD') {
+                        toast.success('B2B GST Tax Invoice saved to Downloads!', 'Downloaded');
+                      } else {
+                        toast.info('B2B GST Tax Invoice ready!', 'Invoice Ready');
+                      }
                     } catch (e: any) {
                       toast.error(e?.message || 'Failed to download PDF invoice');
                     } finally {

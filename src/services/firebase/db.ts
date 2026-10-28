@@ -919,6 +919,11 @@ export const DBServices = {
     return { id: snap.id, ...snap.data() } as CKProfile;
   },
 
+  async updateCKProfile(tenantId: string, updates: Partial<CKProfile>): Promise<void> {
+    const profileRef = doc(db, 'ckProfiles', tenantId);
+    await setDoc(profileRef, cleanFirestoreData({ ...updates, updatedAt: serverTimestamp() }), { merge: true });
+  },
+
   async getCKProfileByPartnerCode(partnerCode: string): Promise<CKProfile | null> {
     const cleanCode = (partnerCode || '').trim().toUpperCase();
     if (!cleanCode) return null;

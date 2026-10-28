@@ -51,6 +51,7 @@ export const BusinessProfileScreen = () => {
   const [email, setEmail] = useState(branding?.email || '');
   const [address, setAddress] = useState(branding?.address || '');
   const [gstin, setGstin] = useState(branding?.gstin || '');
+  const [fssaiNumber, setFssaiNumber] = useState(branding?.fssaiNumber || '');
   const [receiptHeader, setReceiptHeader] = useState(branding?.receiptHeader || '');
   const [receiptFooter, setReceiptFooter] = useState(branding?.receiptFooter || '');
 
@@ -139,6 +140,8 @@ export const BusinessProfileScreen = () => {
     setIsSaving(true);
     try {
       // 1. Update branding profile
+      const cleanGstin = gstin.trim().toUpperCase();
+      const cleanFssai = fssaiNumber.trim();
       const brandingPayload = {
         businessName,
         displayName: displayName || businessName,
@@ -146,7 +149,8 @@ export const BusinessProfileScreen = () => {
         email: email.trim().toLowerCase(),
         aggregatorEmail: email.trim().toLowerCase(),
         address,
-        gstin,
+        gstin: cleanGstin,
+        fssaiNumber: cleanFssai,
         receiptHeader: receiptHeader || businessName,
         receiptFooter: receiptFooter || 'Thank You & Visit Again!!',
         gstEnabled,
@@ -156,6 +160,15 @@ export const BusinessProfileScreen = () => {
       };
       await DBServices.updateTenantBranding(tenant.id, brandingPayload);
       setBranding(brandingPayload);
+
+      // Automatically sync GSTIN & FSSAI License to Central Kitchen Profile
+      try {
+        await DBServices.updateCKProfile(tenant.id, {
+          businessName: displayName || businessName,
+          gstin: cleanGstin,
+          fssaiNumber: cleanFssai,
+        });
+      } catch (_) {}
 
       // 2. Update operational features & payment methods
       const featuresPayload = {
@@ -525,6 +538,52 @@ export const BusinessProfileScreen = () => {
               </View>
             </View>
           )}
+
+          {/* FSSAI & GSTIN Identification (Mandatory for Central Kitchen & B2B Invoicing) */}
+          <View className="mt-4 pt-4 border-t border-slate-800">
+            <Text className="text-slate-400 font-bold text-[11px] uppercase tracking-wider mb-2.5">
+              Legal Licenses (B2B Trade & Tax Invoicing):
+            </Text>
+
+            <View className="gap-3">
+              <View className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-slate-300 font-bold text-xs">GSTIN Number</Text>
+                  <Text className="text-[10px] text-sky-400 font-semibold">15 Characters</Text>
+                </View>
+                <TextInput
+                  placeholder="e.g. 36AAACB1234F1Z5"
+                  placeholderTextColor="#64748B"
+                  autoCapitalize="characters"
+                  value={gstin}
+                  onChangeText={setGstin}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-sm"
+                />
+                <Text className="text-slate-500 text-[10px] mt-1">
+                  Used for GST compliance, B2B wholesale Central Kitchen sales, and customer bills.
+                </Text>
+              </View>
+
+              <View className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-slate-300 font-bold text-xs">FSSAI License Number</Text>
+                  <Text className="text-[10px] text-amber-400 font-semibold">14 Digits</Text>
+                </View>
+                <TextInput
+                  placeholder="e.g. 13624999000123"
+                  placeholderTextColor="#64748B"
+                  keyboardType="numeric"
+                  maxLength={14}
+                  value={fssaiNumber}
+                  onChangeText={setFssaiNumber}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-sm"
+                />
+                <Text className="text-slate-500 text-[10px] mt-1">
+                  Mandatory food safety license for commercial cooking and selling B2B prepared food batches.
+                </Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* 3. ORDERING MODES CARD (Clean Header, No Overflowing Pills) */}

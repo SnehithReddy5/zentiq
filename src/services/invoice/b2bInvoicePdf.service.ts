@@ -1,12 +1,14 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { Platform } from 'react-native';
 import { CKOrder, CKProfile } from '../../types/centralKitchen.types';
+import { TenantBranding } from '../../types/tenant.types';
 
 export class B2BInvoicePdfService {
   /**
    * Generates a printable, compliant Indian B2B GST Tax Invoice HTML string
    */
-  static generateInvoiceHtml(order: CKOrder, ckProfile?: CKProfile | null): string {
+  static generateInvoiceHtml(order: CKOrder, ckProfile?: CKProfile | null, branding?: TenantBranding | null): string {
     const invoiceNo = order.invoiceNumber || `INV-CK-${order.orderNumber}`;
     const invoiceDate = new Date().toLocaleDateString('en-IN', {
       day: '2-digit',
@@ -21,9 +23,9 @@ export class B2BInvoicePdfService {
     const totalTax = Number((cgst + sgst).toFixed(2));
     const grandTotal = Number((subtotal + totalTax).toFixed(2));
 
-    const supplierGstin = ckProfile?.gstin || '36AAACB1234F1Z5';
-    const supplierFssai = ckProfile?.fssaiNumber || '13624999000123';
-    const supplierName = ckProfile?.businessName || order.sellerBusinessName || 'CENTRAL KITCHEN HUB';
+    const supplierGstin = ckProfile?.gstin?.trim() || branding?.gstin?.trim() || 'GSTIN Pending';
+    const supplierFssai = ckProfile?.fssaiNumber?.trim() || branding?.fssaiNumber?.trim() || 'FSSAI Lic. Pending';
+    const supplierName = ckProfile?.businessName || branding?.displayName || branding?.businessName || order.sellerBusinessName || 'CENTRAL KITCHEN HUB';
 
     const itemsHtml = order.items
       .map(
@@ -294,21 +296,75 @@ export class B2BInvoicePdfService {
   }
 
   /**
-   * Generates PDF file on device and opens native Android/iOS download & share dialog
+   * Generates PDF file and downloads directly to device storage (Downloads folder)
    */
-  static async downloadAndShareInvoicePdf(order: CKOrder, ckProfile?: CKProfile | null): Promise<void> {
-    const html = this.generateInvoiceHtml(order, ckProfile);
+  static async downloadAndShareInvoicePdf(
+    order: CKOrder,
+    ckProfile?: CKProfile | null,
+    branding?: TenantBranding | null
+  ): Promise<{ success: boolean; method: 'DOWNLOAD' | 'SHARE' }> {
+    const html = this.generateInvoiceHtml(order, ckProfile, branding);
     const { uri } = await Print.printToFileAsync({ html });
+    const filename = `Invoice_${order.orderNumber || Date.now()}`;
 
-    const isAvailable = await Sharing.isAvailableAsync();
+    // A. Web Browser Direct Download
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      try {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `${filename}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        return { success: true, method: 'DOWNLOAD' };
+      } catch (webErr) {
+        console.warn('Web PDF download failed:', webErr);
+      }
+    }
+
+    // B. Android Direct Storage Download (Downloads folder via StorageAccessFramework)
+    if (Platform.OS === 'android') {
+      try {
+        const legacyFs = require('expo-file-system/legacy');
+        const saf = legacyFs?.StorageAccessFramework;
+        if (saf) {
+          const initialUri = saf.getUriForDirectoryInRoot('Download');
+          const permission = await saf.requestDirectoryPermissionsAsync(initialUri);
+          if (permission.granted) {
+            const createdFileUri = await saf.createFileAsync(
+              permission.directoryUri,
+              filename,
+              'application/pdf'
+            );
+            const base64Data = await legacyFs.readAsStringAsync(uri, {
+              encoding: legacyFs.EncodingType.Base64,
+            });
+            await saf.writeAsStringAsync(createdFileUri, base64Data, {
+              encoding: legacyFs.EncodingType.Base64,
+            });
+            return { success: true, method: 'DOWNLOAD' };
+          }
+        }
+      } catch (safErr) {
+        console.warn('Direct SAF download failed, falling back to system share:', safErr);
+      }
+    }
+
+    // C. iOS or fallback when user dismisses directory selector
+    const isAvailable = await Sharing.isAvailableAsync().catch(() => false);
     if (isAvailable) {
       await Sharing.shareAsync(uri, {
-        UTI: '.pdf',
+        UTI: 'com.adobe.pdf',
         mimeType: 'application/pdf',
         dialogTitle: `Download B2B GST Invoice - #${order.orderNumber}`,
       });
-    } else {
-      throw new Error('Sharing/saving is not available on this device');
+      return { success: true, method: 'SHARE' };
     }
+
+    throw new Error('Direct file download or storage is not available on this device');
   }
 }
