@@ -105,13 +105,12 @@ const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
               {/* Step Node */}
               <View className="items-center flex-1">
                 <View
-                  className={`w-6 h-6 rounded-full items-center justify-center border ${
-                    isDone
+                  className={`w-6 h-6 rounded-full items-center justify-center border ${isDone
                       ? 'bg-emerald-500 border-emerald-400'
                       : isCurrent
-                      ? 'bg-[#5D3FD3] border-indigo-400 shadow-md shadow-indigo-500/40'
-                      : 'bg-slate-900 border-slate-800'
-                  }`}
+                        ? 'bg-[#5D3FD3] border-indigo-400 shadow-md shadow-indigo-500/40'
+                        : 'bg-slate-900 border-slate-800'
+                    }`}
                 >
                   {isDone ? (
                     <CheckCircle2 size={13} color="white" />
@@ -122,13 +121,12 @@ const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
                   )}
                 </View>
                 <Text
-                  className={`text-[9px] mt-1 font-bold ${
-                    isCurrent
+                  className={`text-[9px] mt-1 font-bold ${isCurrent
                       ? 'text-indigo-400'
                       : isDone
-                      ? 'text-emerald-400'
-                      : 'text-slate-500'
-                  }`}
+                        ? 'text-emerald-400'
+                        : 'text-slate-500'
+                    }`}
                 >
                   {step.label}
                 </Text>
@@ -137,9 +135,8 @@ const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
               {/* Connecting line */}
               {idx < steps.length - 1 && (
                 <View
-                  className={`h-0.5 flex-1 -mt-3 ${
-                    idx < currentIdx ? 'bg-emerald-500' : 'bg-slate-800'
-                  }`}
+                  className={`h-0.5 flex-1 -mt-3 ${idx < currentIdx ? 'bg-emerald-500' : 'bg-slate-800'
+                    }`}
                 />
               )}
             </View>
@@ -362,7 +359,7 @@ export const CentralKitchenScreen = () => {
       await updateOrderStatus(orderToReject.id, 'REJECTED', rejectionReason);
       setRejectModalOpen(false);
       setOrderToReject(null);
-    } catch (e) {}
+    } catch (e) { }
   };
 
   // Order Dispatch
@@ -452,8 +449,8 @@ export const CentralKitchenScreen = () => {
 
       {/* Compliance Warning Banner if FSSAI or GSTIN is missing */}
       {!isB2BCompliant && (
-        <View className="mx-4 mt-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex-row items-center justify-between">
-          <View className="flex-1 mr-3">
+        <View className="mx-4 mt-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <View className="flex-1 mr-0 sm:mr-3">
             <View className="flex-row items-center mb-1">
               <AlertTriangle size={16} color="#F59E0B" />
               <Text className="text-amber-400 font-black text-xs ml-1.5 uppercase tracking-wider">
@@ -466,7 +463,7 @@ export const CentralKitchenScreen = () => {
           </View>
           <TouchableOpacity
             onPress={() => navigation.navigate(Routes.BUSINESS_PROFILE)}
-            className="bg-amber-500 px-3 py-2 rounded-xl active:bg-amber-600 shadow-sm"
+            className="bg-amber-500 px-3 py-2 rounded-xl active:bg-amber-600 shadow-sm shrink-0 self-start sm:self-auto"
           >
             <Text className="text-slate-950 font-black text-xs">Configure in Settings ➔</Text>
           </TouchableOpacity>
@@ -482,9 +479,8 @@ export const CentralKitchenScreen = () => {
         >
           <TouchableOpacity
             onPress={() => setActiveTab('ORDERS')}
-            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'ORDERS' ? 'bg-[#5D3FD3]' : 'bg-slate-950 border border-slate-800'
-            }`}
+            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'ORDERS' ? 'bg-[#5D3FD3]' : 'bg-slate-950 border border-slate-800'
+              }`}
           >
             <ChefHat size={14} color={activeTab === 'ORDERS' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'ORDERS' ? 'text-white' : 'text-slate-400'}`}>
@@ -494,9 +490,8 @@ export const CentralKitchenScreen = () => {
 
           <TouchableOpacity
             onPress={() => setActiveTab('MENU')}
-            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'MENU' ? 'bg-indigo-600' : 'bg-slate-950 border border-slate-800'
-            }`}
+            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'MENU' ? 'bg-indigo-600' : 'bg-slate-950 border border-slate-800'
+              }`}
           >
             <UtensilsCrossed size={14} color={activeTab === 'MENU' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'MENU' ? 'text-white' : 'text-slate-400'}`}>
@@ -506,9 +501,8 @@ export const CentralKitchenScreen = () => {
 
           <TouchableOpacity
             onPress={() => setActiveTab('WHITELIST')}
-            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'WHITELIST' ? 'bg-indigo-600' : 'bg-slate-950 border border-slate-800'
-            }`}
+            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'WHITELIST' ? 'bg-indigo-600' : 'bg-slate-950 border border-slate-800'
+              }`}
           >
             <Users size={14} color={activeTab === 'WHITELIST' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'WHITELIST' ? 'text-white' : 'text-slate-400'}`}>
@@ -545,14 +539,12 @@ export const CentralKitchenScreen = () => {
                   <View className="flex-row items-center justify-between pb-2.5 border-b border-slate-800/80">
                     <View className="flex-row items-center gap-1.5 flex-wrap flex-1 mr-2">
                       <Text className="text-white font-black text-base">#{item.orderNumber}</Text>
-                      <View className={`px-2 py-0.5 rounded-md border ${
-                        item.isInternalBranch
+                      <View className={`px-2 py-0.5 rounded-md border ${item.isInternalBranch
                           ? 'bg-purple-500/15 border-purple-500/30'
                           : 'bg-indigo-500/15 border-indigo-500/30'
-                      }`}>
-                        <Text className={`text-[9px] font-bold uppercase ${
-                          item.isInternalBranch ? 'text-purple-300' : 'text-indigo-300'
                         }`}>
+                        <Text className={`text-[9px] font-bold uppercase ${item.isInternalBranch ? 'text-purple-300' : 'text-indigo-300'
+                          }`}>
                           {item.isInternalBranch ? 'Internal Branch' : 'External Partner'}
                         </Text>
                       </View>
@@ -716,9 +708,8 @@ export const CentralKitchenScreen = () => {
                 <TouchableOpacity
                   key={cat}
                   onPress={() => setSelectedCategory(cat)}
-                  className={`px-3.5 py-1.5 rounded-full border ${
-                    selectedCategory === cat ? 'bg-emerald-600/30 border-emerald-400' : 'bg-slate-950 border-slate-800'
-                  }`}
+                  className={`px-3.5 py-1.5 rounded-full border ${selectedCategory === cat ? 'bg-emerald-600/30 border-emerald-400' : 'bg-slate-950 border-slate-800'
+                    }`}
                 >
                   <Text className={`text-xs font-bold ${selectedCategory === cat ? 'text-emerald-300' : 'text-slate-400'}`}>
                     {cat}
@@ -739,9 +730,8 @@ export const CentralKitchenScreen = () => {
               width: '100%',
             }}
             renderItem={({ item }) => (
-              <View className={`bg-slate-900 border p-4 rounded-3xl mb-3 flex-row items-center justify-between shadow-md ${
-                item.isAvailable === false ? 'border-rose-900/50 opacity-80' : 'border-slate-800'
-              }`}>
+              <View className={`bg-slate-900 border p-4 rounded-3xl mb-3 flex-row items-center justify-between shadow-md ${item.isAvailable === false ? 'border-rose-900/50 opacity-80' : 'border-slate-800'
+                }`}>
                 <View className="flex-1 mr-3">
                   <View className="flex-row items-center flex-wrap gap-1.5 mb-1">
                     <Text className="text-white font-black text-base">{item.name}</Text>
@@ -864,11 +854,10 @@ export const CentralKitchenScreen = () => {
                       const newStatus = isApproved ? 'BLOCKED' : 'APPROVED';
                       updatePartnerStatus(tenant.id, item.tenantId, newStatus);
                     }}
-                    className={`px-3 py-1.5 rounded-xl border flex-row items-center ${
-                      isApproved
+                    className={`px-3 py-1.5 rounded-xl border flex-row items-center ${isApproved
                         ? 'bg-rose-500/15 border-rose-500/30'
                         : 'bg-emerald-500/15 border-emerald-500/30'
-                    }`}
+                      }`}
                   >
                     {isApproved ? (
                       <View className="flex-row items-center">
@@ -932,9 +921,8 @@ export const CentralKitchenScreen = () => {
                         <TouchableOpacity
                           key={c}
                           onPress={() => setFormCategory(c)}
-                          className={`px-3 py-1.5 rounded-xl border ${
-                            formCategory === c ? 'bg-[#5D3FD3] border-indigo-400' : 'bg-slate-950 border-slate-800'
-                          }`}
+                          className={`px-3 py-1.5 rounded-xl border ${formCategory === c ? 'bg-[#5D3FD3] border-indigo-400' : 'bg-slate-950 border-slate-800'
+                            }`}
                         >
                           <Text className={`text-xs font-bold ${formCategory === c ? 'text-white' : 'text-slate-400'}`}>{c}</Text>
                         </TouchableOpacity>
@@ -949,9 +937,8 @@ export const CentralKitchenScreen = () => {
                         <TouchableOpacity
                           key={u}
                           onPress={() => setFormUnit(u)}
-                          className={`px-3 py-1.5 rounded-xl border ${
-                            formUnit === u ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 border-slate-800'
-                          }`}
+                          className={`px-3 py-1.5 rounded-xl border ${formUnit === u ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 border-slate-800'
+                            }`}
                         >
                           <Text className={`text-xs font-bold ${formUnit === u ? 'text-white' : 'text-slate-400'}`}>{u}</Text>
                         </TouchableOpacity>
@@ -1000,9 +987,8 @@ export const CentralKitchenScreen = () => {
                   {/* Stock Availability Toggle */}
                   <TouchableOpacity
                     onPress={() => setFormAvailable(!formAvailable)}
-                    className={`flex-row items-center justify-between p-3 rounded-xl border ${
-                      formAvailable ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-rose-950/20 border-rose-500/30'
-                    }`}
+                    className={`flex-row items-center justify-between p-3 rounded-xl border ${formAvailable ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-rose-950/20 border-rose-500/30'
+                      }`}
                   >
                     <Text className="text-white font-bold text-xs">Stock Availability Status</Text>
                     <Text className={`text-xs font-black ${formAvailable ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -1086,16 +1072,14 @@ export const CentralKitchenScreen = () => {
                       <TouchableOpacity
                         key={mode.id}
                         onPress={() => setSelectedPaymentMode(mode.id)}
-                        className={`p-3 rounded-2xl border flex-row items-center justify-between ${
-                          isSelected
+                        className={`p-3 rounded-2xl border flex-row items-center justify-between ${isSelected
                             ? 'bg-[#5D3FD3]/20 border-indigo-500 shadow-md shadow-indigo-500/20'
                             : 'bg-slate-950 border-slate-800'
-                        }`}
+                          }`}
                       >
                         <View className="flex-row items-center flex-1 mr-2">
-                          <View className={`w-8 h-8 rounded-xl items-center justify-center mr-2.5 ${
-                            isSelected ? 'bg-indigo-600' : 'bg-slate-800'
-                          }`}>
+                          <View className={`w-8 h-8 rounded-xl items-center justify-center mr-2.5 ${isSelected ? 'bg-indigo-600' : 'bg-slate-800'
+                            }`}>
                             <IconComp size={16} color="white" />
                           </View>
                           <View className="flex-1">
@@ -1163,11 +1147,10 @@ export const CentralKitchenScreen = () => {
 
               <ScrollView className="my-3 gap-2">
                 {/* Payment Badge Stamp */}
-                <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${
-                  selectedOrderForInvoice.paymentStatus === 'PAID'
+                <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${selectedOrderForInvoice.paymentStatus === 'PAID'
                     ? 'bg-emerald-500/15 border-emerald-500/40'
                     : 'bg-amber-500/15 border-amber-500/40'
-                }`}>
+                  }`}>
                   <View className="flex-row items-center">
                     {selectedOrderForInvoice.paymentStatus === 'PAID' ? (
                       <CheckCircle2 size={18} color="#10B981" />
@@ -1175,9 +1158,8 @@ export const CentralKitchenScreen = () => {
                       <Clock size={18} color="#F59E0B" />
                     )}
                     <View className="ml-2.5">
-                      <Text className={`text-xs font-black ${
-                        selectedOrderForInvoice.paymentStatus === 'PAID' ? 'text-emerald-400' : 'text-amber-400'
-                      }`}>
+                      <Text className={`text-xs font-black ${selectedOrderForInvoice.paymentStatus === 'PAID' ? 'text-emerald-400' : 'text-amber-400'
+                        }`}>
                         {selectedOrderForInvoice.paymentStatus === 'PAID'
                           ? `PAID IN FULL - ${selectedOrderForInvoice.paymentMode || 'ONLINE'}`
                           : 'PAYMENT PENDING / ON CREDIT'}

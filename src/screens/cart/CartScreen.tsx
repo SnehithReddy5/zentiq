@@ -280,38 +280,64 @@ export const CartScreen = () => {
     try {
       const billNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
 
-      // 1. Parallel database updates (Record Order & Free Table simultaneously)
-      const orderPromise = DBServices.createOrder({
-        orderNumber: billNo,
-        kotNo: billNo,
-        orderType,
-        tableNo,
-        captainId: user?.id || 'staff',
-        captainName: user?.name || 'Staff',
-        status: 'COMPLETED',
-        paymentStatus: 'PAID',
-        payments: finalPayments.map(p => ({ ...p, id: 'pay_' + Date.now(), method: p.method as any, timestamp: new Date().toISOString() })),
-        items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
-        totalAmount: cartTotal,
-        createdAt: new Date(),
-      }, tenant?.id, activeLocationId || undefined);
-
-      const tablePromise = tableNo !== 0
-        ? DBServices.updateTableStatusByNo(tableNo, 'available', tenant?.id, activeLocationId || undefined)
-        : Promise.resolve();
-
-      // Also complete any active running orders for this table
+      // Check for existing RUNNING order for this table (QR self-order or previous KOT)
+      let existingRunningOrder: any = null;
       if (tableNo !== 0) {
         try {
           const { useOrderStore } = require('../../store/order.store');
-          const runningOrders = useOrderStore.getState().orders.filter(
+          existingRunningOrder = useOrderStore.getState().orders.find(
             (o: any) => Number(o.tableNo) === Number(tableNo) && (o.status === 'RUNNING' || o.status === 'running')
-          );
-          for (const ro of runningOrders) {
-            DBServices.updateOrderStatus(ro.id, 'COMPLETED', tenant?.id, ro.locationId || activeLocationId);
-          }
+          ) || null;
         } catch (_) {}
       }
+
+      const paymentRows = finalPayments.map(p => ({
+        id: 'pay_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        method: p.method as any,
+        amount: p.amount,
+        timestamp: new Date().toISOString(),
+      }));
+
+      // 1. Parallel database updates
+      let orderPromise: Promise<any>;
+      if (existingRunningOrder && existingRunningOrder.id) {
+        // UPDATE existing running order → COMPLETED (no new doc created, no duplication)
+        orderPromise = DBServices.updateOrderToSettled(
+          existingRunningOrder.id,
+          {
+            billNo,
+            payments: paymentRows,
+            totalAmount: cartTotal,
+            subtotal,
+            tax: totalTax,
+            captainId: user?.id || 'staff',
+            captainName: user?.name || 'Staff',
+          },
+          tenant?.id,
+          existingRunningOrder.locationId || activeLocationId || undefined
+        );
+      } else {
+        // No pre-existing running order (walk-in / counter / pickup): create new COMPLETED order
+        orderPromise = DBServices.createOrder({
+          orderNumber: billNo,
+          kotNo: billNo,
+          orderType,
+          tableNo,
+          captainId: user?.id || 'staff',
+          captainName: user?.name || 'Staff',
+          status: 'COMPLETED',
+          paymentStatus: 'PAID',
+          payments: paymentRows,
+          items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
+          totalAmount: cartTotal,
+          createdAt: new Date(),
+        }, tenant?.id, activeLocationId || undefined);
+      }
+
+      // 1b. Free the table
+      const tablePromise = tableNo !== 0
+        ? DBServices.updateTableStatusByNo(tableNo, 'available', tenant?.id, activeLocationId || undefined)
+        : Promise.resolve();
 
       // 2. Pre-generate ESC/POS buffers synchronously in memory (< 1ms)
       const activeLoc = locations.find(l => l.id === activeLocationId);

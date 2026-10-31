@@ -123,6 +123,50 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         await DBServices.updateTableStatusByNo(tableNo, 'running', tenant?.id, activeLocationId || undefined);
       }
 
+      // Persist KOT items to Firestore running order so settlement can later update (not duplicate) it
+      try {
+        const { useOrderStore } = require('../../store/order.store');
+        const existingRunning = useOrderStore.getState().orders.find(
+          (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
+        );
+        if (existingRunning && existingRunning.id) {
+          // Round 2+: append only the newly sent (unsent) items to the existing running order
+          await DBServices.appendKOTItemsToRunningOrder(
+            existingRunning.id,
+            unsentItems.map(i => ({
+              itemId: i.itemId,
+              itemName: i.itemName,
+              qty: i.qty,
+              price: i.price,
+              variantId: i.variantId || null,
+              variantName: i.variantName || null,
+              note: i.note || '',
+            })),
+            tenant?.id,
+            existingRunning.locationId || activeLocationId || undefined
+          );
+        } else if (tableNo !== 0) {
+          // First KOT from biller (no QR running order): create running order doc
+          await DBServices.createOrder({
+            kotNo,
+            orderNumber: kotNo,
+            orderType,
+            tableNo,
+            captainId: user?.id || 'staff',
+            captainName: user?.name || 'Staff',
+            status: 'RUNNING',
+            paymentStatus: 'UNPAID',
+            items: cartItems.map(i => ({ ...i })),
+            subtotal: cartItems.reduce((s, i) => s + i.price * i.qty, 0),
+            tax: 0,
+            totalAmount: cartItems.reduce((s, i) => s + i.price * i.qty, 0),
+            createdAt: new Date(),
+          }, tenant?.id, activeLocationId || undefined);
+        }
+      } catch (persistErr) {
+        console.warn('KOT persist to Firestore failed (non-critical):', persistErr);
+      }
+
       // Build ESC/POS KOT buffer with orderType
       const buffer = ESCPOSService.buildKOT(
         kotNo,

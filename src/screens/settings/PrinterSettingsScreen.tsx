@@ -398,12 +398,12 @@ export const PrinterSettingsScreen = () => {
             }`}
           >
             <View className="flex-row items-center justify-between mb-1">
-              <View className="flex-row items-center">
-                <View className={`w-3 h-3 rounded-full mr-2 ${isDualMode ? 'bg-[#5D3FD3]' : 'bg-slate-800'}`} />
+              <View className="flex-row items-center flex-1 mr-2 flex-wrap">
+                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isDualMode ? 'bg-[#5D3FD3]' : 'bg-slate-800'}`} />
                 <Text className="text-white font-bold text-sm">1. Dual Printer (Counter Bill + Kitchen KOT)</Text>
               </View>
               {isDualMode && (
-                <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/30 shrink-0">
                   <Text className="text-purple-300 font-bold text-[10px]">ACTIVE</Text>
                 </View>
               )}
@@ -423,12 +423,12 @@ export const PrinterSettingsScreen = () => {
             }`}
           >
             <View className="flex-row items-center justify-between mb-1">
-              <View className="flex-row items-center">
-                <View className={`w-3 h-3 rounded-full mr-2 ${isCombinedMode ? 'bg-emerald-600' : 'bg-slate-800'}`} />
+              <View className="flex-row items-center flex-1 mr-2 flex-wrap">
+                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isCombinedMode ? 'bg-emerald-600' : 'bg-slate-800'}`} />
                 <Text className="text-white font-bold text-sm">2. Single Printer (Bill + Kitchen Slip Together)</Text>
               </View>
               {isCombinedMode && (
-                <View className="bg-emerald-500/20 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                <View className="bg-emerald-500/20 px-2.5 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
                   <Text className="text-emerald-300 font-bold text-[10px]">ACTIVE</Text>
                 </View>
               )}
@@ -448,12 +448,12 @@ export const PrinterSettingsScreen = () => {
             }`}
           >
             <View className="flex-row items-center justify-between mb-1">
-              <View className="flex-row items-center">
-                <View className={`w-3 h-3 rounded-full mr-2 ${isSingleBillMode ? 'bg-amber-600' : 'bg-slate-800'}`} />
+              <View className="flex-row items-center flex-1 mr-2 flex-wrap">
+                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isSingleBillMode ? 'bg-amber-600' : 'bg-slate-800'}`} />
                 <Text className="text-white font-bold text-sm">3. Single Printer (Bill Only - Quick Service)</Text>
               </View>
               {isSingleBillMode && (
-                <View className="bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                <View className="bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30 shrink-0">
                   <Text className="text-amber-300 font-bold text-[10px]">ACTIVE</Text>
                 </View>
               )}
@@ -495,18 +495,18 @@ export const PrinterSettingsScreen = () => {
 
         {/* 2. Billing Counter Printer (Used by all modes) */}
         <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-          <View className="flex-row items-center justify-between mb-3 pb-2 border-b border-slate-800">
-            <View className="flex-row items-center">
+          <View className="flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-3 pb-2 border-b border-slate-800">
+            <View className="flex-row items-center flex-1 mr-2 min-w-[160px]">
               <Printer size={18} color="#818CF8" />
-              <Text className="text-white font-black text-base ml-2">
+              <Text className="text-white font-black text-sm sm:text-base ml-2">
                 {isDualMode
-                  ? '1. Billing Counter Printer (Customer Bill)'
+                  ? 'Counter Bill Printer'
                   : isCombinedMode
-                  ? 'Main Counter Printer (Combined Bill + Kitchen Slip)'
-                  : 'Main Counter Printer (Bill Only)'}
+                  ? 'Counter (Combined)'
+                  : 'Counter (Bill Only)'}
               </Text>
             </View>
-            <View className="bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20">
+            <View className="bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20 shrink-0 self-start sm:self-auto">
               <Text className="text-indigo-400 font-black text-[10px]">
                 {printerType === 'USB' ? 'USB MODE' : 'NETWORK LAN'}
               </Text>
@@ -651,14 +651,14 @@ export const PrinterSettingsScreen = () => {
         {/* 3. Kitchen Thermal KOT Printer (Only visible when Dual Printer mode is active) */}
         {isDualMode && (
           <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-            <View className="flex-row items-center justify-between mb-3 pb-2 border-b border-slate-800">
-              <View className="flex-row items-center">
+            <View className="flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-3 pb-2 border-b border-slate-800">
+              <View className="flex-row items-center flex-1 mr-2 min-w-[160px]">
                 <Printer size={18} color="#F59E0B" />
-                <Text className="text-white font-black text-base ml-2">2. Kitchen Thermal KOT Printer</Text>
+                <Text className="text-white font-black text-sm sm:text-base ml-2">Kitchen KOT Printer</Text>
               </View>
-              <View className="bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+              <View className="bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20 shrink-0 self-start sm:self-auto">
                 <Text className="text-amber-400 font-black text-[10px]">
-                  {kitchenPrinterType === 'USB' ? 'USB KITCHEN' : 'NETWORK LAN KITCHEN'}
+                  {kitchenPrinterType === 'USB' ? 'USB KITCHEN' : 'LAN KITCHEN'}
                 </Text>
               </View>
             </View>

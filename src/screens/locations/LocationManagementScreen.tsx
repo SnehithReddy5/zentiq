@@ -109,10 +109,10 @@ export const LocationManagementScreen = () => {
             >
               <View className="flex-row items-center justify-between">
                 <View className="flex-1 mr-3">
-                  <View className="flex-row items-center gap-2">
+                  <View className="flex-row items-center flex-wrap gap-1.5">
                     <Text className="text-white font-bold text-base">{item.name}</Text>
                     {isDisabled && (
-                      <View className="bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 flex-row items-center">
+                      <View className="bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 flex-row items-center shrink-0">
                         <Lock size={10} color="#F43F5E" />
                         <Text className="text-rose-400 text-[10px] font-bold ml-1">Disabled by Admin</Text>
                       </View>

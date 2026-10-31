@@ -49,55 +49,10 @@ import { HamburgerMenu } from '../../components/common/HamburgerMenu';
 import { Button } from '../../components/common/Button';
 import { Routes } from '../../constants/routes';
 import { useLiveOrderNotifications } from '../../hooks/useLiveOrderNotifications';
-
-interface OnlineOrder {
-  id: string;
-  platform: 'zomato' | 'swiggy';
-  orderNo: string;
-  customerName: string;
-  items: { name: string; qty: number; price: number }[];
-  totalAmount: number;
-  riderName?: string;
-  riderPhone?: string;
-  otp: string;
-  status: 'NEW' | 'PREPARING' | 'READY';
-  placedTime: string;
-}
-
-const INITIAL_ONLINE_ORDERS: OnlineOrder[] = [
-  {
-    id: 'ord_zom_1',
-    platform: 'zomato',
-    orderNo: '#ZOM-8492',
-    customerName: 'Arjun S.',
-    items: [
-      { name: 'Butter Chicken', qty: 1, price: 340 },
-      { name: 'Butter Naan', qty: 4, price: 160 },
-      { name: 'Jeera Rice', qty: 1, price: 120 }
-    ],
-    totalAmount: 620,
-    riderName: 'Ramesh (Zomato Rider)',
-    riderPhone: '9876543210',
-    otp: '4921',
-    status: 'PREPARING',
-    placedTime: '5 mins ago'
-  },
-  {
-    id: 'ord_swg_1',
-    platform: 'swiggy',
-    orderNo: '#SWG-3190',
-    customerName: 'Sneha R.',
-    items: [
-      { name: 'Paneer Tikka Biryani', qty: 1, price: 290 },
-      { name: 'Gulab Jamun (2 pcs)', qty: 1, price: 90 }
-    ],
-    totalAmount: 380,
-    riderName: 'Assigning Delivery Partner...',
-    otp: '8812',
-    status: 'NEW',
-    placedTime: 'Just now'
-  }
-];
+import { DBServices } from '../../services/firebase/db';
+import { printerService } from '../../services/printer/printer.service';
+import { ESCPOSService } from '../../services/printer/escpos.service';
+import { AggregatorParserService } from '../../services/integrations/aggregatorParser.service';
 
 export const HomeScreen = () => {
   useLiveOrderNotifications();
@@ -117,8 +72,8 @@ export const HomeScreen = () => {
   // Zomato & Swiggy Online Store Status
   const [isZomatoOnline, setZomatoOnline] = useState(true);
   const [isSwiggyOnline, setSwiggyOnline] = useState(true);
-  const [onlineOrders, setOnlineOrders] = useState<OnlineOrder[]>(INITIAL_ONLINE_ORDERS);
   const [selectedAggregator, setSelectedAggregator] = useState<'zomato' | 'swiggy' | null>(null);
+  const [isSimulatingAggregator, setIsSimulatingAggregator] = useState(false);
 
   useEffect(() => {
     const unsubOrders = subscribeToOrders();
@@ -164,15 +119,27 @@ export const HomeScreen = () => {
     };
   }, [tables]);
 
-  const { zomatoOrdersCount, swiggyOrdersCount, totalOnlineCount } = React.useMemo(() => {
-    const zCount = onlineOrders.filter(o => o.platform === 'zomato').length;
-    const sCount = onlineOrders.filter(o => o.platform === 'swiggy').length;
-    return {
-      zomatoOrdersCount: zCount,
-      swiggyOrdersCount: sCount,
-      totalOnlineCount: zCount + sCount
-    };
-  }, [onlineOrders]);
+  // LIVE Aggregator orders from real Firestore database (NO hardcoded fake data)
+  const liveAggregatorOrders = React.useMemo(() => {
+    return orders.filter(o => 
+      (o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY') &&
+      o.status !== 'COMPLETED' && o.status !== 'CANCELLED'
+    );
+  }, [orders]);
+
+  const zomatoOrders = React.useMemo(() => 
+    liveAggregatorOrders.filter(o => o.orderType === 'ONLINE_ZOMATO'),
+    [liveAggregatorOrders]
+  );
+
+  const swiggyOrders = React.useMemo(() => 
+    liveAggregatorOrders.filter(o => o.orderType === 'ONLINE_SWIGGY'),
+    [liveAggregatorOrders]
+  );
+
+  const zomatoOrdersCount = zomatoOrders.length;
+  const swiggyOrdersCount = swiggyOrders.length;
+  const totalOnlineCount = liveAggregatorOrders.length;
 
   const handleSelectBranch = (loc: any) => {
     if (loc.status === 'DISABLED') return;
@@ -180,14 +147,92 @@ export const HomeScreen = () => {
     setBranchModalOpen(false);
   };
 
-  const handleAcceptOnlineOrder = (orderId: string) => {
-    setOnlineOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PREPARING' } : o));
-    toast.success('Online order accepted! KOT sent to kitchen printer.', 'KOT Dispatched');
+  const handleAcceptOnlineOrder = async (order: any) => {
+    try {
+      // Print Kitchen KOT if printer configured
+      const isKitchenUsb = settings.kitchenPrinterType === 'USB';
+      const kitchenTarget = isKitchenUsb
+        ? (settings.kitchenPrinterName || settings.printerName || 'POS-80')
+        : (settings.kitchenIpAddress?.trim() || (settings.printerType === 'LAN' ? settings.ipAddress?.trim() : ''));
+      const kitchenPort = settings.kitchenPort || settings.port || 9100;
+      const kitchenType = isKitchenUsb ? 'USB' : 'LAN';
+
+      if (kitchenTarget) {
+        try {
+          await printerService.connect(kitchenTarget, kitchenPort, kitchenType);
+          const buffer = ESCPOSService.buildKOT(
+            order.kotNo || order.orderNumber || 0,
+            0,
+            order.aggregatorPlatform || 'Online',
+            (order.items || []).map((it: any) => ({
+              itemName: it.itemName || it.name,
+              qty: it.qty || 1,
+              price: it.price || 0,
+              note: it.note
+            })),
+            `ONLINE ${order.aggregatorPlatform || 'ORDER'} #${order.aggregatorOrderId || ''}`,
+            order.orderType
+          );
+          await printerService.print(
+            buffer,
+            isKitchenUsb
+              ? { printerType: 'USB', printerName: kitchenTarget }
+              : { printerType: 'LAN', ip: kitchenTarget, port: kitchenPort }
+          );
+          await printerService.disconnect();
+        } catch (printErr: any) {
+          console.warn('Printer warning in online order accept:', printErr?.message);
+        }
+      }
+
+      toast.success(`Online order #${order.aggregatorOrderId || order.kotNo} accepted & KOT dispatched!`, 'KOT Sent');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to accept order', 'Error');
+    }
   };
 
-  const handleMarkOrderReady = (orderId: string) => {
-    setOnlineOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'READY' } : o));
-    toast.info('Order marked ready! Delivery rider notified for pickup.', 'Rider Notified');
+  const handleMarkOrderReady = async (orderId: string, orderDisplayNo: string) => {
+    try {
+      await DBServices.updateOrderStatus(orderId, 'COMPLETED', tenant?.id, activeLocationId || undefined);
+      toast.success(`Order #${orderDisplayNo} marked Food Ready & Completed!`, 'Dispatched');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to complete order', 'Error');
+    }
+  };
+
+  const handleCancelOnlineOrder = async (orderId: string, orderDisplayNo: string) => {
+    Alert.alert(
+      'Cancel Online Order',
+      `Are you sure you want to cancel order #${orderDisplayNo}?`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel Order',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DBServices.updateOrderStatus(orderId, 'CANCELLED', tenant?.id, activeLocationId || undefined);
+              toast.info(`Order #${orderDisplayNo} has been cancelled.`);
+            } catch (e: any) {
+              toast.error(e?.message || 'Failed to cancel', 'Error');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleSimulateTestOrder = async (platform: 'ZOMATO' | 'SWIGGY') => {
+    if (!tenant?.id) return;
+    setIsSimulatingAggregator(true);
+    try {
+      const res = await DBServices.simulateTestAggregatorOrder(tenant.id, platform, activeLocationId || undefined);
+      toast.success(`${platform} Order #${res.kotNo} Ingested! It is now live in POS.`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Simulation error', 'Error');
+    } finally {
+      setIsSimulatingAggregator(false);
+    }
   };
 
 // Direct counter billing handled gracefully within dashboard (no deadlock)
@@ -923,83 +968,120 @@ export const HomeScreen = () => {
             </View>
 
             <ScrollView className="mt-3">
-              {onlineOrders.filter(o => o.platform === selectedAggregator).length === 0 ? (
-                <View className="py-12 items-center">
-                  <Bike size={36} color="#64748B" />
-                  <Text className="text-slate-400 text-sm font-bold mt-2">No active orders from {selectedAggregator}</Text>
+              {(selectedAggregator === 'zomato' ? zomatoOrders : swiggyOrders).length === 0 ? (
+                <View className="py-8 px-4 items-center">
+                  <View className="w-14 h-14 rounded-full bg-slate-800 items-center justify-center mb-3">
+                    <Bike size={28} color="#94A3B8" />
+                  </View>
+                  <Text className="text-white text-base font-bold text-center">
+                    No Active Orders from {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'}
+                  </Text>
+                  <Text className="text-slate-400 text-xs text-center mt-1.5 leading-relaxed max-w-xs">
+                    Orders placed on {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} will automatically appear here once forwarded via email or when simulated.
+                  </Text>
+
+                  {/* 1-Tap Simulation Button to Test Real Order Flow */}
+                  <TouchableOpacity
+                    disabled={isSimulatingAggregator}
+                    onPress={() => handleSimulateTestOrder(selectedAggregator === 'zomato' ? 'ZOMATO' : 'SWIGGY')}
+                    className={'mt-5 px-5 py-3 rounded-2xl flex-row items-center ' + (
+                      selectedAggregator === 'zomato' ? 'bg-[#E23744]' : 'bg-[#FC8019]'
+                    )}
+                  >
+                    <Sparkles size={16} color="white" />
+                    <Text className="text-white font-bold text-xs ml-2">
+                      {isSimulatingAggregator
+                        ? 'Simulating Order...'
+                        : `Test Live ${selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} Order`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View className="mt-5 p-3.5 bg-slate-950/80 border border-slate-800 rounded-2xl w-full">
+                    <Text className="text-slate-400 text-[11px] leading-relaxed">
+                      💡 <Text className="font-bold text-slate-300">How to automate:</Text> Set up auto-forwarding from your registered restaurant email for {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} notifications.
+                    </Text>
+                  </View>
                 </View>
               ) : (
-                onlineOrders
-                  .filter(o => o.platform === selectedAggregator)
-                  .map(order => (
+                (selectedAggregator === 'zomato' ? zomatoOrders : swiggyOrders).map(order => {
+                  const orderDisplayNo = order.aggregatorOrderId || String(order.kotNo || order.orderNumber || order.id);
+                  const isPaid = order.paymentStatus === 'PAID';
+                  return (
                     <View key={order.id} className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 mb-3">
                       <View className="flex-row items-center justify-between mb-2">
-                        <View className="flex-row items-center">
-                          <Text className="text-white font-black text-base mr-2">{order.orderNo}</Text>
-                          <View className="bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">
-                            <Text className="text-purple-300 text-[10px] font-bold">OTP: {order.otp}</Text>
+                        <View className="flex-row items-center flex-wrap gap-1.5 flex-1 mr-2">
+                          <Text className="text-white font-black text-base">#{orderDisplayNo}</Text>
+                          <View className="bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                            <Text className="text-emerald-300 text-[10px] font-bold">
+                              {isPaid ? 'PAID ONLINE' : 'PAY ON DELIVERY'}
+                            </Text>
                           </View>
                         </View>
-                        <View className="flex-row items-center">
+                        <View className="flex-row items-center shrink-0">
                           <Clock size={12} color="#94A3B8" />
-                          <Text className="text-slate-400 text-[11px] ml-1">{order.placedTime}</Text>
+                          <Text className="text-slate-400 text-[11px] ml-1">
+                            {order.createdAt ? 'Active' : 'Live'}
+                          </Text>
                         </View>
                       </View>
 
-                      <Text className="text-slate-300 text-xs font-semibold mb-2">Customer: {order.customerName}</Text>
+                      <Text className="text-slate-300 text-xs font-semibold mb-2">
+                        Customer: {order.customerName || 'Online Diner'} {order.customerPhone ? `(${order.customerPhone})` : ''}
+                      </Text>
 
                       <View className="bg-slate-900/90 rounded-xl p-3 mb-3 border border-slate-800">
-                        {order.items.map((item, idx) => (
+                        {(order.items || []).map((item: any, idx: number) => (
                           <View key={idx} className="flex-row justify-between py-1 border-b border-slate-800/60 last:border-b-0">
-                            <Text className="text-slate-200 text-xs">{item.qty}x {item.name}</Text>
-                            <Text className="text-slate-400 text-xs font-bold">₹{item.price}</Text>
+                            <Text className="text-slate-200 text-xs flex-1 mr-2">
+                              {item.qty || 1}x {item.itemName || item.name}
+                            </Text>
+                            <Text className="text-slate-400 text-xs font-bold">
+                              ₹{Number(item.price || 0) * Number(item.qty || 1)}
+                            </Text>
                           </View>
                         ))}
                         <View className="flex-row justify-between pt-2 mt-1 border-t border-slate-800">
                           <Text className="text-slate-400 font-bold text-xs">Total Bill</Text>
-                          <Text className="text-white font-black text-sm">₹{order.totalAmount}</Text>
+                          <Text className="text-white font-black text-sm">₹{Number(order.totalAmount || 0).toFixed(2)}</Text>
                         </View>
                       </View>
 
-                      {order.riderName && (
+                      {order.deliveryRiderName && (
                         <View className="flex-row items-center mb-3 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl">
                           <Bike size={14} color="#818CF8" />
                           <Text className="text-indigo-300 text-xs font-medium ml-2 flex-1" numberOfLines={1}>
-                            {order.riderName}
+                            {order.deliveryRiderName} {order.deliveryRiderPhone ? `• ${order.deliveryRiderPhone}` : ''}
                           </Text>
                         </View>
                       )}
 
                       <View className="flex-row gap-2">
-                        {order.status === 'NEW' && (
-                          <TouchableOpacity
-                            onPress={() => handleAcceptOnlineOrder(order.id)}
-                            className="flex-1 bg-emerald-600 py-2.5 rounded-xl items-center justify-center flex-row shadow-sm"
-                          >
-                            <Printer size={15} color="white" />
-                            <Text className="text-white font-bold text-xs ml-1.5">Accept & Print KOT</Text>
-                          </TouchableOpacity>
-                        )}
+                        <TouchableOpacity
+                          onPress={() => handleAcceptOnlineOrder(order)}
+                          className="flex-1 bg-emerald-600 py-2.5 rounded-xl items-center justify-center flex-row shadow-sm active:bg-emerald-700"
+                        >
+                          <Printer size={15} color="white" />
+                          <Text className="text-white font-bold text-xs ml-1.5">Accept & Print KOT</Text>
+                        </TouchableOpacity>
 
-                        {order.status === 'PREPARING' && (
-                          <TouchableOpacity
-                            onPress={() => handleMarkOrderReady(order.id)}
-                            className="flex-1 bg-amber-600 py-2.5 rounded-xl items-center justify-center flex-row shadow-sm"
-                          >
-                            <CheckCircle2 size={15} color="white" />
-                            <Text className="text-white font-bold text-xs ml-1.5">Mark Food Ready (Alert Rider)</Text>
-                          </TouchableOpacity>
-                        )}
+                        <TouchableOpacity
+                          onPress={() => handleMarkOrderReady(order.id, orderDisplayNo)}
+                          className="flex-1 bg-amber-600 py-2.5 rounded-xl items-center justify-center flex-row shadow-sm active:bg-amber-700"
+                        >
+                          <CheckCircle2 size={15} color="white" />
+                          <Text className="text-white font-bold text-xs ml-1.5">Food Ready / Settle</Text>
+                        </TouchableOpacity>
 
-                        {order.status === 'READY' && (
-                          <View className="flex-1 bg-slate-700/80 py-2.5 rounded-xl items-center justify-center flex-row">
-                            <CheckCircle2 size={15} color="#10B981" />
-                            <Text className="text-emerald-400 font-bold text-xs ml-1.5">Food Ready • Awaiting Rider</Text>
-                          </View>
-                        )}
+                        <TouchableOpacity
+                          onPress={() => handleCancelOnlineOrder(order.id, orderDisplayNo)}
+                          className="px-3 bg-rose-600/20 border border-rose-500/30 py-2.5 rounded-xl items-center justify-center"
+                        >
+                          <X size={15} color="#F43F5E" />
+                        </TouchableOpacity>
                       </View>
                     </View>
-                  ))
+                  );
+                })
               )}
             </ScrollView>
           </View>

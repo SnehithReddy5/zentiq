@@ -469,6 +469,81 @@ export const DBServices = {
     await updateDoc(orderRef, { status, updatedAt: serverTimestamp() });
   },
 
+  /**
+   * Settle an existing running order (e.g. QR self-order) in-place instead of creating a duplicate.
+   * Updates status → COMPLETED, paymentStatus → PAID, and appends payment data.
+   */
+  async updateOrderToSettled(
+    id: string,
+    data: {
+      billNo: number;
+      payments: { id: string; method: string; amount: number; timestamp: string }[];
+      totalAmount: number;
+      subtotal?: number;
+      tax?: number;
+      captainId?: string;
+      captainName?: string;
+    },
+    tenantId?: string,
+    locationId?: string
+  ): Promise<void> {
+    const orderRef = (tenantId && locationId)
+      ? doc(db, 'tenants', tenantId, 'locations', locationId, 'orders', id)
+      : doc(db, 'orders', id);
+    await updateDoc(orderRef, {
+      status: 'COMPLETED',
+      paymentStatus: 'PAID',
+      orderNumber: data.billNo,
+      payments: data.payments,
+      totalAmount: data.totalAmount,
+      ...(data.subtotal !== undefined ? { subtotal: data.subtotal } : {}),
+      ...(data.tax !== undefined ? { tax: data.tax } : {}),
+      ...(data.captainId ? { captainId: data.captainId } : {}),
+      ...(data.captainName ? { captainName: data.captainName } : {}),
+      settledAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  },
+
+  /**
+   * Append newly-sent KOT items to an existing running order document.
+   * Merges items: if itemId already exists, increases qty; otherwise pushes new item.
+   */
+  async appendKOTItemsToRunningOrder(
+    orderId: string,
+    newItems: Array<{ itemId: string; itemName: string; qty: number; price: number; variantId?: string | null; variantName?: string | null; note?: string }>,
+    tenantId?: string,
+    locationId?: string
+  ): Promise<void> {
+    const orderRef = (tenantId && locationId)
+      ? doc(db, 'tenants', tenantId, 'locations', locationId, 'orders', orderId)
+      : doc(db, 'orders', orderId);
+    const snap = await getDoc(orderRef);
+    if (!snap.exists()) return;
+    const existing: any[] = snap.data().items || [];
+
+    // Merge: accumulate qty for matching itemId+variantId
+    const merged = [...existing];
+    for (const ni of newItems) {
+      const idx = merged.findIndex(
+        (e) => e.itemId === ni.itemId && (e.variantId || null) === (ni.variantId || null)
+      );
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], qty: (merged[idx].qty || 0) + ni.qty };
+      } else {
+        merged.push({ ...ni, variantId: ni.variantId || null, variantName: ni.variantName || null, note: ni.note || '' });
+      }
+    }
+
+    const newTotal = merged.reduce((s, i) => s + (i.price * i.qty), 0);
+    await updateDoc(orderRef, {
+      items: merged,
+      totalAmount: newTotal,
+      subtotal: newTotal,
+      updatedAt: serverTimestamp(),
+    });
+  },
+
   async recordOrderPayment(
     id: string,
     payment: { method: any; amount: number; reference?: string },

@@ -40,27 +40,37 @@ export class PrinterService {
       return Promise.resolve();
     }
 
+    // Safety guard: detect Expo Go before attempting native TCP socket
+    // In Expo Go, NativeModules.TcpSockets is absent → graceful skip instead of native crash
+    const isExpoGo = (() => {
+      try {
+        const { NativeModules } = require('react-native');
+        return !NativeModules || !NativeModules.TcpSockets;
+      } catch (_) { return true; }
+    })();
+    if (isExpoGo) {
+      return Promise.reject(
+        new Error('Thermal printing over raw TCP sockets is not supported in Expo Go. Please build an APK.')
+      );
+    }
+
     // Native Mobile (Android & iOS) via react-native-tcp-socket
     return new Promise((resolve, reject) => {
       try {
-        const { NativeModules } = require('react-native');
-        if (!NativeModules || !NativeModules.TcpSockets) {
+        let TcpSocket: any = null;
+        try {
+          const tcpModuleName = 'react-native-tcp-socket';
+          const tcpModule = require(tcpModuleName);
+          TcpSocket = tcpModule.default || tcpModule;
+        } catch (reqErr: any) {
           return reject(
-            new Error(
-              'Thermal printing over raw TCP sockets is not supported in Expo Go. Please build an APK.'
-            )
+            new Error('Thermal printing over raw TCP sockets is not supported in Expo Go. Please build an APK.')
           );
         }
 
-        const req = typeof require !== 'undefined' ? require : (globalThis as any)['require'];
-        const tcpModuleName = 'react-native-tcp-socket';
-        const tcpModule = (globalThis as any)[tcpModuleName] || (typeof req === 'function' ? req(tcpModuleName) : null);
-        const TcpSocket: any = tcpModule.default || tcpModule;
         if (!TcpSocket || !TcpSocket.createConnection) {
           return reject(
-            new Error(
-              'Thermal printing over raw TCP sockets is not supported in Expo Go. Please build an APK.'
-            )
+            new Error('Thermal printing over raw TCP sockets is not supported in Expo Go. Please build an APK.')
           );
         }
 

@@ -168,7 +168,7 @@ export const BusinessProfileScreen = () => {
           gstin: cleanGstin,
           fssaiNumber: cleanFssai,
         });
-      } catch (_) {}
+      } catch (_) { }
 
       // 2. Update operational features & payment methods
       const featuresPayload = {
@@ -330,7 +330,7 @@ export const BusinessProfileScreen = () => {
               {/* Custom Payment Methods */}
               <View className="p-3.5 bg-slate-950/60 border border-slate-850 rounded-xl mt-2">
                 <Text className="text-white font-bold text-xs mb-1.5">Custom Payment Tenders</Text>
-                
+
                 {customMethods.length > 0 ? (
                   <View className="flex-row flex-wrap gap-1.5 mb-2.5">
                     {customMethods.map((m, idx) => (
@@ -367,11 +367,10 @@ export const BusinessProfileScreen = () => {
               </View>
 
               {/* Gated Split Payments Toggle */}
-              <View className={`p-3.5 rounded-2xl border mt-2 ${
-                canEnableSplit
+              <View className={`p-3.5 rounded-2xl border mt-2 ${canEnableSplit
                   ? 'bg-purple-950/20 border-purple-500/30'
                   : 'bg-slate-950/40 border-slate-800 opacity-60'
-              }`}>
+                }`}>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-1 mr-3">
                     <View className="flex-row items-center">
@@ -439,9 +438,8 @@ export const BusinessProfileScreen = () => {
               <View className="flex-row bg-slate-950 p-1 rounded-2xl mb-2.5 border border-slate-800">
                 <TouchableOpacity
                   onPress={() => setGstType('INCLUSIVE')}
-                  className={`flex-1 py-2 rounded-xl items-center ${
-                    gstType === 'INCLUSIVE' ? 'bg-sky-600 shadow-sm' : 'bg-transparent'
-                  }`}
+                  className={`flex-1 py-2 rounded-xl items-center ${gstType === 'INCLUSIVE' ? 'bg-sky-600 shadow-sm' : 'bg-transparent'
+                    }`}
                 >
                   <Text className={`text-xs font-black ${gstType === 'INCLUSIVE' ? 'text-white' : 'text-slate-400'}`}>
                     Inclusive (In Menu Price)
@@ -450,9 +448,8 @@ export const BusinessProfileScreen = () => {
 
                 <TouchableOpacity
                   onPress={() => setGstType('EXCLUSIVE')}
-                  className={`flex-1 py-2 rounded-xl items-center ${
-                    gstType === 'EXCLUSIVE' ? 'bg-sky-600 shadow-sm' : 'bg-transparent'
-                  }`}
+                  className={`flex-1 py-2 rounded-xl items-center ${gstType === 'EXCLUSIVE' ? 'bg-sky-600 shadow-sm' : 'bg-transparent'
+                    }`}
                 >
                   <Text className={`text-xs font-black ${gstType === 'EXCLUSIVE' ? 'text-white' : 'text-slate-400'}`}>
                     Exclusive (+ Added on Top)
@@ -485,11 +482,10 @@ export const BusinessProfileScreen = () => {
                     <TouchableOpacity
                       key={preset.label}
                       onPress={() => applyGstPreset(preset.total)}
-                      className={`flex-1 py-2 rounded-xl border items-center justify-center ${
-                        isMatch
+                      className={`flex-1 py-2 rounded-xl border items-center justify-center ${isMatch
                           ? 'bg-sky-500/20 border-sky-400'
                           : 'bg-slate-950/80 border-slate-800'
-                      }`}
+                        }`}
                     >
                       <Text className={`text-[11px] font-black ${isMatch ? 'text-sky-300' : 'text-slate-400'}`}>
                         {preset.label}
@@ -671,12 +667,12 @@ export const BusinessProfileScreen = () => {
 
         {/* 4B. ONLINE AGGREGATORS (ZOMATO & SWIGGY) INTEGRATION CARD */}
         <View className="bg-slate-900 border border-amber-500/30 rounded-3xl p-5 mb-6 shadow-sm">
-          <View className="flex-row items-center justify-between mb-1">
-            <View className="flex-row items-center">
-              <Text className="text-lg mr-2">🛵</Text>
-              <Text className="text-white font-black text-base">Zomato & Swiggy Auto-Sync</Text>
+          <View className="flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-1">
+            <View className="flex-row items-center flex-1 mr-2 min-w-[160px]">
+              <Text className="text-lg mr-1.5">🛵</Text>
+              <Text className="text-white font-black text-sm sm:text-base">Zomato & Swiggy Sync</Text>
             </View>
-            <View className={`px-2.5 py-0.5 rounded-full border ${email ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
+            <View className={`px-2.5 py-0.5 rounded-full border shrink-0 self-start sm:self-auto ${email ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
               <Text className={`text-[10px] font-bold uppercase ${email ? 'text-emerald-400' : 'text-amber-400'}`}>
                 {email ? '● Live Ready' : '○ Email Needed'}
               </Text>
@@ -735,12 +731,12 @@ export const BusinessProfileScreen = () => {
         {/* 5. CLIENT ADMIN CREDENTIALS CARD */}
         {isClientAdmin && (
           <View className="bg-slate-900 border border-indigo-500/30 rounded-3xl p-5 mb-6 shadow-sm">
-            <View className="flex-row items-center justify-between mb-1">
-              <View className="flex-row items-center">
+            <View className="flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-1">
+              <View className="flex-row items-center flex-1 mr-2 min-w-[160px]">
                 <ShieldCheck size={18} color="#818CF8" />
-                <Text className="text-white font-black text-base ml-2">Admin Login Credentials</Text>
+                <Text className="text-white font-black text-sm sm:text-base ml-2">Admin Credentials</Text>
               </View>
-              <View className="bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full">
+              <View className="bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full shrink-0 self-start sm:self-auto">
                 <Text className="text-indigo-400 text-[10px] font-bold uppercase tracking-wider">Client Admin</Text>
               </View>
             </View>
