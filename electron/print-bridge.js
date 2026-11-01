@@ -125,7 +125,7 @@ function printToWindowsUsbPrinter(printerName, dataArray) {
       const safePrinterName = printerName.replace(/"/g, '`"');
       const cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + psRawPrinterScript + '" -printerName "' + safePrinterName + '" -filePath "' + tempBin + '"';
       exec(cmd, { encoding: 'utf8', timeout: 10000 }, (err, stdout, stderr) => {
-        try { fs.unlinkSync(tempBin); } catch (_) {}
+        try { fs.unlinkSync(tempBin); } catch (_) { }
         if (err) {
           return reject(new Error('USB Printer dispatch failed: ' + (stderr || err.message)));
         }
@@ -136,13 +136,13 @@ function printToWindowsUsbPrinter(printerName, dataArray) {
         }
       });
     } catch (writeErr) {
-      try { fs.unlinkSync(tempBin); } catch (_) {}
+      try { fs.unlinkSync(tempBin); } catch (_) { }
       reject(writeErr);
     }
   });
 }
 
-// Helper: Raw TCP LAN/Wi-Fi Print
+// Helper: Raw TCP LAN/Wi-Fi Print (fast: 50ms drain wait instead of 400ms)
 function printToNetworkPrinter(ip, port, dataArray) {
   return new Promise((resolve, reject) => {
     if (!ip) {
@@ -152,7 +152,7 @@ function printToNetworkPrinter(ip, port, dataArray) {
     const socket = new net.Socket();
     let isFinished = false;
 
-    socket.setTimeout(8000);
+    socket.setTimeout(5000);
 
     socket.connect(targetPort, ip, () => {
       const buffer = Buffer.from(dataArray);
@@ -160,37 +160,50 @@ function printToNetworkPrinter(ip, port, dataArray) {
         if (err) {
           if (!isFinished) {
             isFinished = true;
-            try { socket.destroy(); } catch (e) {}
+            try { socket.destroy(); } catch (e) { }
             reject(err);
           }
         } else {
+          // 50ms is enough for the kernel TCP buffer to drain to the printer
           setTimeout(() => {
             if (!isFinished) {
               isFinished = true;
-              try { socket.end(); } catch (e) {}
+              try { socket.end(); } catch (e) { }
               resolve({ success: true, ip, port: targetPort });
             }
-          }, 400);
-        }
+        }, 50);
+    }
       });
-    });
+});
 
-    socket.on('error', (err) => {
-      if (!isFinished) {
-        isFinished = true;
-        try { socket.destroy(); } catch (e) {}
-        reject(err);
-      }
-    });
+socket.on('error', (err) => {
+  if (!isFinished) {
+    isFinished = true;
+    try { socket.destroy(); } catch (e) { }
+    reject(err);
+  }
+});
 
-    socket.on('timeout', () => {
-      if (!isFinished) {
-        isFinished = true;
-        try { socket.destroy(); } catch (e) {}
-        reject(new Error('Connection timed out connecting to printer at ' + ip + ':' + targetPort + ' (8s timeout)'));
-      }
-    });
+socket.on('timeout', () => {
+  if (!isFinished) {
+    isFinished = true;
+    try { socket.destroy(); } catch (e) { }
+    reject(new Error('Connection timed out connecting to printer at ' + ip + ':' + targetPort + ' (5s timeout)'));
+  }
+});
   });
+}
+
+// Per-printer serial queue: prevents concurrent TCP connections to the same printer IP
+// which causes "ECONNRESET" / "timed out" errors on thermal printers
+const printerQueues = new Map(); // key = "ip:port" or "usb:printerName" → Promise chain
+function enqueue(key, fn) {
+  const prev = printerQueues.get(key) || Promise.resolve();
+  const next = prev.then(fn, fn); // always run even if previous failed
+  printerQueues.set(key, next);
+  // Clean up when chain settles
+  next.finally(() => { if (printerQueues.get(key) === next) printerQueues.delete(key); });
+  return next;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -237,7 +250,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Unified Print Dispatch (USB or LAN)
+  // Unified Print Dispatch (USB or LAN) — serialized per-printer to avoid concurrent socket conflicts
   if (req.method === 'POST' && (req.url === '/api/print' || req.url === '/print')) {
     let body = [];
     req.on('data', chunk => body.push(chunk));
@@ -246,19 +259,24 @@ const server = http.createServer(async (req, res) => {
         const payload = JSON.parse(Buffer.concat(body).toString());
         const isUsb = payload.printerType === 'USB' || (payload.printerName && !payload.ip);
 
-        if (isUsb) {
-          console.log('[Print Bridge] Dispatching USB print job to "' + payload.printerName + '" (' + (payload.data?.length || 0) + ' bytes)...');
-          const result = await printToWindowsUsbPrinter(payload.printerName, payload.data);
-          console.log('[Print Bridge] USB print completed successfully on "' + payload.printerName + '"');
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(result));
-        } else {
-          console.log('[Print Bridge] Dispatching LAN print job to ' + payload.ip + ':' + payload.port + ' (' + (payload.data?.length || 0) + ' bytes)...');
-          const result = await printToNetworkPrinter(payload.ip, payload.port, payload.data);
-          console.log('[Print Bridge] LAN print completed successfully on ' + payload.ip + ':' + payload.port);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(result));
-        }
+        const queueKey = isUsb ? ('usb:' + payload.printerName) : (payload.ip + ':' + (payload.port || 9100));
+
+        const result = await enqueue(queueKey, async () => {
+          if (isUsb) {
+            console.log('[Print Bridge] Dispatching USB print job to "' + payload.printerName + '" (' + (payload.data?.length || 0) + ' bytes)...');
+            const r = await printToWindowsUsbPrinter(payload.printerName, payload.data);
+            console.log('[Print Bridge] USB print completed successfully on "' + payload.printerName + '"');
+            return r;
+          } else {
+            console.log('[Print Bridge] Dispatching LAN print job to ' + payload.ip + ':' + payload.port + ' (' + (payload.data?.length || 0) + ' bytes)...');
+            const r = await printToNetworkPrinter(payload.ip, payload.port, payload.data);
+            console.log('[Print Bridge] LAN print completed successfully on ' + payload.ip + ':' + payload.port);
+            return r;
+          }
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
       } catch (printErr) {
         console.error('[Print Bridge Error]:', printErr.message);
         res.writeHead(500, { 'Content-Type': 'application/json' });
