@@ -301,7 +301,7 @@ export const CartScreen = () => {
       // 1. Parallel database updates
       let orderPromise: Promise<any>;
       if (existingRunningOrder && existingRunningOrder.id) {
-        // UPDATE existing running order → COMPLETED (no new doc created, no duplication)
+        // UPDATE existing running order → COMPLETED (no duplicate, saved with full item details like normal orders)
         orderPromise = DBServices.updateOrderToSettled(
           existingRunningOrder.id,
           {
@@ -312,6 +312,9 @@ export const CartScreen = () => {
             tax: totalTax,
             captainId: user?.id || 'staff',
             captainName: user?.name || 'Staff',
+            items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
+            orderType,
+            tableNo,
           },
           tenant?.id,
           existingRunningOrder.locationId || activeLocationId || undefined

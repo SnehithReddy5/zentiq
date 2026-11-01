@@ -8,6 +8,12 @@ import { AuthNavigator } from './AuthNavigator';
 import { AppNavigator } from './AppNavigator';
 import { Routes } from '../constants/routes';
 import { ShieldAlert, LogOut } from 'lucide-react-native';
+import { useLiveOrderNotifications } from '../hooks/useLiveOrderNotifications';
+
+const GlobalOrderWatcher = () => {
+  useLiveOrderNotifications();
+  return null;
+};
 
 const Stack = createNativeStackNavigator();
 
@@ -81,6 +87,7 @@ export const RootNavigator = () => {
 
   return (
     <NavigationContainer theme={CustomDarkTheme}>
+      {user && <GlobalOrderWatcher />}
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

@@ -109,121 +109,125 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     return { cartTotal: total, cartItemCount: count };
   }, [cartItems]);
 
-  const handleSendToKitchen = async () => {
+  const handleSendToKitchen = () => {
     if (unsentItems.length === 0) return;
     if (!activeLocationId) {
       toast.warning('Please select an operating branch on home screen first.', 'Branch Required');
       return;
     }
-    setIsSendingKOT(true);
-    try {
-      const kotNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
 
-      if (tableNo !== 0) {
-        await DBServices.updateTableStatusByNo(tableNo, 'running', tenant?.id, activeLocationId || undefined);
-      }
+    // 1. Instant Optimistic UI Response (0ms perceptible lag)
+    const itemsToDispatch = [...unsentItems];
+    markAsSent(tableNo);
+    setKotToast('✓ KOT sent to kitchen');
+    setTimeout(() => setKotToast(null), 3000);
 
-      // Persist KOT items to Firestore running order so settlement can later update (not duplicate) it
+    // 2. Background Dispatch: Firestore sequence, sync & Thermal Print (Non-blocking)
+    (async () => {
       try {
-        const { useOrderStore } = require('../../store/order.store');
-        const existingRunning = useOrderStore.getState().orders.find(
-          (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
-        );
-        if (existingRunning && existingRunning.id) {
-          // Round 2+: append only the newly sent (unsent) items to the existing running order
-          await DBServices.appendKOTItemsToRunningOrder(
-            existingRunning.id,
-            unsentItems.map(i => ({
-              itemId: i.itemId,
-              itemName: i.itemName,
-              qty: i.qty,
-              price: i.price,
-              variantId: i.variantId || null,
-              variantName: i.variantName || null,
-              note: i.note || '',
-            })),
-            tenant?.id,
-            existingRunning.locationId || activeLocationId || undefined
-          );
-        } else if (tableNo !== 0) {
-          // First KOT from biller (no QR running order): create running order doc
-          await DBServices.createOrder({
-            kotNo,
-            orderNumber: kotNo,
-            orderType,
-            tableNo,
-            captainId: user?.id || 'staff',
-            captainName: user?.name || 'Staff',
-            status: 'RUNNING',
-            paymentStatus: 'UNPAID',
-            items: cartItems.map(i => ({ ...i })),
-            subtotal: cartItems.reduce((s, i) => s + i.price * i.qty, 0),
-            tax: 0,
-            totalAmount: cartItems.reduce((s, i) => s + i.price * i.qty, 0),
-            createdAt: new Date(),
-          }, tenant?.id, activeLocationId || undefined);
+        const kotNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
+
+        if (tableNo !== 0) {
+          DBServices.updateTableStatusByNo(tableNo, 'running', tenant?.id, activeLocationId || undefined).catch(() => {});
         }
-      } catch (persistErr) {
-        console.warn('KOT persist to Firestore failed (non-critical):', persistErr);
-      }
 
-      // Build ESC/POS KOT buffer with orderType
-      const buffer = ESCPOSService.buildKOT(
-        kotNo,
-        tableNo,
-        user?.name || 'Staff',
-        unsentItems,
-        undefined,
-        orderType
-      );
-
-      // Route print to Kitchen Printer (supports both USB & LAN with main printer fallback)
-      const isKitchenUsb = settings.kitchenPrinterType === 'USB';
-      const kitchenTarget = isKitchenUsb
-        ? (settings.kitchenPrinterName || settings.printerName || 'POS-80')
-        : (settings.kitchenIpAddress?.trim() || (settings.printerType === 'LAN' ? settings.ipAddress?.trim() : ''));
-      const kitchenPort = settings.kitchenPort || settings.port || 9100;
-      const kitchenType = isKitchenUsb ? 'USB' : 'LAN';
-
-      let printSuccess = false;
-      let printErrorMsg = '';
-
-      if (kitchenTarget) {
+        // Persist KOT items to Firestore running order
         try {
-          await printerService.connect(kitchenTarget, kitchenPort, kitchenType);
-          await printerService.print(
-            buffer,
-            isKitchenUsb
-              ? { printerType: 'USB', printerName: kitchenTarget }
-              : { printerType: 'LAN', ip: kitchenTarget, port: kitchenPort }
+          const { useOrderStore } = require('../../store/order.store');
+          const existingRunning = useOrderStore.getState().orders.find(
+            (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
           );
-          await printerService.disconnect();
-          printSuccess = true;
-        } catch (printErr: any) {
-          console.warn('Kitchen thermal print error:', printErr);
-          printErrorMsg = printErr.message || 'Printer error';
+          if (existingRunning && existingRunning.id) {
+            await DBServices.appendKOTItemsToRunningOrder(
+              existingRunning.id,
+              itemsToDispatch.map(i => ({
+                itemId: i.itemId,
+                itemName: i.itemName,
+                qty: i.qty,
+                price: i.price,
+                variantId: i.variantId || null,
+                variantName: i.variantName || null,
+                note: i.note || '',
+              })),
+              tenant?.id,
+              existingRunning.locationId || activeLocationId || undefined
+            );
+          } else if (tableNo !== 0) {
+            await DBServices.createOrder({
+              kotNo,
+              orderNumber: kotNo,
+              orderType,
+              tableNo,
+              captainId: user?.id || 'staff',
+              captainName: user?.name || 'Staff',
+              status: 'RUNNING',
+              paymentStatus: 'UNPAID',
+              items: cartItems.map(i => ({ ...i })),
+              subtotal: cartItems.reduce((s, i) => s + i.price * i.qty, 0),
+              tax: 0,
+              totalAmount: cartItems.reduce((s, i) => s + i.price * i.qty, 0),
+              createdAt: new Date(),
+            }, tenant?.id, activeLocationId || undefined);
+          }
+        } catch (persistErr) {
+          console.warn('KOT persist to Firestore failed (non-critical):', persistErr);
         }
-      } else {
-        printErrorMsg = 'Kitchen printer not set. Go to Settings -> Thermal Printers to set IP or USB.';
-      }
 
-      markAsSent(tableNo);
-      if (printSuccess) {
-        toast.success(`✓ KOT #${kotNo} printed to kitchen!`, 'KOT Sent');
-        setKotToast(`✓ KOT #${kotNo} printed to kitchen`);
-      } else {
-        toast.warning(
-          `KOT #${kotNo} saved, but kitchen printer failed: ${printErrorMsg}`,
-          'Printer Offline'
+        // Build ESC/POS KOT buffer with orderType
+        const buffer = ESCPOSService.buildKOT(
+          kotNo,
+          tableNo,
+          user?.name || 'Staff',
+          itemsToDispatch,
+          undefined,
+          orderType
         );
-        setKotToast(`KOT #${kotNo} saved (Printer offline)`);
+
+        // Route print to Kitchen Printer (supports both USB & LAN with main printer fallback)
+        const isKitchenUsb = settings.kitchenPrinterType === 'USB';
+        const kitchenTarget = isKitchenUsb
+          ? (settings.kitchenPrinterName || settings.printerName || 'POS-80')
+          : (settings.kitchenIpAddress?.trim() || (settings.printerType === 'LAN' ? settings.ipAddress?.trim() : ''));
+        const kitchenPort = settings.kitchenPort || settings.port || 9100;
+        const kitchenType = isKitchenUsb ? 'USB' : 'LAN';
+
+        let printSuccess = false;
+        let printErrorMsg = '';
+
+        if (kitchenTarget) {
+          try {
+            await printerService.connect(kitchenTarget, kitchenPort, kitchenType);
+            await printerService.print(
+              buffer,
+              isKitchenUsb
+                ? { printerType: 'USB', printerName: kitchenTarget }
+                : { printerType: 'LAN', ip: kitchenTarget, port: kitchenPort }
+            );
+            await printerService.disconnect();
+            printSuccess = true;
+          } catch (printErr: any) {
+            console.warn('Kitchen thermal print error:', printErr);
+            printErrorMsg = printErr.message || 'Printer error';
+          }
+        } else {
+          printErrorMsg = 'Kitchen printer not configured. Go to Settings -> Thermal Printers.';
+        }
+
+        if (printSuccess) {
+          toast.success(`✓ KOT #${kotNo} printed to kitchen!`, 'KOT Printed');
+          setKotToast(`✓ KOT #${kotNo} printed to kitchen`);
+        } else {
+          toast.warning(
+            `KOT #${kotNo} saved, but kitchen printer failed: ${printErrorMsg}`,
+            'Printer Offline'
+          );
+          setKotToast(`KOT #${kotNo} saved (Printer offline)`);
+        }
+        setTimeout(() => setKotToast(null), 3500);
+      } catch (err: any) {
+        console.warn('KOT dispatch background error:', err);
       }
-      setTimeout(() => setKotToast(null), 3500);
-    } catch (err: any) {
-      toast.error(err.message, 'Error');
-    } finally {
-      setIsSendingKOT(false);
-    }
+    })();
   };
 
   const favoriteCount = useMemo(() => items.filter(i => i.isFavorite).length, [items]);

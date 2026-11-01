@@ -14,7 +14,49 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
 
   const alertedBillOrderIds = useRef<Set<string>>(new Set());
   const seenOrderIds = useRef<Set<string>>(new Set());
+  const printedItemCounts = useRef<Map<string, number>>(new Map());
+  const roundCounts = useRef<Map<string, number>>(new Map());
   const isInitialLoad = useRef(true);
+
+  // Helper to reliably print KOT to Kitchen Printer (or Billing Printer fallback)
+  const printKOTSlip = async (kotNo: any, tableNo: any, items: any[], roundTitle?: string) => {
+    if (!items || items.length === 0) return;
+
+    const isKitchenUsb = settings.kitchenPrinterType === 'USB';
+    const kitchenTarget = isKitchenUsb
+      ? (settings.kitchenPrinterName || settings.printerName || 'POS-80')
+      : (settings.kitchenIpAddress?.trim() || (settings.printerType === 'LAN' ? settings.ipAddress?.trim() : ''));
+    const kitchenPort = Number(settings.kitchenPort || settings.port || 9100);
+    const kitchenType = isKitchenUsb ? 'USB' : 'LAN';
+
+    if (!kitchenTarget) {
+      console.log('Kitchen print skipped: No printer IP/USB name configured.');
+      return;
+    }
+
+    try {
+      const kotBuffer = ESCPOSService.buildKOT(
+        kotNo || 'QR',
+        tableNo || 0,
+        'Customer QR',
+        items,
+        roundTitle || 'QR Self-Order',
+        'DINE_IN'
+      );
+
+      await printerService.connect(kitchenTarget, kitchenPort, kitchenType);
+      await printerService.print(
+        kotBuffer,
+        isKitchenUsb
+          ? { printerType: 'USB', printerName: kitchenTarget }
+          : { printerType: 'LAN', ip: kitchenTarget, port: kitchenPort }
+      );
+      await printerService.disconnect();
+      toast.success(`Kitchen KOT printed for Table ${tableNo}!`, 'KOT Printed');
+    } catch (e: any) {
+      console.warn('Auto Kitchen KOT print warning:', e?.message);
+    }
+  };
 
   useEffect(() => {
     if (!tenant?.id || !activeLocationId) return;
@@ -34,6 +76,17 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
       (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           const order = { id: change.doc.id, ...change.doc.data() } as any;
+          const orderItems = order.items || [];
+
+          // On initial load, record all existing running orders so we don't spam print historical orders
+          if (isInitialLoad.current) {
+            seenOrderIds.current.add(order.id);
+            printedItemCounts.current.set(order.id, orderItems.length);
+            if (order.billRequested) {
+              alertedBillOrderIds.current.add(order.id);
+            }
+            return;
+          }
 
           // 1. Bill Request Alert (Customer requested bill from table QR - Alert biller/cashier only)
           if (order.billRequested && !alertedBillOrderIds.current.has(order.id)) {
@@ -50,51 +103,62 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
             );
           }
 
-          // 2. New QR Self-Order Arrival Alert & Automated Kitchen KOT Print
+          // 2. New QR Self-Order Arrival Alert & Automated Kitchen KOT Print (Round 1)
           if (
             change.type === 'added' &&
-            !isInitialLoad.current &&
             !seenOrderIds.current.has(order.id) &&
             order.orderSource === 'QR_SELF_ORDER'
           ) {
             seenOrderIds.current.add(order.id);
+            printedItemCounts.current.set(order.id, orderItems.length);
+            roundCounts.current.set(order.id, 1);
 
             // Play Loud Kitchen Order Chime
             ChimeService.playOrderChime();
 
             toast.info(
-              `Table ${order.tableNo} placed self-order for ${order.items?.length || 0} items (₹${order.totalAmount || 0}).`,
+              `Table ${order.tableNo} placed self-order for ${orderItems.length} items (₹${order.totalAmount || 0}).`,
               `🍳 New QR Order: Table ${order.tableNo}`
             );
 
             // Automatically Dispatch ESC/POS KOT to Kitchen Printer
-            (async () => {
-              try {
-                const isUsb = settings.printerType === 'USB';
-                const mainTarget = isUsb ? (settings.printerName || 'POS-80') : settings.ipAddress?.trim();
-                if (!mainTarget) return;
+            printKOTSlip(
+              order.kotNo || order.orderNumber || order.id.slice(0, 5),
+              order.tableNo || 0,
+              orderItems,
+              'QR Self-Order (Round 1)'
+            );
+          }
 
-                const kotBuffer = ESCPOSService.buildKOT(
-                  order.kotNo || order.orderNumber || order.id.slice(0, 5),
-                  order.tableNo || 0,
-                  'Customer QR',
-                  order.items || [],
-                  order.specialNote || 'Self-Order from Table QR',
-                  'DINE_IN'
-                );
+          // 3. Multi-Round Additional Items Ordered via QR (Round 2, 3, 4 ... N times)
+          if (
+            change.type === 'modified' &&
+            order.orderSource === 'QR_SELF_ORDER'
+          ) {
+            const previousCount = printedItemCounts.current.get(order.id) || 0;
+            if (orderItems.length > previousCount) {
+              const newItems = orderItems.slice(previousCount);
+              printedItemCounts.current.set(order.id, orderItems.length);
+              
+              const nextRound = (roundCounts.current.get(order.id) || 1) + 1;
+              roundCounts.current.set(order.id, nextRound);
 
-                await printerService.print(kotBuffer, {
-                  printerType: settings.printerType as any,
-                  printerName: settings.printerName,
-                  ip: settings.ipAddress,
-                  port: Number(settings.port) || 9100,
-                });
+              // Play Order Chime
+              ChimeService.playOrderChime();
 
-                toast.success(`Kitchen KOT printed for Table ${order.tableNo}!`);
-              } catch (e: any) {
-                console.warn('Auto KOT print failed:', e?.message);
-              }
-            })();
+              toast.info(
+                `Table ${order.tableNo} added ${newItems.length} more item(s) (Round ${nextRound})!`,
+                `🍳 Table ${order.tableNo} (Round ${nextRound})`
+              );
+
+              // Print ONLY the newly added items on this specific round to the Kitchen Printer
+              printKOTSlip(
+                order.kotNo || order.orderNumber || order.id.slice(0, 5),
+                order.tableNo || 0,
+                newItems,
+                `QR Self-Order (Round ${nextRound})`
+              );
+            }
           }
 
           if (change.type === 'added') {

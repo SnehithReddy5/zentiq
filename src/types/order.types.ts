@@ -58,6 +58,8 @@ export interface Order {
   customerPhone?: string;
   deliveryRiderName?: string;
   deliveryRiderPhone?: string;
+  billRequested?: boolean;
+  orderSource?: string;
   createdAt: any;
   updatedAt?: any;
 }

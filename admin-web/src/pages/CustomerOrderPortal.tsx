@@ -276,7 +276,7 @@ export const CustomerOrderPortal: React.FC = () => {
           totalAmount: newTotal,
           subtotal: newTotal,
           specialNote: orderNote
-            ? `${activeOrder.specialNote || ''} | Round 2: ${orderNote}`
+            ? (activeOrder.specialNote ? `${activeOrder.specialNote} | Additional: ${orderNote}` : orderNote)
             : (activeOrder.specialNote || ''),
           updatedAt: serverTimestamp()
         }));

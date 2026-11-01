@@ -471,7 +471,8 @@ export const DBServices = {
 
   /**
    * Settle an existing running order (e.g. QR self-order) in-place instead of creating a duplicate.
-   * Updates status → COMPLETED, paymentStatus → PAID, and appends payment data.
+   * Updates status → COMPLETED, paymentStatus → PAID, writes finalized items, sequence numbers,
+   * clears billRequested, and saves with the exact same structure as a normal counter order.
    */
   async updateOrderToSettled(
     id: string,
@@ -483,6 +484,9 @@ export const DBServices = {
       tax?: number;
       captainId?: string;
       captainName?: string;
+      items?: any[];
+      orderType?: string;
+      tableNo?: number;
     },
     tenantId?: string,
     locationId?: string
@@ -490,19 +494,28 @@ export const DBServices = {
     const orderRef = (tenantId && locationId)
       ? doc(db, 'tenants', tenantId, 'locations', locationId, 'orders', id)
       : doc(db, 'orders', id);
-    await updateDoc(orderRef, {
+
+    const primaryPaymentMethod = (data.payments && data.payments.length > 0) ? data.payments[0].method : 'CASH';
+
+    await updateDoc(orderRef, cleanFirestoreData({
       status: 'COMPLETED',
       paymentStatus: 'PAID',
       orderNumber: data.billNo,
+      kotNo: data.billNo,
+      orderType: data.orderType || 'DINE_IN',
+      tableNo: data.tableNo || 0,
+      paymentMethod: primaryPaymentMethod,
       payments: data.payments,
       totalAmount: data.totalAmount,
-      ...(data.subtotal !== undefined ? { subtotal: data.subtotal } : {}),
-      ...(data.tax !== undefined ? { tax: data.tax } : {}),
-      ...(data.captainId ? { captainId: data.captainId } : {}),
-      ...(data.captainName ? { captainName: data.captainName } : {}),
+      subtotal: data.subtotal ?? data.totalAmount,
+      tax: data.tax ?? 0,
+      captainId: data.captainId || 'staff',
+      captainName: data.captainName || 'Staff',
+      ...(data.items && data.items.length > 0 ? { items: data.items } : {}),
+      billRequested: false, // Reset bill request flag upon settlement
       settledAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    });
+    }));
   },
 
   /**

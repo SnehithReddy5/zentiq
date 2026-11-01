@@ -109,7 +109,7 @@ const OrderCard = React.memo(({
       activeOpacity={0.8}
       onPress={() => onPress(item)}
       className={`p-4 rounded-3xl m-1.5 justify-between active:bg-slate-850 ${
-        item.billRequested
+        isRunning && item.billRequested
           ? 'bg-amber-950/30 border-2 border-amber-400 shadow-lg shadow-amber-500/20'
           : isHighest
           ? 'bg-slate-900 border-2 border-emerald-500'
@@ -121,7 +121,7 @@ const OrderCard = React.memo(({
     >
       <View>
         {/* Top & Least Badges */}
-        {item.billRequested && (
+        {isRunning && item.billRequested && (
           <View className="flex-row items-center mb-2 self-start bg-amber-500/25 border border-amber-500/60 px-2.5 py-1 rounded-full">
             <Receipt size={11} color="#FBBF24" />
             <Text className="text-amber-300 font-black text-[10px] ml-1 tracking-wide">
@@ -686,6 +686,17 @@ export const RunningOrdersScreen = () => {
     const cleanQ = q.replace(/^#/, '').trim();
 
     return orders.filter(o => {
+      // 1. Status Filter: In Orders History, only show settled & completed orders.
+      // Exclude running orders and active tables with pending bill requests.
+      const status = String(o.status || '').toUpperCase();
+      if (status === 'RUNNING' || o.billRequested === true) {
+        return false;
+      }
+      const isSettledOrCompleted = status === 'COMPLETED' || status === 'SETTLED' || o.paymentStatus === 'PAID';
+      if (!isSettledOrCompleted) {
+        return false;
+      }
+
       // Order type filter
       if (selectedOrderTypeFilter === 'DINE_IN' && (!o.tableNo || o.orderType === 'PICKUP' || o.orderType === 'TAKEAWAY' || o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY')) {
         return false;
