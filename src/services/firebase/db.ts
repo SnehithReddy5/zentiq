@@ -487,6 +487,7 @@ export const DBServices = {
       items?: any[];
       orderType?: string;
       tableNo?: number;
+      discount?: number;
     },
     tenantId?: string,
     locationId?: string
@@ -509,6 +510,7 @@ export const DBServices = {
       totalAmount: data.totalAmount,
       subtotal: data.subtotal ?? data.totalAmount,
       tax: data.tax ?? 0,
+      discount: data.discount ?? 0,
       captainId: data.captainId || 'staff',
       captainName: data.captainName || 'Staff',
       ...(data.items && data.items.length > 0 ? { items: data.items } : {}),

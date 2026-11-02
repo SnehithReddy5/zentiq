@@ -277,6 +277,10 @@ export const TablesScreen = () => {
 
       {/* Main Floor Grid */}
       <FlatList
+        className="flex-1"
+        style={{ flex: 1 }}
+        removeClippedSubviews={false}
+        showsVerticalScrollIndicator={true}
         data={filteredTables}
         renderItem={renderTableCard}
         keyExtractor={(item, index) => `${item.id || item.tableNo || 'table'}-${index}`}

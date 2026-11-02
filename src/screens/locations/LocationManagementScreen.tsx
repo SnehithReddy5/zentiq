@@ -83,6 +83,10 @@ export const LocationManagementScreen = () => {
       )}
 
       <FlatList
+        className="flex-1"
+        style={{ flex: 1 }}
+        removeClippedSubviews={false}
+        showsVerticalScrollIndicator={true}
         data={locations}
         keyExtractor={item => item.id}
         contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom + 36, 52), maxWidth: 1000, alignSelf: "center", width: "100%" }}

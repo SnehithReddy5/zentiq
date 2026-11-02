@@ -12,7 +12,7 @@ import { useToastStore } from '../../store/toast.store';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { PrinterWorkflowMode } from '../../types/printer.types';
-import { Printer, CheckCircle2, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw } from 'lucide-react-native';
+import { Printer, CheckCircle2, Check, Save, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw } from 'lucide-react-native';
 
 export const PrinterSettingsScreen = () => {
   const insets = useSafeAreaInsets();
@@ -79,12 +79,14 @@ export const PrinterSettingsScreen = () => {
     }
   }, [settings]);
 
+  const [isSaving, setIsSaving] = useState(false);
   const [isTestingBilling, setIsTestingBilling] = useState(false);
   const [isTestingKitchen, setIsTestingKitchen] = useState(false);
   const [isTestingTiffin, setIsTestingTiffin] = useState(false);
   const [testResult, setTestResult] = useState<{ type: string; success: boolean; message: string } | null>(null);
 
   const handleSave = async () => {
+    setIsSaving(true);
     const cleanIp = ipAddress.trim();
     const cleanName = printerName.trim();
     const cleanKitchenIp = kitchenIpAddress.trim();
@@ -141,6 +143,7 @@ export const PrinterSettingsScreen = () => {
       duration: 3500,
     });
     toast.success('Thermal printer configuration has been saved and synced.', 'Settings Saved');
+    setIsSaving(false);
   };
 
   const testBillingPrinter = async () => {
@@ -339,6 +342,22 @@ export const PrinterSettingsScreen = () => {
       <Header
         title="Thermal Printers & Workflow"
         subtitle="Configure Cash Counter Bill & Kitchen KOT Printers"
+        rightElement={
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={isSaving}
+            className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3.5 py-1.5 rounded-xl flex-row items-center shadow-md shadow-emerald-900/40"
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <>
+                <Check size={14} color="white" />
+                <Text className="text-white font-bold text-xs ml-1.5">Save Changes</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        }
       />
 
       <ScrollView

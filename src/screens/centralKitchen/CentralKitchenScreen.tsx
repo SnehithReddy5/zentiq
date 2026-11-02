@@ -516,6 +516,10 @@ export const CentralKitchenScreen = () => {
       {activeTab === 'ORDERS' && (
         <View className="flex-1">
           <FlatList
+            className="flex-1"
+            style={{ flex: 1 }}
+            removeClippedSubviews={false}
+            showsVerticalScrollIndicator={true}
             data={incomingOrders}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{
@@ -720,6 +724,10 @@ export const CentralKitchenScreen = () => {
           </View>
 
           <FlatList
+            className="flex-1"
+            style={{ flex: 1 }}
+            removeClippedSubviews={false}
+            showsVerticalScrollIndicator={true}
             data={filteredMenuItems}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{

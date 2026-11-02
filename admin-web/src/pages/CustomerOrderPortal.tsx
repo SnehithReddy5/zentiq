@@ -300,7 +300,8 @@ export const CustomerOrderPortal: React.FC = () => {
             qty: c.qty,
             price: c.price,
             variantId: c.variantId || null,
-            note: c.note || ''
+            note: c.note || '',
+            sentToKitchen: false
           })),
           subtotal: cartSubtotal,
           totalAmount: cartSubtotal,

@@ -631,10 +631,13 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             data={filteredItems}
             keyExtractor={(item, index) => `${item.id || 'item'}-${index}`}
             renderItem={renderItemCard}
-            initialNumToRender={10}
-            maxToRenderPerBatch={10}
+            initialNumToRender={20}
+            maxToRenderPerBatch={20}
             windowSize={5}
-            removeClippedSubviews={true}
+            removeClippedSubviews={false}
+            showsVerticalScrollIndicator={true}
+            style={{ flex: 1 }}
+            className="flex-1"
             updateCellsBatchingPeriod={50}
             contentContainerStyle={{ padding: 16, paddingBottom: isSplitView ? Math.max(insets.bottom + 24, 40) : Math.max(insets.bottom + 90, 110) }}
             ListEmptyComponent={
@@ -644,7 +647,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                     <Star size={36} color="#F59E0B" />
                     <Text className="text-white font-bold text-sm mt-3">No Favorite Items Starred</Text>
                     <Text className="text-slate-400 text-xs mt-1 text-center px-6">
-                      Star your top 10 most popular items in Menu Management for rapid 1-touch ordering!
+                      Star your most popular favorite items in Menu Management for rapid 1-touch ordering!
                     </Text>
                   </>
                 ) : (

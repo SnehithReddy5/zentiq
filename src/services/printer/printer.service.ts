@@ -7,6 +7,46 @@ export class PrinterService {
   private currentPort: number = 9100;
   private currentPrinterName: string = '';
   private currentPrinterType: 'LAN' | 'USB' = 'LAN';
+  private printQueue: Promise<any> = Promise.resolve();
+
+  /**
+   * Serializes all print jobs across the app through a Promise chain.
+   * Prevents concurrent socket attempts to the same thermal printer,
+   * which causes ECONNRESET / ETIMEDOUT hardware failures.
+   */
+  enqueuePrint<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.printQueue.then(task, task);
+    this.printQueue = result.catch(() => {});
+    return result;
+  }
+
+  /**
+   * High-reliability unified printer dispatch (KOT, Bill, or Slip).
+   * Safe for Android (native TCP socket), Windows (Electron / Print Bridge), and Web.
+   * Automatically connects, sends raw bytes, cleanly disconnects, and applies a 100ms hardware cooldown.
+   */
+  async printReceiptOrKOT(
+    data: Uint8Array,
+    target: string,
+    port: number = 9100,
+    printerType: 'LAN' | 'USB' = 'LAN'
+  ): Promise<void> {
+    return this.enqueuePrint(async () => {
+      try {
+        await this.connect(target, port, printerType);
+        await this.print(data, {
+          printerType,
+          printerName: printerType === 'USB' ? target : undefined,
+          ip: printerType === 'LAN' ? target : undefined,
+          port: Number(port) || 9100,
+        });
+      } finally {
+        await this.disconnect();
+        // 100ms hardware cooldown to let the printer firmware flush buffers
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    });
+  }
 
   async getInstalledPrinters(): Promise<string[]> {
     if (Platform.OS === 'web') {

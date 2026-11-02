@@ -31,7 +31,8 @@ import {
   Banknote,
   Smartphone,
   Calendar,
-  Filter
+  Filter,
+  Tag
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { useOrderStore } from '../../store/order.store';
@@ -185,6 +186,14 @@ const OrderCard = React.memo(({
                 <Text className={`text-[10px] font-bold ${isRunning ? 'text-amber-300' : 'text-emerald-300'
                   }`}>
                   {isRunning ? 'RUNNING' : 'SETTLED'}
+                </Text>
+              </View>
+            )}
+            {Number(item.discount || 0) > 0 && (
+              <View className="px-2 py-0.5 rounded border bg-purple-500/20 border-purple-500/40 flex-row items-center">
+                <Tag size={10} color="#C084FC" />
+                <Text className="text-[10px] font-bold text-purple-300 ml-1">
+                  DISC: -₹{Number(item.discount).toFixed(0)}
                 </Text>
               </View>
             )}
@@ -1105,7 +1114,8 @@ export const RunningOrdersScreen = () => {
         order.orderType || (order.tableNo ? 'DINE_IN' : 'PICKUP'),
         order.payments && order.payments.length > 0
           ? order.payments
-          : [{ method: order.paymentMethod || 'CASH', amount: order.totalAmount || 0 }]
+          : [{ method: order.paymentMethod || 'CASH', amount: order.totalAmount || 0 }],
+        order.discount || 0
       );
       await printerService.print(buffer);
       await printerService.disconnect();
@@ -1457,14 +1467,17 @@ export const RunningOrdersScreen = () => {
         </View>
       ) : (
         <FlatList
+          className="flex-1"
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={true}
           key={ordersGridColumns}
           data={filteredOrders}
           numColumns={ordersGridColumns}
           keyExtractor={(item, index) => `${item.id || 'order'}-${index}`}
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
+          initialNumToRender={14}
+          maxToRenderPerBatch={14}
           windowSize={5}
-          removeClippedSubviews={true}
+          removeClippedSubviews={false}
           updateCellsBatchingPeriod={50}
           contentContainerStyle={{
             padding: 12,
@@ -1715,6 +1728,16 @@ export const RunningOrdersScreen = () => {
                   <Text className="text-slate-400 text-xs">Taxes (CGST + SGST)</Text>
                   <Text className="text-purple-300 text-xs font-semibold">₹{((selectedOrder.totalAmount || 0) - ((selectedOrder.totalAmount || 0) / 1.05)).toFixed(2)}</Text>
                 </View>
+
+                {Number(selectedOrder.discount || 0) > 0 && (
+                  <View className="flex-row justify-between items-center mb-3 bg-purple-500/15 p-2.5 rounded-xl border border-purple-500/30">
+                    <View className="flex-row items-center">
+                      <Tag size={13} color="#C084FC" />
+                      <Text className="text-purple-300 text-xs font-bold ml-1.5">Discount Applied</Text>
+                    </View>
+                    <Text className="text-purple-300 text-xs font-black">-₹{Number(selectedOrder.discount).toFixed(2)}</Text>
+                  </View>
+                )}
 
                 <View className="flex-row justify-between items-center">
                   <Text className="text-white text-base font-bold">Total Paid</Text>

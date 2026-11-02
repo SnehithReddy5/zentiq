@@ -1,8 +1,9 @@
 import { toast } from '../../utils/toast';
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, Switch, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, ScrollView, Alert, Switch, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  Save,
   Utensils,
   ShoppingBag,
   LayoutGrid,
@@ -228,7 +229,26 @@ export const BusinessProfileScreen = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-[#090D1A]">
-      <Header title="Store & Payment Settings" subtitle="Configure ordering modes, payment methods & receipt branding" />
+      <Header
+        title="Store & Payment Settings"
+        subtitle="Configure ordering modes, payment methods & receipt branding"
+        rightElement={
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={isSaving}
+            className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3.5 py-1.5 rounded-xl flex-row items-center shadow-md shadow-emerald-900/40"
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <>
+                <Save size={14} color="white" />
+                <Text className="text-white font-bold text-xs ml-1.5">Save Settings</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView
         className="flex-1"

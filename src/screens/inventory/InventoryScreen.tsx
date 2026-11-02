@@ -539,6 +539,10 @@ export const InventoryScreen = () => {
             </View>
           ) : (
             <FlatList
+              className="flex-1"
+              style={{ flex: 1 }}
+              removeClippedSubviews={false}
+              showsVerticalScrollIndicator={true}
               data={filteredItems}
               keyExtractor={(item) => item.id}
               contentContainerStyle={{
@@ -724,6 +728,10 @@ export const InventoryScreen = () => {
             </Text>
           </View>
           <FlatList
+            className="flex-1"
+            style={{ flex: 1 }}
+            removeClippedSubviews={false}
+            showsVerticalScrollIndicator={true}
             data={stockInLogs}
             keyExtractor={(log) => log.id}
             contentContainerStyle={{
@@ -780,6 +788,10 @@ export const InventoryScreen = () => {
             </Text>
           </View>
           <FlatList
+            className="flex-1"
+            style={{ flex: 1 }}
+            removeClippedSubviews={false}
+            showsVerticalScrollIndicator={true}
             data={kitchenIssueLogs}
             keyExtractor={(log) => log.id}
             contentContainerStyle={{

@@ -462,6 +462,10 @@ export const CentralKitchenOrderingScreen = () => {
               </View>
 
               <FlatList
+                className="flex-1"
+                style={{ flex: 1 }}
+                removeClippedSubviews={false}
+                showsVerticalScrollIndicator={true}
                 data={filteredMenu}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={{

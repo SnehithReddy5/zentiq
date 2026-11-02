@@ -76,8 +76,8 @@ export const MenuManagementScreen = () => {
           activeLocationId || undefined
         );
       } else {
-        if (favoriteCount >= 10) {
-          toast.warning('Only a maximum of 10 favorite items can be selected at once. Please unstar an existing favorite item first before adding a new one.', 'Favorite Limit Reached');
+        if (favoriteCount >= 100) {
+          toast.warning('Only a maximum of 100 favorite items can be selected at once. Please unstar an existing favorite item first before adding a new one.', 'Favorite Limit Reached');
           return;
         }
         await DBServices.updateMenuItem(
@@ -253,8 +253,8 @@ export const MenuManagementScreen = () => {
     // Check favorite limit if turning on favorite
     if (itemIsFavorite) {
       const isAlreadyFav = editingItemId ? items.find(i => i.id === editingItemId)?.isFavorite : false;
-      if (!isAlreadyFav && favoriteCount >= 10) {
-        toast.warning('Only a maximum of 10 favorite items can be selected at once. Please unstar another item first.', 'Favorite Limit Reached');
+      if (!isAlreadyFav && favoriteCount >= 100) {
+        toast.warning('Only a maximum of 100 favorite items can be selected at once. Please unstar another item first.', 'Favorite Limit Reached');
         return;
       }
     }
@@ -357,7 +357,7 @@ export const MenuManagementScreen = () => {
     <SafeAreaView className="flex-1 bg-[#090D1A]">
       <Header
         title="Menu Management"
-        subtitle={`${items.length} Items • ${categories.length} Categories • ${favoriteCount}/10 Favorites`}
+        subtitle={`${items.length} Items • ${categories.length} Categories • ${favoriteCount} Favorites`}
         rightElement={
           <View className="flex-row items-center gap-2">
             <TouchableOpacity
@@ -406,7 +406,7 @@ export const MenuManagementScreen = () => {
           >
             <Star size={12} color="#F59E0B" fill={activeCategory === 'favorites' ? '#F59E0B' : 'transparent'} />
             <Text className={`text-xs ml-1 font-bold ${activeCategory === 'favorites' ? 'text-amber-400' : 'text-slate-400'}`}>
-              Favorites ({favoriteCount}/10)
+              Favorites ({favoriteCount})
             </Text>
           </TouchableOpacity>
 
@@ -494,6 +494,10 @@ export const MenuManagementScreen = () => {
 
       {/* Items List */}
       <FlatList
+        className="flex-1"
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={true}
+        removeClippedSubviews={false}
         data={filteredItems}
         keyExtractor={item => item.id}
         contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom + 80, 100) }}

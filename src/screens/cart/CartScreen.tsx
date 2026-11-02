@@ -17,7 +17,7 @@ import { DBServices } from '../../services/firebase/db';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { Routes } from '../../constants/routes';
-import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2, Utensils } from 'lucide-react-native';
+import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2, Utensils, Tag, X } from 'lucide-react-native';
 
 export const CartScreen = () => {
   const insets = useSafeAreaInsets();
@@ -76,33 +76,45 @@ export const CartScreen = () => {
   const sgstRate = typeof features.sgstRate === 'number' ? features.sgstRate : 2.5;
   const totalTaxRate = (cgstRate + sgstRate) / 100;
 
+  // Role Check: Discount enabled for Biller and above only
+  const isBillerOrAbove = Boolean(user?.role && !['WAITER', 'captain'].includes(user.role));
+  const [discountText, setDiscountText] = useState('');
+
+  const discountAmount = useMemo(() => {
+    if (!isBillerOrAbove) return 0;
+    const parsed = parseFloat(discountText) || 0;
+    return Math.min(Math.max(0, parsed), rawItemsSum);
+  }, [discountText, isBillerOrAbove, rawItemsSum]);
+
   const { subtotal, cgst, sgst, totalTax, cartTotal } = useMemo(() => {
+    const discountedSum = Math.max(0, rawItemsSum - discountAmount);
     if (!gstEnabled) {
       return {
         subtotal: rawItemsSum,
         cgst: 0,
         sgst: 0,
         totalTax: 0,
-        cartTotal: rawItemsSum,
+        cartTotal: discountedSum,
       };
     }
     if (gstType === 'EXCLUSIVE') {
       const sub = rawItemsSum;
-      const c = Math.round((sub * (cgstRate / 100)) * 100) / 100;
-      const s = Math.round((sub * (sgstRate / 100)) * 100) / 100;
+      const taxable = discountedSum;
+      const c = Math.round((taxable * (cgstRate / 100)) * 100) / 100;
+      const s = Math.round((taxable * (sgstRate / 100)) * 100) / 100;
       const tax = c + s;
-      const total = Math.round(sub + tax);
+      const total = Math.round(taxable + tax);
       return { subtotal: sub, cgst: c, sgst: s, totalTax: tax, cartTotal: total };
     } else {
       // INCLUSIVE
-      const total = rawItemsSum;
+      const total = discountedSum;
       const sub = totalTaxRate > 0 ? Math.round((total / (1 + totalTaxRate)) * 100) / 100 : total;
       const tax = total - sub;
       const c = Math.round((tax * (cgstRate / ((cgstRate + sgstRate) || 1))) * 100) / 100;
       const s = Math.round((tax - c) * 100) / 100;
       return { subtotal: sub, cgst: c, sgst: s, totalTax: tax, cartTotal: total };
     }
-  }, [rawItemsSum, gstEnabled, gstType, cgstRate, sgstRate, totalTaxRate]);
+  }, [rawItemsSum, discountAmount, gstEnabled, gstType, cgstRate, sgstRate, totalTaxRate]);
 
   // Features & Active Payment Methods
   const paymentsEnabled = features.paymentsEnabled !== false;
@@ -310,6 +322,7 @@ export const CartScreen = () => {
             totalAmount: cartTotal,
             subtotal,
             tax: totalTax,
+            discount: discountAmount,
             captainId: user?.id || 'staff',
             captainName: user?.name || 'Staff',
             items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
@@ -332,6 +345,7 @@ export const CartScreen = () => {
           paymentStatus: 'PAID',
           payments: paymentRows,
           items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
+          discount: discountAmount,
           totalAmount: cartTotal,
           createdAt: new Date(),
         }, tenant?.id, activeLocationId || undefined);
@@ -370,7 +384,8 @@ export const CartScreen = () => {
               cartItems,
               brandPayload,
               orderType,
-              finalPayments
+              finalPayments,
+              discountAmount
             );
             await printerService.connect(mainTarget, mainPort, mainType);
             await printerService.print(combinedBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
@@ -385,7 +400,8 @@ export const CartScreen = () => {
               cartItems,
               brandPayload,
               orderType,
-              finalPayments
+              finalPayments,
+              discountAmount
             );
             await printerService.connect(mainTarget, mainPort, mainType);
             await printerService.print(billBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
@@ -510,6 +526,47 @@ export const CartScreen = () => {
                   <View className="flex-row justify-between py-1">
                     <Text className="text-slate-400 text-xs">GST / Tax</Text>
                     <Text className="text-slate-500 text-xs">Tax Disabled</Text>
+                  </View>
+                )}
+
+                {/* Discount Field (Enabled for Biller and above only) */}
+                {isBillerOrAbove && (
+                  <View className="py-2.5 my-1 border-t border-b border-slate-800/80">
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center">
+                        <Tag size={13} color="#A855F7" />
+                        <Text className="text-purple-300 font-bold text-xs ml-1.5">
+                          Discount (₹)
+                        </Text>
+                      </View>
+                      <View className="flex-row items-center bg-slate-950 border border-purple-500/40 rounded-xl px-2.5 py-1 w-28">
+                        <Text className="text-purple-400 font-bold text-xs mr-1">₹</Text>
+                        <TextInput
+                          placeholder="0"
+                          placeholderTextColor="#64748B"
+                          keyboardType="numeric"
+                          value={discountText}
+                          onChangeText={(val) => {
+                            const cleaned = val.replace(/[^0-9.]/g, '');
+                            setDiscountText(cleaned);
+                          }}
+                          className="text-white font-bold text-xs flex-1 p-0"
+                        />
+                        {Number(discountText) > 0 && (
+                          <TouchableOpacity onPress={() => setDiscountText('')}>
+                            <X size={13} color="#94A3B8" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                    {discountAmount > 0 && (
+                      <View className="flex-row justify-between items-center mt-1.5">
+                        <Text className="text-slate-500 text-[10px]">Discount Applied</Text>
+                        <Text className="text-purple-400 font-bold text-xs">
+                          -₹{discountAmount.toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
 

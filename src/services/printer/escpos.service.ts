@@ -161,7 +161,8 @@ export class ESCPOSService {
     items: any[],
     branding?: TenantBranding | null,
     orderType: string = 'DINE_IN',
-    payments?: any[]
+    payments?: any[],
+    discount?: number
   ): Uint8Array {
     let buffer: number[] = [];
 
@@ -307,7 +308,10 @@ export class ESCPOSService {
       }
     }
 
-    // 6. Grand Total (Bold & Edge-to-Edge)
+    // 6. Discount & Grand Total (Bold & Edge-to-Edge)
+    if (discount && Number(discount) > 0) {
+      buffer.push(...this.stringToBytes(this.formatTwoCol('Discount Applied:', `- INR ${Number(discount).toFixed(2)}`, 48)));
+    }
     this.pushSeparatorLine(buffer, '=');
     buffer.push(...this.BOLD_ON);
     buffer.push(...this.stringToBytes(this.formatTwoCol('GRAND TOTAL:', `INR ${finalGrandTotal.toFixed(2)}`, 48)));
@@ -343,9 +347,10 @@ export class ESCPOSService {
     items: any[],
     branding?: TenantBranding | null,
     orderType: string = 'DINE_IN',
-    payments?: any[]
+    payments?: any[],
+    discount?: number
   ): Uint8Array {
-    const billBytes = this.buildBill(billNo, tableNo, cashierName, items, branding, orderType, payments);
+    const billBytes = this.buildBill(billNo, tableNo, cashierName, items, branding, orderType, payments, discount);
 
     let tokenBuffer: number[] = [];
     tokenBuffer.push(...this.INIT);
