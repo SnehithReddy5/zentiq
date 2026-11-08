@@ -682,6 +682,10 @@ export const RunningOrdersScreen = () => {
   const [isReprinting, setIsReprinting] = useState(false);
   const [isReprintingKitchen, setIsReprintingKitchen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<{ id: string; kotNo: number | string } | null>(null);
+  const [orderToCancel, setOrderToCancel] = useState<any | null>(null);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
 
   // Subscribe dynamically to the selected location
   useEffect(() => {
@@ -1104,7 +1108,6 @@ export const RunningOrdersScreen = () => {
 
     setIsReprinting(true);
     try {
-      await printerService.connect(mainTarget, targetPort, isUsb ? 'USB' : 'LAN');
       const buffer = ESCPOSService.buildBill(
         order.orderNumber || order.kotNo || order.id.slice(0, 6),
         order.tableNo || 0,
@@ -1117,8 +1120,7 @@ export const RunningOrdersScreen = () => {
           : [{ method: order.paymentMethod || 'CASH', amount: order.totalAmount || 0 }],
         order.discount || 0
       );
-      await printerService.print(buffer);
-      await printerService.disconnect();
+      await printerService.printReceiptOrKOT(buffer, mainTarget, targetPort, isUsb ? 'USB' : 'LAN');
       setToastMessage(`Receipt for Bill #${order.orderNumber || order.kotNo || order.id.slice(0, 6)} reprinted!`);
       setTimeout(() => setToastMessage(null), 3500);
     } catch (e: any) {
@@ -1144,7 +1146,6 @@ export const RunningOrdersScreen = () => {
 
     setIsReprintingKitchen(true);
     try {
-      await printerService.connect(kitchenTarget, kitchenPort, kitchenType);
       const buffer = ESCPOSService.buildKOT(
         order.kotNo || `RE-${order.id.slice(0, 5)}`,
         order.tableNo || 0,
@@ -1153,13 +1154,7 @@ export const RunningOrdersScreen = () => {
         order.specialNote || (order.orderType?.includes('ONLINE') ? 'ONLINE AGGREGATOR ORDER' : 'DUPLICATE / REPRINT KOT'),
         order.orderType || (order.tableNo ? 'DINE_IN' : 'PICKUP')
       );
-      await printerService.print(
-        buffer,
-        isKitchenUsb
-          ? { printerType: 'USB', printerName: kitchenTarget }
-          : { printerType: 'LAN', ip: kitchenTarget, port: kitchenPort }
-      );
-      await printerService.disconnect();
+      await printerService.printReceiptOrKOT(buffer, kitchenTarget, kitchenPort, kitchenType);
       setToastMessage(`Kitchen KOT reprinted successfully!`);
       setTimeout(() => setToastMessage(null), 3500);
     } catch (e: any) {
@@ -1224,63 +1219,52 @@ export const RunningOrdersScreen = () => {
     }
   };
 
-  // Cancel Order handler
+  // Cancel Order handler (Opens modal safely on Windows, Web & Mobile)
   const handleCancelOrder = (order: any) => {
-    const isOnline = order.orderType?.includes('ONLINE');
-    Alert.alert(
-      'Cancel Order',
-      isOnline
-        ? `Are you sure you want to cancel this ${order.aggregatorPlatform || 'Online'} order?\n\nNotice: Please also cancel this order in your ${order.aggregatorPlatform || 'Swiggy/Zomato'} merchant app so the customer receives their refund and the rider is unassigned.`
-        : `Are you sure you want to cancel Order #${order.kotNo}?`,
-      [
-        { text: 'No, Keep Order', style: 'cancel' },
-        {
-          text: 'Yes, Cancel Order',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await DBServices.updateOrderStatus(order.id, 'CANCELLED', tenant?.id, order.locationId || activeLocationId);
-              if (order.tableNo) {
-                await DBServices.updateTableStatusByNo(order.tableNo, 'available', tenant?.id, order.locationId || activeLocationId);
-                try {
-                  const { useCartStore } = require('../../store/cart.store');
-                  useCartStore.getState().clearCart(order.tableNo);
-                } catch (_) {}
-              }
-              setSelectedOrder((prev: any) => prev ? { ...prev, status: 'CANCELLED' } : null);
-              toast.info(`Order #${order.aggregatorOrderId || order.kotNo} has been cancelled & Table cleared.`);
-            } catch (e: any) {
-              toast.error(`Could not cancel order: ${e.message}`);
-            }
-          },
-        },
-      ]
-    );
+    setOrderToCancel(order);
   };
 
-    // Delete Order handler (Admin / Manager only)
+  const executeCancelOrder = async () => {
+    if (!orderToCancel) return;
+    setIsCancellingOrder(true);
+    try {
+      await DBServices.updateOrderStatus(orderToCancel.id, 'CANCELLED', tenant?.id, orderToCancel.locationId || activeLocationId);
+      if (orderToCancel.tableNo) {
+        await DBServices.updateTableStatusByNo(orderToCancel.tableNo, 'available', tenant?.id, orderToCancel.locationId || activeLocationId);
+        try {
+          const { useCartStore } = require('../../store/cart.store');
+          useCartStore.getState().clearCart(orderToCancel.tableNo);
+        } catch (_) {}
+      }
+      setSelectedOrder((prev: any) => prev ? { ...prev, status: 'CANCELLED' } : null);
+      toast.info(`Order #${orderToCancel.aggregatorOrderId || orderToCancel.kotNo} has been cancelled & Table cleared.`);
+      setOrderToCancel(null);
+    } catch (e: any) {
+      toast.error(`Could not cancel order: ${e.message}`);
+    } finally {
+      setIsCancellingOrder(false);
+    }
+  };
+
+  // Delete Order handler (Admin / Manager only - Opens modal safely on Windows, Web & Mobile)
   const handleDeleteOrder = (id: string, kotNo: number | string) => {
-    Alert.alert(
-      'Delete Order',
-      `Are you sure you want to delete Order #${kotNo}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await DBServices.deleteOrder(id, tenant?.id, activeLocationId || undefined);
-              setSelectedOrder(null);
-              setToastMessage('Order deleted successfully');
-              setTimeout(() => setToastMessage(null), 3000);
-            } catch (e: any) {
-              toast.error(`Could not delete order: ${e.message}`, 'Delete Error');
-            }
-          }
-        }
-      ]
-    );
+    setOrderToDelete({ id, kotNo });
+  };
+
+  const executeDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    setIsDeletingOrder(true);
+    try {
+      await DBServices.deleteOrder(orderToDelete.id, tenant?.id, activeLocationId || undefined);
+      setSelectedOrder(null);
+      setToastMessage('Order deleted successfully');
+      setTimeout(() => setToastMessage(null), 3000);
+      setOrderToDelete(null);
+    } catch (e: any) {
+      toast.error(`Could not delete order: ${e.message}`, 'Delete Error');
+    } finally {
+      setIsDeletingOrder(false);
+    }
   };
 
   const formatOrderDate = (createdAt: any) => {
@@ -2009,6 +1993,82 @@ export const RunningOrdersScreen = () => {
                   className="px-5 py-2 rounded-xl bg-slate-800 active:bg-slate-700"
                 >
                   <Text className="text-slate-300 font-bold text-xs">Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Delete Order Confirmation Modal (Windows & Mobile universal) */}
+      {orderToDelete && (
+        <Modal transparent animationType="fade" visible={true} onRequestClose={() => { if (!isDeletingOrder) setOrderToDelete(null); }}>
+          <View className="flex-1 bg-black/80 items-center justify-center p-4">
+            <View className="bg-slate-900 border border-slate-800 p-6 rounded-3xl w-full max-w-sm">
+              <View className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 items-center justify-center mb-4 self-center">
+                <Trash2 size={24} color="#F43F5E" />
+              </View>
+              <Text className="text-white text-lg font-bold text-center mb-2">Delete Order</Text>
+              <Text className="text-slate-400 text-xs text-center leading-relaxed mb-6">
+                Are you sure you want to permanently delete Order #{orderToDelete.kotNo}? This action cannot be undone.
+              </Text>
+              <View className="flex-row gap-3">
+                <TouchableOpacity
+                  onPress={() => setOrderToDelete(null)}
+                  disabled={isDeletingOrder}
+                  className="flex-1 py-3 bg-slate-800 rounded-2xl items-center justify-center active:bg-slate-700"
+                >
+                  <Text className="text-slate-300 font-bold text-sm">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={executeDeleteOrder}
+                  disabled={isDeletingOrder}
+                  className="flex-1 py-3 bg-rose-600 rounded-2xl items-center justify-center active:bg-rose-700"
+                >
+                  {isDeletingOrder ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text className="text-white font-bold text-sm">Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Cancel Order Confirmation Modal (Windows & Mobile universal) */}
+      {orderToCancel && (
+        <Modal transparent animationType="fade" visible={true} onRequestClose={() => { if (!isCancellingOrder) setOrderToCancel(null); }}>
+          <View className="flex-1 bg-black/80 items-center justify-center p-4">
+            <View className="bg-slate-900 border border-slate-800 p-6 rounded-3xl w-full max-w-sm">
+              <View className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 items-center justify-center mb-4 self-center">
+                <XCircle size={24} color="#FB7185" />
+              </View>
+              <Text className="text-white text-lg font-bold text-center mb-2">Cancel Order</Text>
+              <Text className="text-slate-400 text-xs text-center leading-relaxed mb-6">
+                {orderToCancel.orderType?.includes('ONLINE')
+                  ? `Are you sure you want to cancel this ${orderToCancel.aggregatorPlatform || 'Online'} order?\n\nNotice: Please also cancel this order in your merchant app so the customer receives their refund.`
+                  : `Are you sure you want to cancel Order #${orderToCancel.kotNo}? The table will be cleared and marked available.`}
+              </Text>
+              <View className="flex-row gap-3">
+                <TouchableOpacity
+                  onPress={() => setOrderToCancel(null)}
+                  disabled={isCancellingOrder}
+                  className="flex-1 py-3 bg-slate-800 rounded-2xl items-center justify-center active:bg-slate-700"
+                >
+                  <Text className="text-slate-300 font-bold text-sm">No, Keep</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={executeCancelOrder}
+                  disabled={isCancellingOrder}
+                  className="flex-1 py-3 bg-rose-600 rounded-2xl items-center justify-center active:bg-rose-700"
+                >
+                  {isCancellingOrder ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text className="text-white font-bold text-sm">Yes, Cancel</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>

@@ -305,8 +305,14 @@ export const DBServices = {
     items: {
       categoryName: string;
       itemName: string;
-      variantName: string;
       price: number;
+      hasVariants: boolean;
+      variants?: {
+        id?: string;
+        name: string;
+        price: number;
+        active: boolean;
+      }[];
       active: boolean;
       sku?: string;
     }[],
@@ -334,63 +340,71 @@ export const DBServices = {
       itemMap[d.data().name.toLowerCase().trim()] = { id: d.id, ...d.data() };
     });
 
-    const batch = writeBatch(db);
+    // Chunking to support arbitrarily large menu files without exceeding 500 ops per batch
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+      const chunk = items.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
 
-    for (const item of items) {
-      const catKey = item.categoryName.toLowerCase().trim();
-      let categoryId = catMap[catKey];
+      for (const item of chunk) {
+        const catKey = item.categoryName.toLowerCase().trim();
+        let categoryId = catMap[catKey];
 
-      if (!categoryId) {
-        const newCatRef = doc(catCol);
-        batch.set(newCatRef, { id: newCatRef.id, name: item.categoryName, active: true });
-        categoryId = newCatRef.id;
-        catMap[catKey] = categoryId;
-      }
-
-      const itemKey = item.itemName.toLowerCase().trim();
-      const existingItem = itemMap[itemKey];
-
-      if (existingItem) {
-        const itemRef = doc(itemsCol, existingItem.id);
-        const existingVariants = existingItem.variants || [];
-        const variantIdx = existingVariants.findIndex((v: any) => v.name.toLowerCase() === item.variantName.toLowerCase());
-
-        let updatedVariants;
-        if (variantIdx >= 0) {
-          updatedVariants = existingVariants.map((v: any, idx: number) =>
-            idx === variantIdx ? { ...v, price: item.price, active: item.active } : v
-          );
-        } else {
-          updatedVariants = [...existingVariants, { id: `var_${Date.now()}_${Math.random().toString(36).substring(7)}`, name: item.variantName, price: item.price, active: item.active }];
+        if (!categoryId) {
+          const newCatRef = doc(catCol);
+          batch.set(newCatRef, { id: newCatRef.id, name: item.categoryName, active: true });
+          categoryId = newCatRef.id;
+          catMap[catKey] = categoryId;
         }
 
-        batch.update(itemRef, {
-          price: updatedVariants[0]?.price || item.price,
-          variants: updatedVariants,
-          sku: item.sku || existingItem.sku || '',
-          active: item.active,
-        });
-      } else {
-        const newItemRef = doc(itemsCol);
-        const variantId = `var_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        const newDocData = {
-          id: newItemRef.id,
-          name: item.itemName,
-          categoryId,
-          price: item.price,
-          isAvailable: item.active,
-          active: item.active,
-          sku: item.sku || '',
-          variants: [
-            { id: variantId, name: item.variantName, price: item.price, active: item.active }
-          ]
-        };
-        batch.set(newItemRef, newDocData);
-        itemMap[itemKey] = newDocData;
-      }
-    }
+        const itemKey = item.itemName.toLowerCase().trim();
+        const existingItem = itemMap[itemKey];
 
-    await batch.commit();
+        const formattedVariants = (item.hasVariants && item.variants && item.variants.length > 0)
+          ? item.variants.map((v, idx) => ({
+              id: v.id || `var_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
+              name: v.name,
+              price: v.price,
+              active: v.active !== false,
+            }))
+          : [];
+
+        const effectivePrice = formattedVariants.length > 0 ? formattedVariants[0].price : item.price;
+
+        if (existingItem) {
+          const itemRef = doc(itemsCol, existingItem.id);
+          const updatePayload: any = {
+            categoryId,
+            price: effectivePrice,
+            sku: item.sku || existingItem.sku || '',
+            active: item.active !== false,
+            isAvailable: item.active !== false,
+          };
+
+          if (formattedVariants.length > 0) {
+            updatePayload.variants = formattedVariants;
+          }
+
+          batch.update(itemRef, cleanFirestoreData(updatePayload));
+        } else {
+          const newItemRef = doc(itemsCol);
+          const newDocData: any = {
+            id: newItemRef.id,
+            name: item.itemName,
+            categoryId,
+            price: effectivePrice,
+            isAvailable: item.active !== false,
+            active: item.active !== false,
+            sku: item.sku || '',
+            variants: formattedVariants.length > 0 ? formattedVariants : []
+          };
+          batch.set(newItemRef, cleanFirestoreData(newDocData));
+          itemMap[itemKey] = newDocData;
+        }
+      }
+
+      await batch.commit();
+    }
   },
 
   // 6. Orders & Split Payments
@@ -467,6 +481,13 @@ export const DBServices = {
       ? doc(db, 'tenants', tenantId, 'locations', locationId, 'orders', id)
       : doc(db, 'orders', id);
     await updateDoc(orderRef, { status, updatedAt: serverTimestamp() });
+  },
+
+  async updateOrder(id: string, updates: Record<string, any>, tenantId?: string, locationId?: string): Promise<void> {
+    const orderRef = (tenantId && locationId)
+      ? doc(db, 'tenants', tenantId, 'locations', locationId, 'orders', id)
+      : doc(db, 'orders', id);
+    await updateDoc(orderRef, cleanFirestoreData({ ...updates, updatedAt: serverTimestamp() }));
   },
 
   /**

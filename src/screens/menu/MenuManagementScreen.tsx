@@ -102,14 +102,8 @@ export const MenuManagementScreen = () => {
   // Open Add Item Modal
   const openAddItemModal = () => {
     if (categories.length === 0) {
-      Alert.alert(
-        'Create Category First',
-        'You need to create at least one category (e.g. Starters, Mains, Beverages) before adding menu items.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: '+ Create Category', onPress: () => openAddCategoryModal() }
-        ]
-      );
+      toast.info('Please create a category first before adding menu items.', 'Category Required');
+      openAddCategoryModal();
       return;
     }
     setEditingItemId(null);
@@ -324,7 +318,7 @@ export const MenuManagementScreen = () => {
   };
 
   // Save Category (Create or Update)
-  
+
   const confirmDeleteCategory = (cat: { id: string; name: string }) => {
     setCategoryToDelete({ id: cat.id, name: cat.name });
   };
@@ -362,10 +356,11 @@ export const MenuManagementScreen = () => {
           <View className="flex-row items-center gap-2">
             <TouchableOpacity
               onPress={() => setExcelModalOpen(true)}
-              className="bg-emerald-600 px-3 py-1.5 rounded-xl flex-row items-center"
+              className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3.5 py-1.5 rounded-xl flex-row items-center shadow-sm"
+              activeOpacity={0.8}
             >
               <FileSpreadsheet size={15} color="white" />
-              <Text className="text-white font-bold text-xs ml-1">Excel</Text>
+              <Text className="text-white font-bold text-xs ml-1.5">Import Excel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -398,11 +393,10 @@ export const MenuManagementScreen = () => {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4">
           <TouchableOpacity
             onPress={() => setActiveCategory('favorites')}
-            className={`mr-2 px-3 py-1.5 rounded-full flex-row items-center border ${
-              activeCategory === 'favorites'
+            className={`mr-2 px-3 py-1.5 rounded-full flex-row items-center border ${activeCategory === 'favorites'
                 ? 'bg-amber-500/20 border-amber-500'
                 : 'bg-slate-900 border-slate-800'
-            }`}
+              }`}
           >
             <Star size={12} color="#F59E0B" fill={activeCategory === 'favorites' ? '#F59E0B' : 'transparent'} />
             <Text className={`text-xs ml-1 font-bold ${activeCategory === 'favorites' ? 'text-amber-400' : 'text-slate-400'}`}>
@@ -412,11 +406,10 @@ export const MenuManagementScreen = () => {
 
           <TouchableOpacity
             onPress={() => setActiveCategory('all')}
-            className={`mr-2 px-3.5 py-1.5 rounded-full border ${
-              activeCategory === 'all'
+            className={`mr-2 px-3.5 py-1.5 rounded-full border ${activeCategory === 'all'
                 ? 'bg-[#5D3FD3] border-[#5D3FD3]'
                 : 'bg-slate-900 border-slate-800'
-            }`}
+              }`}
           >
             <Text className={`text-xs font-semibold ${activeCategory === 'all' ? 'text-white' : 'text-slate-400'}`}>
               All ({items.length})
@@ -427,25 +420,27 @@ export const MenuManagementScreen = () => {
             const count = items.filter(i => i.categoryId === cat.id).length;
             const isActive = activeCategory === cat.id;
             return (
-              <TouchableOpacity
+              <View
                 key={cat.id}
-                onPress={() => setActiveCategory(cat.id)}
-                onLongPress={() => confirmDeleteCategory(cat)}
-                className={`mr-2 px-3 py-1.5 rounded-full border flex-row items-center ${
-                  isActive
+                className={`mr-2 px-3 py-1.5 rounded-full border flex-row items-center ${isActive
                     ? 'bg-[#5D3FD3] border-[#5D3FD3]'
                     : 'bg-slate-900 border-slate-800'
-                }`}
+                  }`}
               >
-                <Text className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-slate-400'}`}>
-                  {cat.name} ({count})
-                </Text>
+                <TouchableOpacity
+                  onPress={() => setActiveCategory(cat.id)}
+                  onLongPress={() => confirmDeleteCategory(cat)}
+                  activeOpacity={0.7}
+                >
+                  <Text className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-slate-400'}`}>
+                    {cat.name} ({count})
+                  </Text>
+                </TouchableOpacity>
 
                 {isActive && (
                   <View className="flex-row items-center ml-2 pl-2 border-l border-white/20 gap-1.5">
                     <TouchableOpacity
-                      onPress={(e) => {
-                        e.stopPropagation();
+                      onPress={() => {
                         setEditingCategoryId(cat.id);
                         setCatName(cat.name);
                         setCategoryModalOpen(true);
@@ -456,8 +451,7 @@ export const MenuManagementScreen = () => {
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      onPress={(e) => {
-                        e.stopPropagation();
+                      onPress={() => {
                         confirmDeleteCategory(cat);
                       }}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -466,7 +460,7 @@ export const MenuManagementScreen = () => {
                     </TouchableOpacity>
                   </View>
                 )}
-              </TouchableOpacity>
+              </View>
             );
           })}
 
@@ -504,9 +498,8 @@ export const MenuManagementScreen = () => {
         renderItem={({ item }) => {
           const isOutOfStock = item.isAvailable === false;
           return (
-            <View className={`bg-slate-900 border p-4 rounded-2xl mb-2.5 flex-row items-center justify-between shadow-lg ${
-              isOutOfStock ? 'border-rose-900/50 opacity-90' : 'border-slate-800'
-            }`}>
+            <View className={`bg-slate-900 border p-4 rounded-2xl mb-2.5 flex-row items-center justify-between shadow-lg ${isOutOfStock ? 'border-rose-900/50 opacity-90' : 'border-slate-800'
+              }`}>
               <View className="flex-1 mr-3">
                 <View className="flex-row items-center flex-wrap gap-1.5">
                   <TouchableOpacity onPress={() => handleToggleFavorite(item)} className="mr-1">
@@ -549,11 +542,10 @@ export const MenuManagementScreen = () => {
                 <View className="flex-row items-center gap-2">
                   <TouchableOpacity
                     onPress={() => handleToggleAvailability(item)}
-                    className={`px-3 py-2 rounded-xl border flex-row items-center ${
-                      isOutOfStock
+                    className={`px-3 py-2 rounded-xl border flex-row items-center ${isOutOfStock
                         ? 'bg-rose-500/20 border-rose-500/40 active:bg-rose-500/30'
                         : 'bg-slate-800 border-slate-700 active:bg-slate-750'
-                    }`}
+                      }`}
                   >
                     {isOutOfStock ? (
                       <>
@@ -598,78 +590,78 @@ export const MenuManagementScreen = () => {
         <Modal visible={true} transparent animationType="slide">
           <View className="flex-1 justify-center items-center bg-black/75 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
             <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-md max-h-[85%] relative overflow-hidden">
-                {/* DEDICATED INVENTORY CONFIGURATION DIALOG / MODAL */}
-                {isInventoryModalVisible && (
-                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0B1120', zIndex: 100, padding: 20, justifyContent: 'center' }}>
-                    <View className="flex-row items-center justify-between pb-3 mb-3 border-b border-slate-800">
-                      <View className="flex-row items-center">
-                        <Package size={20} color="#818CF8" />
-                        <Text className="text-white font-black text-base ml-2">Configure Live Inventory</Text>
-                      </View>
-                      <TouchableOpacity onPress={() => setIsInventoryModalVisible(false)} className="p-1 bg-slate-800 rounded-full">
-                        <X size={18} color="#94A3B8" />
-                      </TouchableOpacity>
+              {/* DEDICATED INVENTORY CONFIGURATION DIALOG / MODAL */}
+              {isInventoryModalVisible && (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0B1120', zIndex: 100, padding: 20, justifyContent: 'center' }}>
+                  <View className="flex-row items-center justify-between pb-3 mb-3 border-b border-slate-800">
+                    <View className="flex-row items-center">
+                      <Package size={20} color="#818CF8" />
+                      <Text className="text-white font-black text-base ml-2">Configure Live Inventory</Text>
                     </View>
-
-                    <Text className="text-slate-300 font-bold text-xs mb-1">Current Stock Quantity *</Text>
-                    <TextInput
-                      placeholder="e.g. 10"
-                      placeholderTextColor="#64748B"
-                      keyboardType="numeric"
-                      value={itemStockQuantity}
-                      onChangeText={setItemStockQuantity}
-                      className="bg-slate-950 border border-slate-700 text-white text-base p-3 rounded-2xl mb-3 font-bold"
-                    />
-
-                    <Text className="text-slate-300 font-bold text-xs mb-1.5">Measurement Unit *</Text>
-                    <View className="flex-row flex-wrap gap-2 mb-3">
-                      {(['kg', 'g', 'pcs', 'portions', 'ltr', 'ml'] as const).map(unit => (
-                        <TouchableOpacity
-                          key={unit}
-                          onPress={() => setItemStockUnit(unit)}
-                          className={`px-3 py-1.5 rounded-xl border ${itemStockUnit === unit ? 'bg-[#5D3FD3] border-[#5D3FD3]' : 'bg-slate-800 border-slate-700'}`}
-                        >
-                          <Text className={`text-xs font-bold ${itemStockUnit === unit ? 'text-white' : 'text-slate-400'}`}>
-                            {unit}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    <Text className="text-slate-300 font-bold text-xs mb-1">Low Stock Warning Threshold *</Text>
-                    <TextInput
-                      placeholder="e.g. 2"
-                      placeholderTextColor="#64748B"
-                      keyboardType="numeric"
-                      value={itemLowStockThreshold}
-                      onChangeText={setItemLowStockThreshold}
-                      className="bg-slate-950 border border-slate-700 text-white text-base p-3 rounded-2xl mb-4 font-bold"
-                    />
-
-                    <View className="bg-indigo-500/10 border border-indigo-500/30 p-3 rounded-2xl mb-4">
-                      <Text className="text-indigo-300 text-xs">
-                        When available stock drops below {itemLowStockThreshold || 0} {itemStockUnit}, POS and Menu screens will highlight this item with a low stock badge.
-                      </Text>
-                    </View>
-
-                    <View className="flex-row gap-2">
-                      <Button
-                        title="Cancel"
-                        variant="secondary"
-                        onPress={() => setIsInventoryModalVisible(false)}
-                        className="flex-1"
-                      />
-                      <Button
-                        title="Save & Enable Stock"
-                        onPress={() => {
-                          setItemTrackInventory(true);
-                          setIsInventoryModalVisible(false);
-                        }}
-                        className="flex-1"
-                      />
-                    </View>
+                    <TouchableOpacity onPress={() => setIsInventoryModalVisible(false)} className="p-1 bg-slate-800 rounded-full">
+                      <X size={18} color="#94A3B8" />
+                    </TouchableOpacity>
                   </View>
-                )}
+
+                  <Text className="text-slate-300 font-bold text-xs mb-1">Current Stock Quantity *</Text>
+                  <TextInput
+                    placeholder="e.g. 10"
+                    placeholderTextColor="#64748B"
+                    keyboardType="numeric"
+                    value={itemStockQuantity}
+                    onChangeText={setItemStockQuantity}
+                    className="bg-slate-950 border border-slate-700 text-white text-base p-3 rounded-2xl mb-3 font-bold"
+                  />
+
+                  <Text className="text-slate-300 font-bold text-xs mb-1.5">Measurement Unit *</Text>
+                  <View className="flex-row flex-wrap gap-2 mb-3">
+                    {(['kg', 'g', 'pcs', 'portions', 'ltr', 'ml'] as const).map(unit => (
+                      <TouchableOpacity
+                        key={unit}
+                        onPress={() => setItemStockUnit(unit)}
+                        className={`px-3 py-1.5 rounded-xl border ${itemStockUnit === unit ? 'bg-[#5D3FD3] border-[#5D3FD3]' : 'bg-slate-800 border-slate-700'}`}
+                      >
+                        <Text className={`text-xs font-bold ${itemStockUnit === unit ? 'text-white' : 'text-slate-400'}`}>
+                          {unit}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <Text className="text-slate-300 font-bold text-xs mb-1">Low Stock Warning Threshold *</Text>
+                  <TextInput
+                    placeholder="e.g. 2"
+                    placeholderTextColor="#64748B"
+                    keyboardType="numeric"
+                    value={itemLowStockThreshold}
+                    onChangeText={setItemLowStockThreshold}
+                    className="bg-slate-950 border border-slate-700 text-white text-base p-3 rounded-2xl mb-4 font-bold"
+                  />
+
+                  <View className="bg-indigo-500/10 border border-indigo-500/30 p-3 rounded-2xl mb-4">
+                    <Text className="text-indigo-300 text-xs">
+                      When available stock drops below {itemLowStockThreshold || 0} {itemStockUnit}, POS and Menu screens will highlight this item with a low stock badge.
+                    </Text>
+                  </View>
+
+                  <View className="flex-row gap-2">
+                    <Button
+                      title="Cancel"
+                      variant="secondary"
+                      onPress={() => setIsInventoryModalVisible(false)}
+                      className="flex-1"
+                    />
+                    <Button
+                      title="Save & Enable Stock"
+                      onPress={() => {
+                        setItemTrackInventory(true);
+                        setIsInventoryModalVisible(false);
+                      }}
+                      className="flex-1"
+                    />
+                  </View>
+                </View>
+              )}
               <View className="flex-row justify-between items-center mb-4 border-b border-slate-800 pb-2">
                 <Text className="text-white font-black text-lg">
                   {editingItemId ? 'Edit Menu Item' : 'Add Menu Item'}
@@ -691,42 +683,40 @@ export const MenuManagementScreen = () => {
                   <Text className="text-slate-300 font-bold text-xs mb-1.5">Category *</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
                     {categories.length === 0 ? (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setItemModalOpen(false);
-                        openAddCategoryModal();
-                      }}
-                      className="bg-purple-600/30 border border-purple-500/50 px-3 py-2 rounded-xl flex-row items-center"
-                    >
-                      <Plus size={14} color="#C084FC" />
-                      <Text className="text-purple-300 text-xs font-bold ml-1.5">+ Add Category First</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    categories.map(c => (
                       <TouchableOpacity
-                        key={c.id}
-                        onPress={() => setItemCategoryId(c.id)}
-                        className={`mr-2 px-3 py-1.5 rounded-xl border ${
-                          itemCategoryId === c.id
-                            ? 'bg-[#5D3FD3] border-[#5D3FD3]'
-                            : 'bg-slate-800 border-slate-700'
-                        }`}
+                        onPress={() => {
+                          setItemModalOpen(false);
+                          openAddCategoryModal();
+                        }}
+                        className="bg-purple-600/30 border border-purple-500/50 px-3 py-2 rounded-xl flex-row items-center"
                       >
-                        <Text className="text-white text-xs font-semibold">{c.name}</Text>
+                        <Plus size={14} color="#C084FC" />
+                        <Text className="text-purple-300 text-xs font-bold ml-1.5">+ Add Category First</Text>
                       </TouchableOpacity>
-                    ))
-                  )}
+                    ) : (
+                      categories.map(c => (
+                        <TouchableOpacity
+                          key={c.id}
+                          onPress={() => setItemCategoryId(c.id)}
+                          className={`mr-2 px-3 py-1.5 rounded-xl border ${itemCategoryId === c.id
+                              ? 'bg-[#5D3FD3] border-[#5D3FD3]'
+                              : 'bg-slate-800 border-slate-700'
+                            }`}
+                        >
+                          <Text className="text-white text-xs font-semibold">{c.name}</Text>
+                        </TouchableOpacity>
+                      ))
+                    )}
                   </ScrollView>
                 </View>
 
                 {/* Stock Availability Toggle */}
                 <TouchableOpacity
                   onPress={() => setItemIsAvailable(!itemIsAvailable)}
-                  className={`flex-row items-center justify-between p-3 rounded-xl mb-3 border ${
-                    itemIsAvailable
+                  className={`flex-row items-center justify-between p-3 rounded-xl mb-3 border ${itemIsAvailable
                       ? 'bg-emerald-950/20 border-emerald-500/30'
                       : 'bg-rose-950/20 border-rose-500/30'
-                  }`}
+                    }`}
                 >
                   <View className="flex-row items-center">
                     {itemIsAvailable ? (
@@ -755,7 +745,7 @@ export const MenuManagementScreen = () => {
                   </Text>
                 </TouchableOpacity>
 
-                                {/* Live Inventory Tracking Trigger & Status */}
+                {/* Live Inventory Tracking Trigger & Status */}
                 {itemTrackInventory ? (
                   <View className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-2xl mb-3">
                     <View className="flex-row items-center justify-between mb-2">
@@ -843,7 +833,7 @@ export const MenuManagementScreen = () => {
                   </TouchableOpacity>
                 )}
 
-                  {/* Has Variants Toggle */}
+                {/* Has Variants Toggle */}
                 <TouchableOpacity
                   onPress={() => setHasVariants(!hasVariants)}
                   className="flex-row items-center justify-between bg-slate-800/80 border border-slate-700 p-3 rounded-xl mb-3"
@@ -1044,7 +1034,7 @@ export const MenuManagementScreen = () => {
         </Modal>
       )}
 
-      
+
       {/* Delete Item Confirmation Modal (Windows & Mobile universal) */}
       {itemToDelete && (
         <Modal transparent animationType="fade" visible={true} onRequestClose={() => setItemToDelete(null)}>
@@ -1117,7 +1107,7 @@ export const MenuManagementScreen = () => {
         </Modal>
       )}
 
-      
+
       {/* Manage Categories Full List Modal */}
       {isManageCategoriesOpen && (
         <Modal transparent animationType="fade" visible={isManageCategoriesOpen} onRequestClose={() => setManageCategoriesOpen(false)}>
@@ -1241,14 +1231,12 @@ export const MenuManagementScreen = () => {
                     ₹{actionKebabItem.price} {actionKebabItem.variants?.length ? `• ${actionKebabItem.variants.length} Variants` : ''}
                   </Text>
                 </View>
-                <View className={`px-2.5 py-1 rounded-full border ${
-                  actionKebabItem.isAvailable === false
+                <View className={`px-2.5 py-1 rounded-full border ${actionKebabItem.isAvailable === false
                     ? 'bg-rose-500/20 border-rose-500/40'
                     : 'bg-emerald-500/20 border-emerald-500/40'
-                }`}>
-                  <Text className={`text-xs font-black ${
-                    actionKebabItem.isAvailable === false ? 'text-rose-400' : 'text-emerald-400'
                   }`}>
+                  <Text className={`text-xs font-black ${actionKebabItem.isAvailable === false ? 'text-rose-400' : 'text-emerald-400'
+                    }`}>
                     {actionKebabItem.isAvailable === false ? 'OUT OF STOCK' : 'IN STOCK'}
                   </Text>
                 </View>
@@ -1261,15 +1249,13 @@ export const MenuManagementScreen = () => {
                   setActionKebabItem(null);
                   handleToggleAvailability(itm);
                 }}
-                className={`flex-row items-center p-3.5 rounded-2xl mb-2.5 border ${
-                  actionKebabItem.isAvailable === false
+                className={`flex-row items-center p-3.5 rounded-2xl mb-2.5 border ${actionKebabItem.isAvailable === false
                     ? 'bg-emerald-950/30 border-emerald-500/30 active:bg-emerald-950/50'
                     : 'bg-rose-950/30 border-rose-500/30 active:bg-rose-950/50'
-                }`}
+                  }`}
               >
-                <View className={`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
-                  actionKebabItem.isAvailable === false ? 'bg-emerald-500/20' : 'bg-rose-500/20'
-                }`}>
+                <View className={`w-10 h-10 rounded-xl items-center justify-center mr-3 ${actionKebabItem.isAvailable === false ? 'bg-emerald-500/20' : 'bg-rose-500/20'
+                  }`}>
                   {actionKebabItem.isAvailable === false ? (
                     <CheckCircle2 size={20} color="#34D399" />
                   ) : (
@@ -1277,9 +1263,8 @@ export const MenuManagementScreen = () => {
                   )}
                 </View>
                 <View className="flex-1">
-                  <Text className={`font-black text-sm ${
-                    actionKebabItem.isAvailable === false ? 'text-emerald-300' : 'text-rose-300'
-                  }`}>
+                  <Text className={`font-black text-sm ${actionKebabItem.isAvailable === false ? 'text-emerald-300' : 'text-rose-300'
+                    }`}>
                     {actionKebabItem.isAvailable === false ? 'Mark as In Stock' : 'Mark as Out of Stock'}
                   </Text>
                   <Text className="text-slate-400 text-xs">

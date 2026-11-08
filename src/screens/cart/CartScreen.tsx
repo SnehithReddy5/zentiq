@@ -8,6 +8,8 @@ import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { useCartStore } from '../../store/cart.store';
+import { useTableStore } from '../../store/table.store';
+import { useOrderStore } from '../../store/order.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { usePrinterStore } from '../../store/printer.store';
 import { useToastStore } from '../../store/toast.store';
@@ -27,6 +29,7 @@ export const CartScreen = () => {
   const orderType = route.params?.orderType || (tableNo === 0 ? 'PICKUP' : 'DINE_IN');
 
   const { carts, clearCart } = useCartStore();
+  const { orders } = useOrderStore();
   const { tenant, branding, features, locations, activeLocationId } = useTenantStore();
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
@@ -34,39 +37,39 @@ export const CartScreen = () => {
 
   const cartItems = carts[tableNo] || [];
 
-  // Pre-populate CartScreen from live running orders if diner ordered via QR
+  // Keep CartScreen continuously synchronized with live running orders (including customer QR self-orders)
   useEffect(() => {
-    if (tableNo !== 0 && (carts[tableNo] || []).length === 0) {
+    if (tableNo !== 0) {
       try {
-        const { useOrderStore } = require('../../store/order.store');
-        const runningOrder = useOrderStore.getState().orders.find(
+        const runningOrder = orders.find(
           (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
         );
         if (runningOrder && runningOrder.items && runningOrder.items.length > 0) {
           const formatted = runningOrder.items.map((it: any, idx: number) => ({
-            itemId: it.itemId || it.id || `item-${idx}-${Date.now()}`,
+            itemId: it.itemId || it.id || `item-${idx}`,
             itemName: it.itemName || it.name,
             price: Number(it.price || 0),
             qty: Number(it.qty || 1),
-            sentQty: Number(it.qty || 1),
+            sentQty: Number(it.sentQty ?? it.qty ?? 1),
             variantId: it.variantId || null,
             variantName: it.variantName || null,
             note: it.note || '',
           }));
-          useCartStore.getState().syncRemoteCarts({ [tableNo]: formatted });
+          useCartStore.getState().syncRunningOrderItems(tableNo, formatted);
           return;
         }
 
-        const { useTableStore } = require('../../store/table.store');
-        const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
-        if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
-          useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
+        if ((carts[tableNo] || []).length === 0) {
+          const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
+          if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
+            useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
+          }
         }
       } catch (err) {
         console.warn('Error syncing running order into CartScreen:', err);
       }
     }
-  }, [tableNo, carts]);
+  }, [tableNo, orders]);
   const rawItemsSum = cartItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
 
   // Dynamic GST Tax Configuration from Store Settings
@@ -141,6 +144,8 @@ export const CartScreen = () => {
   const [paymentAmount, setPaymentAmount] = useState(cartTotal.toString());
   const [payments, setPayments] = useState<{ method: string; amount: number }[]>([]);
   const [isSettling, setIsSettling] = useState(false);
+  const [isPrintingBillOnly, setIsPrintingBillOnly] = useState(false);
+  const [printedBillNo, setPrintedBillNo] = useState<number | null>(null);
 
   // Sync default selected method if activePaymentMethods change
   useEffect(() => {
@@ -261,10 +266,126 @@ export const CartScreen = () => {
   // 1-Tap Quick Settle with single payment method
   const handleQuickSettle = async (overrideMethod?: 'CASH' | 'UPI' | 'CARD') => {
     const methodToUse = overrideMethod || selectedMethod;
-    await executeSettlement([{ method: methodToUse, amount: cartTotal }]);
+    await executeSettlement([{ method: methodToUse, amount: cartTotal }], false);
   };
 
-  const handleSettleAndPrint = async () => {
+  /**
+   * PRINT BILL ONLY (Provisional Bill Slip):
+   * Dispatches the thermal bill receipt to the billing printer.
+   * Does NOT mark order as completed.
+   * Does NOT free the table.
+   * Does NOT clear the cart.
+   * Guests remain seated and dining.
+   */
+  const handlePrintBillOnly = async () => {
+    if (cartItems.length === 0) {
+      toast.warning('Cart is empty. Add items first.', 'Empty Cart');
+      return;
+    }
+
+    const isUsb = settings.printerType === 'USB';
+    const mainTarget = isUsb ? (settings.printerName || 'POS-80') : (settings.ipAddress?.trim() || '');
+    const mainPort = settings.port || 9100;
+    const mainType = isUsb ? 'USB' : 'LAN';
+
+    if (!mainTarget) {
+      toast.warning('Please configure Billing Printer in Settings first.', 'Printer Required');
+      return;
+    }
+
+    setIsPrintingBillOnly(true);
+    try {
+      // 1. Resolve Bill Number (use existing running order number, previously printed number, or next sequence)
+      let billNo: number = printedBillNo || 0;
+      let existingRunningOrder: any = null;
+
+      if (!billNo && tableNo !== 0) {
+        try {
+          const { useOrderStore } = require('../../store/order.store');
+          existingRunningOrder = useOrderStore.getState().orders.find(
+            (o: any) => Number(o.tableNo) === Number(tableNo) && (o.status === 'RUNNING' || o.status === 'running')
+          ) || null;
+          if (existingRunningOrder?.orderNumber) {
+            billNo = Number(existingRunningOrder.orderNumber);
+          } else if (existingRunningOrder?.kotNo) {
+            billNo = Number(existingRunningOrder.kotNo);
+          }
+        } catch (_) {}
+      }
+
+      if (!billNo) {
+        billNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
+      }
+      setPrintedBillNo(billNo);
+
+      // 2. Pre-generate ESC/POS bill receipt buffer
+      const activeLoc = locations.find(l => l.id === activeLocationId);
+      const brandPayload = branding ? { ...branding, gstEnabled, gstType, cgstRate, sgstRate } : null;
+      const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
+      const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
+
+      const provisionalPayments = payments.length > 0 
+        ? payments 
+        : [{ method: selectedMethod, amount: cartTotal }];
+
+      const billBuffer = isCombinedMode
+        ? ESCPOSService.buildCombinedTiffinPrints(
+            billNo,
+            tableNo,
+            user?.name || 'Staff',
+            cartItems,
+            brandPayload,
+            orderType,
+            provisionalPayments,
+            discountAmount
+          )
+        : ESCPOSService.buildBill(
+            billNo,
+            tableNo,
+            user?.name || 'Staff',
+            cartItems,
+            brandPayload,
+            orderType,
+            provisionalPayments,
+            discountAmount
+          );
+
+      // 3. Dispatch to thermal printer via serialized mutex queue
+      await printerService.printReceiptOrKOT(billBuffer, mainTarget, mainPort, mainType);
+
+      // 4. If there is an existing running order in Firestore, mark billPrinted: true
+      if (existingRunningOrder && existingRunningOrder.id) {
+        DBServices.updateOrder(existingRunningOrder.id, {
+          billPrinted: true,
+          billPrintedAt: new Date(),
+          billNo: billNo,
+        }, tenant?.id, existingRunningOrder.locationId || activeLocationId || undefined).catch(() => {});
+      }
+
+      toast.success(
+        `Bill #${billNo} printed successfully for ${tableNo !== 0 ? `Table ${tableNo}` : 'Order'}!`,
+        'Bill Printed'
+      );
+    } catch (err: any) {
+      const isExpoGoSocketError = err?.message?.includes('Thermal printing over raw TCP sockets is not supported in Expo Go');
+      if (isExpoGoSocketError) {
+        toast.info('Expo Go detected: Raw TCP socket simulated.', 'Printer Notice');
+      } else {
+        toast.error(`Thermal printer (${settings.ipAddress || 'LAN'}) error: ${err.message || 'offline'}. Check Wi-Fi.`, 'Print Failed');
+      }
+    } finally {
+      setIsPrintingBillOnly(false);
+    }
+  };
+
+  /**
+   * SAVE & SETTLE (Payment Finalization):
+   * Saves the completed order to Firestore with payment rows.
+   * Frees the table in Firestore ('available').
+   * Clears the cart and returns home.
+   * If shouldPrint is true (e.g. Counter / Takeaway), also prints the receipt.
+   */
+  const handleSaveAndSettle = async (shouldPrint: boolean = false) => {
     // If no split payments entered, automatically pay remaining with selected method
     let finalPayments = [...payments];
     if (finalPayments.length === 0) {
@@ -273,10 +394,18 @@ export const CartScreen = () => {
       // Auto-cover remaining balance with current selected method
       finalPayments.push({ method: selectedMethod, amount: remaining });
     }
-    await executeSettlement(finalPayments);
+    await executeSettlement(finalPayments, shouldPrint);
   };
 
-  const executeSettlement = async (finalPayments: { method: string; amount: number }[]) => {
+  // Backwards compatible alias
+  const handleSettleAndPrint = async () => {
+    await handleSaveAndSettle(true);
+  };
+
+  const executeSettlement = async (
+    finalPayments: { method: string; amount: number }[],
+    shouldPrint: boolean = false
+  ) => {
     if (user?.role === 'WAITER' || user?.role === 'captain') {
       toast.warning('Bill settlement requires Biller or Manager authorization. Please hand over this table order to the billing counter.', 'Action Restricted');
       return;
@@ -290,7 +419,8 @@ export const CartScreen = () => {
 
     setIsSettling(true);
     try {
-      const billNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
+      // Re-use printedBillNo if bill was already printed to maintain sequence continuity
+      const billNo = printedBillNo || await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
 
       // Check for existing RUNNING order for this table (QR self-order or previous KOT)
       let existingRunningOrder: any = null;
@@ -310,7 +440,7 @@ export const CartScreen = () => {
         timestamp: new Date().toISOString(),
       }));
 
-      // 1. Parallel database updates
+      // 1. Database updates
       let orderPromise: Promise<any>;
       if (existingRunningOrder && existingRunningOrder.id) {
         // UPDATE existing running order → COMPLETED (no duplicate, saved with full item details like normal orders)
@@ -356,75 +486,60 @@ export const CartScreen = () => {
         ? DBServices.updateTableStatusByNo(tableNo, 'available', tenant?.id, activeLocationId || undefined)
         : Promise.resolve();
 
-      // 2. Pre-generate ESC/POS buffers synchronously in memory (< 1ms)
-      const activeLoc = locations.find(l => l.id === activeLocationId);
-      const branchName = activeLoc ? activeLoc.name : branding?.displayName;
-      const brandPayload = branding ? { ...branding, gstEnabled, gstType, cgstRate, sgstRate } : null;
-      const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
+      // 2. Dispatch Thermal Prints in Background if requested (e.g. Counter / Takeaway Settle & Print)
+      if (shouldPrint) {
+        const activeLoc = locations.find(l => l.id === activeLocationId);
+        const brandPayload = branding ? { ...branding, gstEnabled, gstType, cgstRate, sgstRate } : null;
+        const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
 
-      // 3. Dispatch Thermal Prints in Background (Non-blocking: Cashier never waits for printer timeouts)
-      const dispatchPrints = async () => {
-        const isUsb = settings.printerType === 'USB';
-        const mainTarget = isUsb ? (settings.printerName || 'POS-80') : (settings.ipAddress || '127.0.0.1');
-        const mainPort = settings.port || 9100;
-        const mainType = isUsb ? 'USB' : 'LAN';
+        const dispatchPrints = async () => {
+          const isUsb = settings.printerType === 'USB';
+          const mainTarget = isUsb ? (settings.printerName || 'POS-80') : (settings.ipAddress || '127.0.0.1');
+          const mainPort = settings.port || 9100;
+          const mainType = isUsb ? 'USB' : 'LAN';
 
-        // Check configured mode
-        const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
-        const isSingleBillMode = workflowMode === 'SINGLE_BILL_ONLY' || workflowMode === 'CURRY_POINT';
-        const isDualMode = workflowMode === 'DUAL_PRINTER' || workflowMode === 'RESTAURANT' || (!isCombinedMode && !isSingleBillMode);
+          const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
 
-        try {
-          if (isCombinedMode) {
-            // SINGLE PRINTER: Customer Bill + Kitchen Slip together in 1 combined fast buffer
-            const combinedBuffer = ESCPOSService.buildCombinedTiffinPrints(
-              billNo,
-              tableNo,
-              user?.name || 'Staff',
-              cartItems,
-              brandPayload,
-              orderType,
-              finalPayments,
-              discountAmount
-            );
-            await printerService.connect(mainTarget, mainPort, mainType);
-            await printerService.print(combinedBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
-            await printerService.disconnect();
-          } else {
-            // DUAL PRINTER or SINGLE BILL ONLY: Print Customer Bill ONLY.
-            // In Dual Mode, KOT was already fired while dining via "Send KOT". Settlement prints ONLY the customer bill.
-            const billBuffer = ESCPOSService.buildBill(
-              billNo,
-              tableNo,
-              user?.name || 'Staff',
-              cartItems,
-              brandPayload,
-              orderType,
-              finalPayments,
-              discountAmount
-            );
-            await printerService.connect(mainTarget, mainPort, mainType);
-            await printerService.print(billBuffer, isUsb ? { printerType: 'USB', printerName: mainTarget } : { printerType: 'LAN', ip: mainTarget, port: mainPort });
-            await printerService.disconnect();
+          try {
+            const billBuffer = isCombinedMode
+              ? ESCPOSService.buildCombinedTiffinPrints(
+                  billNo,
+                  tableNo,
+                  user?.name || 'Staff',
+                  cartItems,
+                  brandPayload,
+                  orderType,
+                  finalPayments,
+                  discountAmount
+                )
+              : ESCPOSService.buildBill(
+                  billNo,
+                  tableNo,
+                  user?.name || 'Staff',
+                  cartItems,
+                  brandPayload,
+                  orderType,
+                  finalPayments,
+                  discountAmount
+                );
+
+            await printerService.printReceiptOrKOT(billBuffer, mainTarget, mainPort, mainType);
+          } catch (printErr: any) {
+            const isExpoGoSocketError = printErr?.message?.includes('Thermal printing over raw TCP sockets is not supported in Expo Go');
+            if (!isExpoGoSocketError) {
+              console.warn('Thermal print background dispatch error:', printErr);
+              useToastStore.getState().showToast({
+                type: 'error',
+                title: 'Print Failed (Saved to Cloud)',
+                message: `Bill #${billNo} recorded, but thermal printer (${settings.ipAddress || 'LAN'}) did not respond: ${printErr?.message || 'offline'}. Check Wi-Fi.`,
+                duration: 7000,
+              });
+            }
           }
-        } catch (printErr: any) {
-          const isExpoGoSocketError = printErr?.message?.includes('Thermal printing over raw TCP sockets is not supported in Expo Go');
-          if (isExpoGoSocketError) {
-            console.log('Expo Go detected: Raw TCP socket thermal print simulation bypassed.');
-          } else {
-            console.warn('Thermal print background dispatch error:', printErr);
-            useToastStore.getState().showToast({
-              type: 'error',
-              title: 'Print Failed (Saved to Cloud)',
-              message: `Bill #${billNo} recorded, but thermal printer (${settings.ipAddress || 'LAN'}) did not respond: ${printErr?.message || 'offline'}. Check Wi-Fi.`,
-              duration: 7000,
-            });
-          }
-        }
-      };
+        };
 
-      // Fire-and-forget print job immediately
-      dispatchPrints();
+        dispatchPrints();
+      }
 
       // Await database write completion in parallel (~150ms)
       await Promise.all([orderPromise, tablePromise]);
@@ -432,7 +547,9 @@ export const CartScreen = () => {
       useToastStore.getState().showToast({
         type: 'success',
         title: 'Order Settled',
-        message: `Bill #${billNo} settled successfully.`,
+        message: tableNo !== 0 
+          ? `Table ${tableNo} settled & freed successfully.` 
+          : `Bill #${billNo} settled successfully.`,
         duration: 3500,
       });
 
@@ -754,25 +871,100 @@ export const CartScreen = () => {
                         <Text className="text-emerald-400 font-black text-lg">₹{cartTotal.toFixed(2)}</Text>
                       </View>
 
-                      {/* Big 1-Click Settle CTA */}
-                      <TouchableOpacity
-                        onPress={handleSettleAndPrint}
-                        disabled={isSettling || cartItems.length === 0}
-                        className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
-                          cartItems.length > 0 ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90' : 'bg-slate-800 opacity-60'
-                        }`}
-                      >
-                        {isSettling ? (
-                          <ActivityIndicator size="small" color="white" />
-                        ) : (
-                          <>
-                            <Printer size={18} color="white" />
-                            <Text className="text-white font-black text-base ml-2">
-                              Settle & Print Bill (₹{cartTotal.toFixed(2)})
-                            </Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
+                      {/* CTA Action Buttons */}
+                      {tableNo !== 0 ? (
+                        <View className="flex-row gap-3">
+                          {/* Button 1: Print Bill Only (Dispatches thermal print; leaves table running) */}
+                          <TouchableOpacity
+                            onPress={handlePrintBillOnly}
+                            disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
+                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${
+                              cartItems.length > 0
+                                ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
+                                : 'bg-slate-850 border-slate-800 opacity-50'
+                            }`}
+                          >
+                            {isPrintingBillOnly ? (
+                              <ActivityIndicator size="small" color="#A5B4FC" />
+                            ) : (
+                              <>
+                                <Printer size={18} color="#A5B4FC" />
+                                <Text className="text-indigo-200 font-black text-sm ml-2">
+                                  Print Bill
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+
+                          {/* Button 2: Save & Settle Table (Saves order, records payment, frees table) */}
+                          <TouchableOpacity
+                            onPress={() => handleSaveAndSettle(false)}
+                            disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
+                            className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
+                              cartItems.length > 0
+                                ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                                : 'bg-slate-800 opacity-60'
+                            }`}
+                          >
+                            {isSettling ? (
+                              <ActivityIndicator size="small" color="white" />
+                            ) : (
+                              <>
+                                <CheckCircle2 size={18} color="white" />
+                                <Text className="text-white font-black text-sm ml-2">
+                                  Save & Settle
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View className="flex-row gap-3">
+                          {/* Takeaway/Counter: Print Bill Preview */}
+                          <TouchableOpacity
+                            onPress={handlePrintBillOnly}
+                            disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
+                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${
+                              cartItems.length > 0
+                                ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
+                                : 'bg-slate-850 border-slate-800 opacity-50'
+                            }`}
+                          >
+                            {isPrintingBillOnly ? (
+                              <ActivityIndicator size="small" color="#A5B4FC" />
+                            ) : (
+                              <>
+                                <Printer size={18} color="#A5B4FC" />
+                                <Text className="text-indigo-200 font-black text-sm ml-2">
+                                  Print Bill
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+
+                          {/* Takeaway/Counter: Settle & Print Bill */}
+                          <TouchableOpacity
+                            onPress={() => handleSaveAndSettle(true)}
+                            disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
+                            className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
+                              cartItems.length > 0
+                                ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                                : 'bg-slate-800 opacity-60'
+                            }`}
+                          >
+                            {isSettling ? (
+                              <ActivityIndicator size="small" color="white" />
+                            ) : (
+                              <>
+                                <Printer size={18} color="white" />
+                                <Text className="text-white font-black text-sm ml-2">
+                                  Settle & Print (₹{cartTotal.toFixed(2)})
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   ) : (
                     /* MODE B: SPLIT PAYMENT (MULTI-TENDER LEDGER) */
@@ -870,27 +1062,100 @@ export const CartScreen = () => {
                         </View>
                       )}
 
-                      {/* Settle Split CTA */}
-                      <TouchableOpacity
-                        onPress={handleSettleAndPrint}
-                        disabled={isSettling || remaining > 0 || cartItems.length === 0}
-                        className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
-                          remaining === 0 && cartItems.length > 0
-                            ? 'bg-emerald-600 shadow-emerald-600/30'
-                            : 'bg-slate-800 opacity-60'
-                        }`}
-                      >
-                        {isSettling ? (
-                          <ActivityIndicator size="small" color="white" />
-                        ) : (
-                          <>
-                            <Printer size={18} color="white" />
-                            <Text className="text-white font-black text-base ml-2">
-                              {remaining === 0 ? 'Settle Order & Print Bill' : `Pending ₹${remaining.toFixed(2)} Split`}
-                            </Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
+                      {/* CTA Action Buttons */}
+                      {tableNo !== 0 ? (
+                        <View className="flex-row gap-3">
+                          {/* Button 1: Print Bill Only */}
+                          <TouchableOpacity
+                            onPress={handlePrintBillOnly}
+                            disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
+                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${
+                              cartItems.length > 0
+                                ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
+                                : 'bg-slate-850 border-slate-800 opacity-50'
+                            }`}
+                          >
+                            {isPrintingBillOnly ? (
+                              <ActivityIndicator size="small" color="#A5B4FC" />
+                            ) : (
+                              <>
+                                <Printer size={18} color="#A5B4FC" />
+                                <Text className="text-indigo-200 font-black text-sm ml-2">
+                                  Print Bill
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+
+                          {/* Button 2: Save & Settle Table */}
+                          <TouchableOpacity
+                            onPress={() => handleSaveAndSettle(false)}
+                            disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
+                            className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
+                              remaining === 0 && cartItems.length > 0
+                                ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                                : 'bg-slate-800 opacity-60'
+                            }`}
+                          >
+                            {isSettling ? (
+                              <ActivityIndicator size="small" color="white" />
+                            ) : (
+                              <>
+                                <CheckCircle2 size={18} color="white" />
+                                <Text className="text-white font-black text-sm ml-2">
+                                  {remaining === 0 ? 'Save & Settle' : `Pending ₹${remaining.toFixed(2)}`}
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View className="flex-row gap-3">
+                          {/* Takeaway/Counter: Print Bill Preview */}
+                          <TouchableOpacity
+                            onPress={handlePrintBillOnly}
+                            disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
+                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${
+                              cartItems.length > 0
+                                ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
+                                : 'bg-slate-850 border-slate-800 opacity-50'
+                            }`}
+                          >
+                            {isPrintingBillOnly ? (
+                              <ActivityIndicator size="small" color="#A5B4FC" />
+                            ) : (
+                              <>
+                                <Printer size={18} color="#A5B4FC" />
+                                <Text className="text-indigo-200 font-black text-sm ml-2">
+                                  Print Bill
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+
+                          {/* Takeaway/Counter: Settle & Print Bill */}
+                          <TouchableOpacity
+                            onPress={() => handleSaveAndSettle(true)}
+                            disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
+                            className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
+                              remaining === 0 && cartItems.length > 0
+                                ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                                : 'bg-slate-800 opacity-60'
+                            }`}
+                          >
+                            {isSettling ? (
+                              <ActivityIndicator size="small" color="white" />
+                            ) : (
+                              <>
+                                <Printer size={18} color="white" />
+                                <Text className="text-white font-black text-sm ml-2">
+                                  {remaining === 0 ? 'Settle & Print' : `Pending ₹${remaining.toFixed(2)}`}
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   )}
                 </View>

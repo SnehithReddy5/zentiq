@@ -39,6 +39,7 @@ interface CartState {
   carts: Record<number, CartItem[]>;
   setCarts: (carts: Record<number, CartItem[]>) => void;
   syncRemoteCarts: (remoteCarts: Record<number, CartItem[]>) => void;
+  syncRunningOrderItems: (tableNo: number, confirmedItems: CartItem[]) => void;
   addItem: (tableNo: number, item: Omit<OrderItem, 'id' | 'orderId'>) => void;
   removeItem: (tableNo: number, itemId: string) => void;
   updateQuantity: (tableNo: number, itemId: string, qty: number) => void;
@@ -91,6 +92,51 @@ export const useCartStore = create<CartState>()(
 
         if (hasChanges) {
           set({ carts: updatedCarts });
+        }
+      },
+      syncRunningOrderItems: (tableNo, confirmedItems) => {
+        if (tableNo === 0) return;
+        const currentCarts = get().carts;
+        const tableCart = currentCarts[tableNo] || [];
+
+        // Identify any un-sent draft items the waiter has locally that haven't been sent to kitchen yet
+        const unsentDraftItems = tableCart.filter(i => {
+          const unsentQty = (i.qty || 0) - (i.sentQty || 0);
+          return unsentQty > 0;
+        }).map(i => ({
+          ...i,
+          qty: (i.qty || 0) - (i.sentQty || 0),
+          sentQty: 0,
+        }));
+
+        // Build merged cart: all confirmed items from running order (with sentQty = qty)
+        const merged: CartItem[] = confirmedItems.map(c => ({
+          ...c,
+          sentQty: c.sentQty ?? c.qty,
+        }));
+
+        // Add back any unsent draft items
+        unsentDraftItems.forEach(draft => {
+          const existing = merged.find(m =>
+            m.itemId === draft.itemId &&
+            (m.variantId || null) === (draft.variantId || null) &&
+            (m.sentQty || 0) < m.qty
+          );
+          if (existing) {
+            existing.qty += draft.qty;
+          } else {
+            merged.push(draft);
+          }
+        });
+
+        // Only update if different
+        if (JSON.stringify(tableCart) !== JSON.stringify(merged)) {
+          set({
+            carts: {
+              ...currentCarts,
+              [tableNo]: merged,
+            }
+          });
         }
       },
       addItem: (tableNo, item) => {

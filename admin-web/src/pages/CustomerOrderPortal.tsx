@@ -29,7 +29,8 @@ import {
   HelpCircle,
   ChefHat,
   ArrowLeft,
-  Check
+  Check,
+  Printer
 } from 'lucide-react';
 
 interface MenuItem {
@@ -109,6 +110,8 @@ export const CustomerOrderPortal: React.FC = () => {
   const [isRequestingBill, setIsRequestingBill] = useState(false);
   const [billRequestedLocal, setBillRequestedLocal] = useState(false);
   const [isBillSettled, setIsBillSettled] = useState(false);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [orderSuccessBanner, setOrderSuccessBanner] = useState<string | null>(null);
 
   // Load Restaurant Branding
   useEffect(() => {
@@ -136,9 +139,10 @@ export const CustomerOrderPortal: React.FC = () => {
 
     // B. Check if this table already has a running order
     const ordersCol = collection(db, 'tenants', tenantId, 'locations', locationId, 'orders');
+    const tableKeys = Array.from(new Set([tableNo, String(tableNo), Number(tableNo)].filter(v => v !== undefined && v !== null && !isNaN(Number(v)))));
     const runningQuery = query(
       ordersCol,
-      where('tableNo', 'in', [tableNo, String(tableNo)]),
+      where('tableNo', 'in', tableKeys.length > 0 ? tableKeys : [tableNo]),
       where('status', 'in', ['RUNNING', 'running'])
     );
 
@@ -280,6 +284,34 @@ export const CustomerOrderPortal: React.FC = () => {
             : (activeOrder.specialNote || ''),
           updatedAt: serverTimestamp()
         }));
+
+        // Synchronize merged items to Table document in Firestore so POS terminal carts update immediately
+        try {
+          const tablesCol = collection(db, 'tenants', tenantId, 'locations', locationId, 'tables');
+          const tableSnap = await getDocs(tablesCol);
+          for (const d of tableSnap.docs) {
+            const data = d.data();
+            if (Number(data.tableNo) === Number(tableNo) || String(data.tableNo) === String(tableNo)) {
+              await updateDoc(d.ref, {
+                status: 'running',
+                currentOrderId: activeOrderId,
+                cartItems: mergedItems.map((m: any) => ({
+                  itemId: m.itemId,
+                  itemName: m.itemName,
+                  qty: m.qty,
+                  price: m.price,
+                  variantId: m.variantId || null,
+                  variantName: m.variantName || null,
+                  note: m.note || '',
+                  sentQty: m.qty,
+                })),
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+        } catch (tableErr) {
+          console.warn('Table cartItems update error:', tableErr);
+        }
       } else {
         // Creating fresh new order for Table
         const newOrderRef = doc(ordersCol);
@@ -346,6 +378,8 @@ export const CustomerOrderPortal: React.FC = () => {
       setCart([]);
       setIsCartOpen(false);
       setOrderNote('');
+      setOrderSuccessBanner('🍳 Order Confirmed! Dispatched directly to the kitchen.');
+      setTimeout(() => setOrderSuccessBanner(null), 6000);
     } catch (err: any) {
       alert('Failed to place order: ' + err.message);
     } finally {
@@ -448,6 +482,19 @@ export const CustomerOrderPortal: React.FC = () => {
           </div>
         </div>
 
+        {/* Order Confirmed Banner */}
+        {orderSuccessBanner && (
+          <div className="max-w-2xl mx-auto mt-2.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 p-2.5 rounded-xl flex items-center justify-between text-xs animate-bounce">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <span className="text-emerald-200 font-semibold">{orderSuccessBanner}</span>
+            </div>
+            <span className="text-[10px] bg-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded font-bold">
+              Cooking
+            </span>
+          </div>
+        )}
+
         {/* Bill Requested Alert Banner if customer requested bill */}
         {(activeOrder?.billRequested || billRequestedLocal) && (
           <div className="max-w-2xl mx-auto mt-2.5 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 p-2.5 rounded-xl flex items-center justify-between text-xs animate-pulse">
@@ -510,30 +557,38 @@ export const CustomerOrderPortal: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Actions: Order More Items or Get My Bill */}
-            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+            {/* Quick Actions: Order More Items, View/Print Bill Slip, or Request Bill */}
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => {
                   window.scrollTo({ top: 300, behavior: 'smooth' });
                 }}
-                className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="flex-1 min-w-[110px] py-2 px-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-700/60"
               >
-                <Plus size={14} className="text-amber-400" />
+                <Plus size={13} className="text-amber-400" />
                 Add More Food
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsReceiptModalOpen(true)}
+                className="flex-1 min-w-[120px] py-2 px-3 bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-indigo-500/30 shadow-sm"
+              >
+                <Printer size={13} className="text-indigo-400" />
+                Print Bill Slip
               </button>
 
               <button
                 type="button"
                 disabled={activeOrder.billRequested || billRequestedLocal || isRequestingBill}
                 onClick={handleRequestBill}
-                className={`py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer ${
-                  activeOrder.billRequested || billRequestedLocal
+                className={`flex-1 min-w-[130px] py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer ${activeOrder.billRequested || billRequestedLocal
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                     : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black shadow-amber-500/20'
-                }`}
+                  }`}
               >
-                <Receipt size={14} />
+                <Receipt size={13} />
                 {activeOrder.billRequested || billRequestedLocal ? 'Bill Requested ✓' : '🧾 Get My Bill'}
               </button>
             </div>
@@ -561,11 +616,10 @@ export const CustomerOrderPortal: React.FC = () => {
           <button
             type="button"
             onClick={() => setVegOnlyFilter(!vegOnlyFilter)}
-            className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
-              vegOnlyFilter
+            className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${vegOnlyFilter
                 ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400'
                 : 'bg-slate-900/90 border-slate-800/80 text-slate-400'
-            }`}
+              }`}
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             Veg Only
@@ -577,11 +631,10 @@ export const CustomerOrderPortal: React.FC = () => {
           <button
             type="button"
             onClick={() => setSelectedCategoryId('ALL')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              selectedCategoryId === 'ALL'
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${selectedCategoryId === 'ALL'
                 ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
                 : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
-            }`}
+              }`}
           >
             All Menu
           </button>
@@ -590,11 +643,10 @@ export const CustomerOrderPortal: React.FC = () => {
               key={cat.id}
               type="button"
               onClick={() => setSelectedCategoryId(cat.id)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                selectedCategoryId === cat.id
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${selectedCategoryId === cat.id
                   ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
                   : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               {cat.name}
             </button>
@@ -627,16 +679,14 @@ export const CustomerOrderPortal: React.FC = () => {
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center gap-1.5">
                       <span
-                        className={`w-2.5 h-2.5 rounded-sm border flex items-center justify-center shrink-0 ${
-                          item.isVeg
+                        className={`w-2.5 h-2.5 rounded-sm border flex items-center justify-center shrink-0 ${item.isVeg
                             ? 'border-emerald-500 text-emerald-400'
                             : 'border-red-500 text-red-400'
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            item.isVeg ? 'bg-emerald-500' : 'bg-red-500'
-                          }`}
+                          className={`w-1.5 h-1.5 rounded-full ${item.isVeg ? 'bg-emerald-500' : 'bg-red-500'
+                            }`}
                         />
                       </span>
                       <h4 className="text-xs font-bold text-white tracking-tight leading-tight">
@@ -829,12 +879,128 @@ export const CustomerOrderPortal: React.FC = () => {
               {isSubmittingOrder
                 ? 'Sending Order to Kitchen...'
                 : activeOrderId
-                ? '⚡ Send Additional Round to Kitchen'
-                : `⚡ Send Order to Kitchen (₹${cartSubtotal.toFixed(2)})`}
+                  ? '⚡ Send Additional Round to Kitchen'
+                  : `⚡ Send Order to Kitchen (₹${cartSubtotal.toFixed(2)})`}
             </button>
           </div>
         </div>
       )}
+      {/* Guest Bill Receipt Modal with Print & PDF Support */}
+      {isReceiptModalOpen && activeOrder && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Receipt size={18} className="text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Table {tableNo} Bill Slip</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReceiptModalOpen(false)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Printable Thermal Receipt Canvas */}
+            <div id="printable-receipt" className="p-5 overflow-y-auto font-mono text-xs text-slate-800 bg-white m-4 rounded-2xl shadow-inner space-y-3">
+              <div className="text-center pb-2 border-b border-dashed border-slate-300">
+                <h4 className="font-black text-sm text-slate-900 uppercase tracking-tight">{restaurantName}</h4>
+                <p className="text-[10px] text-slate-600 mt-0.5">Dine-In • Table {tableNo}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5 font-sans">
+                  Order #{activeOrder.kotNo || activeOrder.orderNumber || activeOrder.id?.slice(0, 6) || 'QR'}
+                </p>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-1.5 py-1 border-b border-dashed border-slate-300">
+                <div className="flex justify-between font-bold text-[10px] text-slate-500 uppercase pb-1">
+                  <span>Item</span>
+                  <span>Amount</span>
+                </div>
+                {(activeOrder.items || []).map((it: any, idx: number) => (
+                  <div key={idx} className="flex justify-between items-start text-xs text-slate-900">
+                    <div className="flex-1 mr-2">
+                      <span className="font-bold">{it.qty}x </span>
+                      <span>{it.itemName || it.name}</span>
+                      {it.variantName && (
+                        <span className="text-[10px] text-slate-600 block pl-3">({it.variantName})</span>
+                      )}
+                    </div>
+                    <span className="font-bold shrink-0">₹{((it.price || 0) * (it.qty || 1)).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Totals */}
+              <div className="space-y-1 pt-1 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal</span>
+                  <span>₹{Number(activeOrder.subtotal || activeOrder.totalAmount || 0).toFixed(2)}</span>
+                </div>
+                {activeOrder.tax ? (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tax / GST</span>
+                    <span>₹{Number(activeOrder.tax).toFixed(2)}</span>
+                  </div>
+                ) : null}
+                <div className="flex justify-between font-black text-sm text-slate-950 pt-1.5 border-t border-slate-300">
+                  <span>Grand Total</span>
+                  <span>₹{Number(activeOrder.totalAmount || 0).toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="text-center pt-2 text-[9px] text-slate-500 font-sans border-t border-dashed border-slate-300">
+                <p className="font-semibold">Thank you for dining with us!</p>
+                <p className="text-[8px] text-slate-400 mt-0.5">Please pay at counter or when staff arrives.</p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 bg-slate-950 border-t border-slate-800 flex gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex-1 py-2.5 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+              >
+                <Printer size={14} />
+                Print Receipt
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsReceiptModalOpen(false)}
+                className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #printable-receipt, #printable-receipt * {
+            visibility: visible !important;
+          }
+          #printable-receipt {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 320px !important;
+            margin: 0 auto !important;
+            padding: 10px !important;
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };

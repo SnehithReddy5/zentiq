@@ -17,7 +17,6 @@ import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { Table } from '../../types/table.types';
 import { DBServices } from '../../services/firebase/db';
 import { Routes } from '../../constants/routes';
-import { useLiveOrderNotifications } from '../../hooks/useLiveOrderNotifications';
 
 export const TablesScreen = () => {
   const insets = useSafeAreaInsets();
@@ -28,7 +27,6 @@ export const TablesScreen = () => {
   const { orders, subscribeToOrders } = useOrderStore();
   const { settings } = usePrinterStore();
   const { tableGridColumns, isLargePOS } = useResponsiveLayout();
-  useLiveOrderNotifications();
 
   const [isAdding, setIsAdding] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);

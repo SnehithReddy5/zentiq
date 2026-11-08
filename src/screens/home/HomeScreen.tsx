@@ -48,14 +48,12 @@ import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { HamburgerMenu } from '../../components/common/HamburgerMenu';
 import { Button } from '../../components/common/Button';
 import { Routes } from '../../constants/routes';
-import { useLiveOrderNotifications } from '../../hooks/useLiveOrderNotifications';
 import { DBServices } from '../../services/firebase/db';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { AggregatorParserService } from '../../services/integrations/aggregatorParser.service';
 
 export const HomeScreen = () => {
-  useLiveOrderNotifications();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { tenant, branding, features, locations, activeLocationId, setActiveLocationId, getActiveLocation } = useTenantStore();

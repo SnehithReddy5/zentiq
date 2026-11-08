@@ -7,6 +7,7 @@ import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronR
 import { useMenuStore } from '../../store/menu.store';
 import { useCartStore } from '../../store/cart.store';
 import { useTableStore } from '../../store/table.store';
+import { useOrderStore } from '../../store/order.store';
 import { usePrinterStore } from '../../store/printer.store';
 import { useToastStore } from '../../store/toast.store';
 import { useAuthStore } from '../../store/auth.store';
@@ -42,6 +43,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const rawWorkflowMode = printerSettings.printerWorkflowMode || 'DUAL_PRINTER';
   const isDualPrinterMode = rawWorkflowMode === 'DUAL_PRINTER' || rawWorkflowMode === 'RESTAURANT';
   const { carts, addItem, removeItem, updateQuantity, markAsSent, clearCart } = useCartStore();
+  const { orders } = useOrderStore();
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
   const { isSplitView, isLargePOS } = useResponsiveLayout();
@@ -64,39 +66,39 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     .map(i => ({ ...i, qty: i.qty - (i.sentQty || 0) }))
     .filter(i => i.qty > 0);
 
-  
-  // Pre-populate table cart from live running orders OR table cart items if entering an already-running table
+  // Keep table cart continuously synchronized with live running orders (including customer QR self-orders)
   useEffect(() => {
-    if (tableNo !== 0 && cartItems.length === 0) {
+    if (tableNo !== 0) {
       try {
-        const { useOrderStore } = require('../../store/order.store');
-        const runningOrder = useOrderStore.getState().orders.find(
+        const runningOrder = orders.find(
           (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
         );
         if (runningOrder && runningOrder.items && runningOrder.items.length > 0) {
           const formatted = runningOrder.items.map((it: any, idx: number) => ({
-            itemId: it.itemId || it.id || `item-${idx}-${Date.now()}`,
+            itemId: it.itemId || it.id || `item-${idx}`,
             itemName: it.itemName || it.name,
             price: Number(it.price || 0),
             qty: Number(it.qty || 1),
-            sentQty: Number(it.qty || 1),
+            sentQty: Number(it.sentQty ?? it.qty ?? 1),
             variantId: it.variantId || null,
             variantName: it.variantName || null,
             note: it.note || '',
           }));
-          useCartStore.getState().syncRemoteCarts({ [tableNo]: formatted });
+          useCartStore.getState().syncRunningOrderItems(tableNo, formatted);
           return;
         }
 
-        const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
-        if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
-          useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
+        if (cartItems.length === 0) {
+          const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
+          if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
+            useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
+          }
         }
       } catch (err) {
         console.warn('Error syncing table running order into cart:', err);
       }
     }
-  }, [tableNo, cartItems.length]);
+  }, [tableNo, orders]);
 
   const { cartTotal, cartItemCount } = useMemo(() => {
     let total = 0;
