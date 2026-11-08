@@ -5,8 +5,12 @@ const http = require('http');
 const net = require('net');
 
 // Prevent background throttling so live order listeners and thermal printing never pause
-app.commandLine.appendSwitch('disable-background-timer-throttling');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
+if (app && app.commandLine && typeof app.commandLine.appendSwitch === 'function') {
+  try {
+    app.commandLine.appendSwitch('disable-background-timer-throttling');
+    app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  } catch (_) {}
+}
 
 let mainWindow;
 let serverInstance = null;

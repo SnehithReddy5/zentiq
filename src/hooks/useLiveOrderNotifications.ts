@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { AppState, Platform } from 'react-native';
 import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase/config';
 import { useTenantStore } from '../store/tenant.store';
@@ -257,17 +258,47 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
       } catch (_) {}
     };
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleFocus);
-      document.addEventListener('visibilitychange', handleFocus);
+    // React Native AppState listener (100% safe on Android / iOS / Native)
+    let appStateSub: any = null;
+    try {
+      appStateSub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          handleFocus();
+        }
+      });
+    } catch (_) {}
+
+    // Web-only focus & visibility listeners (strictly guarded for Web)
+    let cleanupWeb: (() => void) | null = null;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+      try {
+        if (typeof window.addEventListener === 'function') {
+          window.addEventListener('focus', handleFocus);
+        }
+        if (typeof document.addEventListener === 'function') {
+          document.addEventListener('visibilitychange', handleFocus);
+        }
+        cleanupWeb = () => {
+          try {
+            if (typeof window.removeEventListener === 'function') {
+              window.removeEventListener('focus', handleFocus);
+            }
+            if (typeof document.removeEventListener === 'function') {
+              document.removeEventListener('visibilitychange', handleFocus);
+            }
+          } catch (_) {}
+        };
+      } catch (_) {}
     }
 
     return () => {
       unsubscribe();
       clearInterval(pollInterval);
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleFocus);
-        document.removeEventListener('visibilitychange', handleFocus);
+      if (appStateSub && typeof appStateSub.remove === 'function') {
+        appStateSub.remove();
+      }
+      if (cleanupWeb) {
+        cleanupWeb();
       }
     };
   }, [tenant?.id, activeLocationId]);
