@@ -4,6 +4,10 @@ const fs = require('fs');
 const http = require('http');
 const net = require('net');
 
+// Prevent background throttling so live order listeners and thermal printing never pause
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
 let mainWindow;
 let serverInstance = null;
 
@@ -17,7 +21,7 @@ function printToNetworkPrinter(ip, port, dataArray) {
     const socket = new net.Socket();
     let isFinished = false;
 
-    socket.setTimeout(8000);
+    socket.setTimeout(3000);
 
     socket.connect(targetPort, ip, () => {
       const buffer = Buffer.from(dataArray);
@@ -25,18 +29,18 @@ function printToNetworkPrinter(ip, port, dataArray) {
         if (err) {
           if (!isFinished) {
             isFinished = true;
-            socket.destroy();
+            try { socket.destroy(); } catch (_) {}
             reject(err);
           }
         } else {
-          // Pause 400ms to allow printer microcontroller to drain buffer before closing
+          // Fast 50ms drain wait for instant thermal receipt output
           setTimeout(() => {
             if (!isFinished) {
               isFinished = true;
-              socket.end();
+              try { socket.end(); } catch (_) {}
               resolve({ success: true });
             }
-          }, 400);
+          }, 50);
         }
       });
     });
@@ -180,6 +184,7 @@ async function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,
     },
   });
 

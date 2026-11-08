@@ -279,6 +279,9 @@ export const CustomerOrderPortal: React.FC = () => {
           items: mergedItems,
           totalAmount: newTotal,
           subtotal: newTotal,
+          hasNewQRItems: true,
+          kotPrinted: false,
+          orderSource: 'QR_SELF_ORDER',
           specialNote: orderNote
             ? (activeOrder.specialNote ? `${activeOrder.specialNote} | Additional: ${orderNote}` : orderNote)
             : (activeOrder.specialNote || ''),
@@ -326,6 +329,8 @@ export const CustomerOrderPortal: React.FC = () => {
           paymentStatus: 'UNPAID',
           captainId: 'qr-self',
           captainName: `Table ${tableNo} Self-Order`,
+          kotPrinted: false,
+          hasNewQRItems: false,
           items: cart.map((c) => ({
             itemId: c.itemId,
             itemName: c.name,
