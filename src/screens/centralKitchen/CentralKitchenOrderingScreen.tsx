@@ -7,9 +7,9 @@ import {
   TextInput,
   ScrollView,
   Modal,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
+import { confirmDialog } from '../../utils/confirm';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ChefHat,
@@ -96,13 +96,12 @@ export const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
               {/* Step Node */}
               <View className="items-center flex-1">
                 <View
-                  className={`w-6 h-6 rounded-full items-center justify-center border ${
-                    isDone
+                  className={`w-6 h-6 rounded-full items-center justify-center border ${isDone
                       ? 'bg-emerald-500 border-emerald-400'
                       : isCurrent
-                      ? 'bg-[#5D3FD3] border-indigo-400 shadow-md shadow-indigo-500/40'
-                      : 'bg-slate-900 border-slate-800'
-                  }`}
+                        ? 'bg-[#5D3FD3] border-indigo-400 shadow-md shadow-indigo-500/40'
+                        : 'bg-slate-900 border-slate-800'
+                    }`}
                 >
                   {isDone ? (
                     <CheckCircle2 size={13} color="white" />
@@ -113,13 +112,12 @@ export const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
                   )}
                 </View>
                 <Text
-                  className={`text-[9px] mt-1 font-bold ${
-                    isCurrent
+                  className={`text-[9px] mt-1 font-bold ${isCurrent
                       ? 'text-indigo-400'
                       : isDone
-                      ? 'text-emerald-400'
-                      : 'text-slate-500'
-                  }`}
+                        ? 'text-emerald-400'
+                        : 'text-slate-500'
+                    }`}
                 >
                   {step.label}
                 </Text>
@@ -128,9 +126,8 @@ export const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
               {/* Connecting line */}
               {idx < steps.length - 1 && (
                 <View
-                  className={`h-0.5 flex-1 -mt-3 ${
-                    idx < currentIdx ? 'bg-emerald-500' : 'bg-slate-800'
-                  }`}
+                  className={`h-0.5 flex-1 -mt-3 ${idx < currentIdx ? 'bg-emerald-500' : 'bg-slate-800'
+                    }`}
                 />
               )}
             </View>
@@ -250,49 +247,40 @@ export const CentralKitchenOrderingScreen = () => {
 
   // Confirm Delivery receipt by buyer
   const handleConfirmDelivery = (order: CKOrder) => {
-    Alert.alert(
-      'Confirm Batch Delivery Receipt',
-      `Confirm that your outlet has received food shipment for Order #${order.orderNumber} from "${order.sellerBusinessName}"?\n\nThis will mark the order as DELIVERED.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Yes, Confirm Receipt',
-          onPress: async () => {
-            try {
-              await confirmOrderDelivery(order.id);
-            } catch (e) {}
-          },
-        },
-      ]
-    );
+    confirmDialog({
+      title: 'Confirm Batch Delivery Receipt',
+      message: `Confirm that your outlet has received food shipment for Order #${order.orderNumber} from "${order.sellerBusinessName}"?\n\nThis will mark the order as DELIVERED.`,
+      confirmText: 'Yes, Confirm Receipt',
+      onConfirm: async () => {
+        try {
+          await confirmOrderDelivery(order.id);
+        } catch (e) { }
+      },
+    });
   };
 
   // Cancel order (only allowed if PENDING)
   const handleCancelOrder = (order: CKOrder) => {
     if (order.status !== 'PENDING') {
-      Alert.alert(
-        'Cancellation Locked',
-        'This order has already been accepted/in preparation by the Central Kitchen and cannot be cancelled directly. Please contact kitchen head.'
-      );
+      toast.warning(
+          'This order has already been accepted/in preparation by the Central Kitchen and cannot be cancelled directly. Please contact kitchen head.',
+          'Cancellation Locked'
+        );
       return;
     }
 
-    Alert.alert(
-      'Cancel Food Order',
-      `Are you sure you want to cancel order #${order.orderNumber} before kitchen preparation begins?`,
-      [
-        { text: 'No, Keep Order', style: 'cancel' },
-        {
-          text: 'Yes, Cancel Order',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await cancelOrder(order, 'Cancelled by ordering outlet before preparation');
-            } catch (e) {}
-          },
-        },
-      ]
-    );
+    confirmDialog({
+      title: 'Cancel Food Order',
+      message: `Are you sure you want to cancel order #${order.orderNumber} before kitchen preparation begins?`,
+      confirmText: 'Yes, Cancel Order',
+      cancelText: 'No, Keep Order',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await cancelOrder(order, 'Cancelled by ordering outlet before preparation');
+        } catch (e) { }
+      },
+    });
   };
 
   // Total cart calculations
@@ -360,9 +348,8 @@ export const CentralKitchenOrderingScreen = () => {
         >
           <TouchableOpacity
             onPress={() => setActiveTab('CATALOG')}
-            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'CATALOG' ? 'bg-[#5D3FD3]' : 'bg-slate-950 border border-slate-800'
-            }`}
+            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'CATALOG' ? 'bg-[#5D3FD3]' : 'bg-slate-950 border border-slate-800'
+              }`}
           >
             <UtensilsCrossed size={14} color={activeTab === 'CATALOG' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'CATALOG' ? 'text-white' : 'text-slate-400'}`}>
@@ -372,9 +359,8 @@ export const CentralKitchenOrderingScreen = () => {
 
           <TouchableOpacity
             onPress={() => setActiveTab('ORDERS')}
-            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'ORDERS' ? 'bg-indigo-600' : 'bg-slate-950 border border-slate-800'
-            }`}
+            className={`px-4 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'ORDERS' ? 'bg-indigo-600' : 'bg-slate-950 border border-slate-800'
+              }`}
           >
             <Truck size={14} color={activeTab === 'ORDERS' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'ORDERS' ? 'text-white' : 'text-slate-400'}`}>
@@ -449,9 +435,8 @@ export const CentralKitchenOrderingScreen = () => {
                     <TouchableOpacity
                       key={cat}
                       onPress={() => setSelectedCategory(cat)}
-                      className={`px-3.5 py-1.5 rounded-full border ${
-                        selectedCategory === cat ? 'bg-[#5D3FD3]/30 border-indigo-400' : 'bg-slate-950 border-slate-800'
-                      }`}
+                      className={`px-3.5 py-1.5 rounded-full border ${selectedCategory === cat ? 'bg-[#5D3FD3]/30 border-indigo-400' : 'bg-slate-950 border-slate-800'
+                        }`}
                     >
                       <Text className={`text-xs font-bold ${selectedCategory === cat ? 'text-indigo-300' : 'text-slate-400'}`}>
                         {cat}
@@ -480,9 +465,8 @@ export const CentralKitchenOrderingScreen = () => {
                   const isAvailable = item.isAvailable !== false;
 
                   return (
-                    <View className={`bg-slate-900 border p-4 rounded-3xl mb-3 shadow-md ${
-                      !isAvailable ? 'border-rose-900/40 opacity-70' : 'border-slate-800'
-                    }`}>
+                    <View className={`bg-slate-900 border p-4 rounded-3xl mb-3 shadow-md ${!isAvailable ? 'border-rose-900/40 opacity-70' : 'border-slate-800'
+                      }`}>
                       <View className="flex-row items-start justify-between">
                         <View className="flex-1 mr-3">
                           <View className="flex-row items-center gap-2 mb-1">
@@ -742,9 +726,8 @@ export const CentralKitchenOrderingScreen = () => {
                     <TouchableOpacity
                       key={s.id}
                       onPress={() => setSelectedShift(s.id)}
-                      className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                        selectedShift === s.id ? 'bg-[#5D3FD3]/20 border-indigo-500' : 'bg-slate-950 border-slate-800'
-                      }`}
+                      className={`p-3 rounded-xl border flex-row items-center justify-between ${selectedShift === s.id ? 'bg-[#5D3FD3]/20 border-indigo-500' : 'bg-slate-950 border-slate-800'
+                        }`}
                     >
                       <Text className={`text-xs font-bold ${selectedShift === s.id ? 'text-indigo-300' : 'text-slate-400'}`}>
                         {s.label}
@@ -894,11 +877,10 @@ export const CentralKitchenOrderingScreen = () => {
 
               <ScrollView className="my-3 gap-2">
                 {/* Payment Badge Stamp */}
-                <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${
-                  selectedOrderForInvoice.paymentStatus === 'PAID'
+                <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${selectedOrderForInvoice.paymentStatus === 'PAID'
                     ? 'bg-emerald-500/15 border-emerald-500/40'
                     : 'bg-amber-500/15 border-amber-500/40'
-                }`}>
+                  }`}>
                   <View className="flex-row items-center">
                     {selectedOrderForInvoice.paymentStatus === 'PAID' ? (
                       <CheckCircle2 size={18} color="#10B981" />
@@ -906,9 +888,8 @@ export const CentralKitchenOrderingScreen = () => {
                       <Clock size={18} color="#F59E0B" />
                     )}
                     <View className="ml-2.5">
-                      <Text className={`text-xs font-black ${
-                        selectedOrderForInvoice.paymentStatus === 'PAID' ? 'text-emerald-400' : 'text-amber-400'
-                      }`}>
+                      <Text className={`text-xs font-black ${selectedOrderForInvoice.paymentStatus === 'PAID' ? 'text-emerald-400' : 'text-amber-400'
+                        }`}>
                         {selectedOrderForInvoice.paymentStatus === 'PAID'
                           ? `PAID IN FULL - ${selectedOrderForInvoice.paymentMode || 'ONLINE'}`
                           : 'PAYMENT PENDING / ON CREDIT'}

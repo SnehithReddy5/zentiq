@@ -6,8 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  ActivityIndicator,
-  Alert
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -106,14 +105,7 @@ export const KitchenStockScreen = () => {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Sign Out',
-      'Sign out of Kitchen Terminal?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign Out', style: 'destructive', onPress: logout }
-      ]
-    );
+    logout();
   };
 
   const getCategoryName = (catId: string) => {

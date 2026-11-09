@@ -115,6 +115,8 @@ jobs:
     name: Build Windows Desktop (.exe)
     needs: typecheck
     runs-on: windows-latest
+    permissions:
+      contents: write
     if: |
       (github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'windows')) ||
       (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-win]') || contains(github.event.head_commit.message, '[build-all]') || contains(github.event.head_commit.message, '[build-apps]')))
@@ -151,7 +153,7 @@ jobs:
       # Public Release: Allows 1-click anonymous direct download on client PCs without any GitHub login
       - name: Publish Windows Installer to Public GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[release]')
+        if: success()
         with:
           tag_name: pos-desktop-latest
           name: Zentiq POS Desktop Latest (Windows)

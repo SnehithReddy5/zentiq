@@ -1,6 +1,7 @@
 import { toast } from '../../utils/toast';
+import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, Trash2, Pencil, Users, MapPin, X, Check, Building } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
@@ -195,10 +196,13 @@ export const UserManagementScreen = () => {
               {/* Delete Button */}
               <TouchableOpacity
                 onPress={() => {
-                  Alert.alert('Delete Staff', `Delete "${item.name}"?`, [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Delete', style: 'destructive', onPress: () => DBServices.deleteUserAccount(item.id, tenant?.id) }
-                  ]);
+                  confirmDialog({
+                    title: 'Delete Staff',
+                    message: `Delete "${item.name}"?`,
+                    confirmText: 'Delete',
+                    destructive: true,
+                    onConfirm: () => DBServices.deleteUserAccount(item.id, tenant?.id),
+                  });
                 }}
                 activeOpacity={0.7}
                 className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 items-center justify-center"
@@ -279,11 +283,10 @@ export const UserManagementScreen = () => {
                             setSelectedLocId(locations[0].id);
                           }
                         }}
-                        className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                          role === opt.r
+                        className={`p-3 rounded-xl border flex-row items-center justify-between ${role === opt.r
                             ? 'bg-indigo-600/20 border-indigo-500'
                             : 'bg-slate-800/60 border-slate-700'
-                        }`}
+                          }`}
                       >
                         <View>
                           <Text className={`font-bold text-xs ${role === opt.r ? 'text-indigo-300' : 'text-white'}`}>
@@ -314,11 +317,10 @@ export const UserManagementScreen = () => {
                     {role === 'CLIENT_ADMIN' && (
                       <TouchableOpacity
                         onPress={() => setSelectedLocId('*')}
-                        className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                          selectedLocId === '*'
+                        className={`p-3 rounded-xl border flex-row items-center justify-between ${selectedLocId === '*'
                             ? 'bg-purple-600/20 border-purple-500'
                             : 'bg-slate-800/60 border-slate-700'
-                        }`}
+                          }`}
                       >
                         <View className="flex-row items-center">
                           <Building size={16} color={selectedLocId === '*' ? '#C4B5FD' : '#94A3B8'} />
@@ -342,11 +344,10 @@ export const UserManagementScreen = () => {
                           <TouchableOpacity
                             key={loc.id}
                             onPress={() => setSelectedLocId(loc.id)}
-                            className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                              isSelected
+                            className={`p-3 rounded-xl border flex-row items-center justify-between ${isSelected
                                 ? 'bg-indigo-600/20 border-indigo-500'
                                 : 'bg-slate-800/60 border-slate-700'
-                            }`}
+                              }`}
                           >
                             <View className="flex-row items-center flex-1 mr-2">
                               <MapPin size={16} color={isSelected ? '#818CF8' : '#94A3B8'} />

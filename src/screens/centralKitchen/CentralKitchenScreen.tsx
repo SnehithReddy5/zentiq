@@ -7,9 +7,9 @@ import {
   TextInput,
   ScrollView,
   Modal,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
+import { confirmDialog } from '../../utils/confirm';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ChefHat,
@@ -106,10 +106,10 @@ const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
               <View className="items-center flex-1">
                 <View
                   className={`w-6 h-6 rounded-full items-center justify-center border ${isDone
-                      ? 'bg-emerald-500 border-emerald-400'
-                      : isCurrent
-                        ? 'bg-[#5D3FD3] border-indigo-400 shadow-md shadow-indigo-500/40'
-                        : 'bg-slate-900 border-slate-800'
+                    ? 'bg-emerald-500 border-emerald-400'
+                    : isCurrent
+                      ? 'bg-[#5D3FD3] border-indigo-400 shadow-md shadow-indigo-500/40'
+                      : 'bg-slate-900 border-slate-800'
                     }`}
                 >
                   {isDone ? (
@@ -122,10 +122,10 @@ const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
                 </View>
                 <Text
                   className={`text-[9px] mt-1 font-bold ${isCurrent
-                      ? 'text-indigo-400'
-                      : isDone
-                        ? 'text-emerald-400'
-                        : 'text-slate-500'
+                    ? 'text-indigo-400'
+                    : isDone
+                      ? 'text-emerald-400'
+                      : 'text-slate-500'
                     }`}
                 >
                   {step.label}
@@ -305,14 +305,13 @@ export const CentralKitchenScreen = () => {
 
   // Delete Item
   const handleDeleteItem = (item: CKMenuItem) => {
-    Alert.alert(
-      'Remove Bulk Item',
-      `Are you sure you want to remove "${item.name}" from your B2B menu?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteMenuItem(item.id) },
-      ]
-    );
+    confirmDialog({
+      title: 'Remove Bulk Item',
+      message: `Are you sure you want to remove "${item.name}" from your B2B menu?`,
+      confirmText: 'Delete',
+      destructive: true,
+      onConfirm: () => deleteMenuItem(item.id),
+    });
   };
 
   // Seed Starter Menu
@@ -336,14 +335,12 @@ export const CentralKitchenScreen = () => {
       toast.warning('Cannot accept B2B wholesale orders without valid GSTIN & FSSAI license numbers in Settings.', 'B2B Compliance Required');
       return;
     }
-    Alert.alert(
-      'Accept B2B Food Order',
-      `Accept order #${order.orderNumber} from "${order.buyerBusinessName}" for ${order.deliveryShift.replace(/_/g, ' ')}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Accept & Cook', onPress: () => updateOrderStatus(order.id, 'ACCEPTED') },
-      ]
-    );
+    confirmDialog({
+      title: 'Accept B2B Food Order',
+      message: `Accept order #${order.orderNumber} from "${order.buyerBusinessName}" for ${order.deliveryShift.replace(/_/g, ' ')}?`,
+      confirmText: 'Accept & Cook',
+      onConfirm: () => updateOrderStatus(order.id, 'ACCEPTED'),
+    });
   };
 
   // Order Reject
@@ -368,14 +365,12 @@ export const CentralKitchenScreen = () => {
       toast.warning('Cannot dispatch food batch without valid GSTIN & FSSAI on tax invoice.', 'B2B Compliance Required');
       return;
     }
-    Alert.alert(
-      'Mark as Dispatched',
-      `Mark order #${order.orderNumber} as dispatched for delivery to "${order.buyerBusinessName}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Dispatch Food', onPress: () => updateOrderStatus(order.id, 'DISPATCHED') },
-      ]
-    );
+    confirmDialog({
+      title: 'Mark as Dispatched',
+      message: `Mark order #${order.orderNumber} as dispatched for delivery to "${order.buyerBusinessName}"?`,
+      confirmText: 'Dispatch Food',
+      onConfirm: () => updateOrderStatus(order.id, 'DISPATCHED'),
+    });
   };
 
   // Open Record Payment Modal
@@ -544,8 +539,8 @@ export const CentralKitchenScreen = () => {
                     <View className="flex-row items-center gap-1.5 flex-wrap flex-1 mr-2">
                       <Text className="text-white font-black text-base">#{item.orderNumber}</Text>
                       <View className={`px-2 py-0.5 rounded-md border ${item.isInternalBranch
-                          ? 'bg-purple-500/15 border-purple-500/30'
-                          : 'bg-indigo-500/15 border-indigo-500/30'
+                        ? 'bg-purple-500/15 border-purple-500/30'
+                        : 'bg-indigo-500/15 border-indigo-500/30'
                         }`}>
                         <Text className={`text-[9px] font-bold uppercase ${item.isInternalBranch ? 'text-purple-300' : 'text-indigo-300'
                           }`}>
@@ -863,8 +858,8 @@ export const CentralKitchenScreen = () => {
                       updatePartnerStatus(tenant.id, item.tenantId, newStatus);
                     }}
                     className={`px-3 py-1.5 rounded-xl border flex-row items-center ${isApproved
-                        ? 'bg-rose-500/15 border-rose-500/30'
-                        : 'bg-emerald-500/15 border-emerald-500/30'
+                      ? 'bg-rose-500/15 border-rose-500/30'
+                      : 'bg-emerald-500/15 border-emerald-500/30'
                       }`}
                   >
                     {isApproved ? (
@@ -1081,8 +1076,8 @@ export const CentralKitchenScreen = () => {
                         key={mode.id}
                         onPress={() => setSelectedPaymentMode(mode.id)}
                         className={`p-3 rounded-2xl border flex-row items-center justify-between ${isSelected
-                            ? 'bg-[#5D3FD3]/20 border-indigo-500 shadow-md shadow-indigo-500/20'
-                            : 'bg-slate-950 border-slate-800'
+                          ? 'bg-[#5D3FD3]/20 border-indigo-500 shadow-md shadow-indigo-500/20'
+                          : 'bg-slate-950 border-slate-800'
                           }`}
                       >
                         <View className="flex-row items-center flex-1 mr-2">
@@ -1156,8 +1151,8 @@ export const CentralKitchenScreen = () => {
               <ScrollView className="my-3 gap-2">
                 {/* Payment Badge Stamp */}
                 <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${selectedOrderForInvoice.paymentStatus === 'PAID'
-                    ? 'bg-emerald-500/15 border-emerald-500/40'
-                    : 'bg-amber-500/15 border-amber-500/40'
+                  ? 'bg-emerald-500/15 border-emerald-500/40'
+                  : 'bg-amber-500/15 border-amber-500/40'
                   }`}>
                   <View className="flex-row items-center">
                     {selectedOrderForInvoice.paymentStatus === 'PAID' ? (

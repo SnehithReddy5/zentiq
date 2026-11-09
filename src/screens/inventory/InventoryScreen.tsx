@@ -7,9 +7,9 @@ import {
   TextInput,
   ScrollView,
   Modal,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
+import { confirmDialog } from '../../utils/confirm';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -79,7 +79,7 @@ export const InventoryScreen = () => {
   const [formUnit, setFormUnit] = useState('kg');
   const [formStock, setFormStock] = useState('100');
   const [formMinThreshold, setFormMinThreshold] = useState('15');
-  
+
   // Transaction modal inputs
   const [actionQuantity, setActionQuantity] = useState('');
   const [actionNotes, setActionNotes] = useState('');
@@ -268,7 +268,7 @@ export const InventoryScreen = () => {
     }
     const initialStock = parseFloat(formStock) || 0;
     const minThreshold = parseFloat(formMinThreshold) || 5;
-    
+
     setIsSubmitting(true);
     try {
       await DBServices.createInventoryItem(
@@ -280,7 +280,7 @@ export const InventoryScreen = () => {
           totalReceived: initialStock,
           totalIssued: 0,
           minThreshold,
-                  },
+        },
         tenant?.id,
         activeLocationId || undefined
       );
@@ -297,28 +297,23 @@ export const InventoryScreen = () => {
 
   // Delete Item
   const handleDeleteItem = (item: InventoryItem) => {
-    Alert.alert(
-      'Delete Inventory Item',
-      `Are you sure you want to delete "${item.name}" from inventory tracking?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await DBServices.deleteInventoryItem(item.id, tenant?.id, activeLocationId || undefined);
-              toast.success(`Deleted ${item.name}`, 'Removed');
-            } catch (e: any) {
-              toast.error(e.message || 'Could not delete item', 'Error');
-            }
-          },
-        },
-      ]
-    );
+    confirmDialog({
+      title: 'Delete Inventory Item',
+      message: `Are you sure you want to delete "${item.name}" from inventory tracking?`,
+      confirmText: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await DBServices.deleteInventoryItem(item.id, tenant?.id, activeLocationId || undefined);
+          toast.success(`Deleted ${item.name}`, 'Removed');
+        } catch (e: any) {
+          toast.error(e.message || 'Could not delete item', 'Error');
+        }
+      },
+    });
   };
 
-  
+
 
   // Format date helper
   const formatLogDate = (createdAt: any) => {
@@ -376,7 +371,7 @@ export const InventoryScreen = () => {
         subtitle="Bulk Loads, Kitchen Consumption & Live Ledger"
         rightElement={
           <View className="flex-row items-center gap-2">
-            
+
 
             <TouchableOpacity
               onPress={() => setAddItemModalOpen(true)}
@@ -416,11 +411,10 @@ export const InventoryScreen = () => {
           {/* Low Stock Alerts */}
           <TouchableOpacity
             onPress={() => setStatusFilter(statusFilter === 'LOW_STOCK' ? 'ALL' : 'LOW_STOCK')}
-            className={`p-2.5 rounded-2xl flex-1 min-w-[80px] border ${
-              statusFilter === 'LOW_STOCK'
+            className={`p-2.5 rounded-2xl flex-1 min-w-[80px] border ${statusFilter === 'LOW_STOCK'
                 ? 'bg-amber-500/30 border-amber-400'
                 : 'bg-amber-950/20 border-amber-500/30'
-            }`}
+              }`}
           >
             <View className="flex-row items-center justify-between">
               <Text className="text-amber-400 text-[10px] font-bold uppercase">Low Stock</Text>
@@ -432,11 +426,10 @@ export const InventoryScreen = () => {
           {/* Out of Stock */}
           <TouchableOpacity
             onPress={() => setStatusFilter(statusFilter === 'OUT_OF_STOCK' ? 'ALL' : 'OUT_OF_STOCK')}
-            className={`p-2.5 rounded-2xl flex-1 min-w-[80px] border ${
-              statusFilter === 'OUT_OF_STOCK'
+            className={`p-2.5 rounded-2xl flex-1 min-w-[80px] border ${statusFilter === 'OUT_OF_STOCK'
                 ? 'bg-rose-500/30 border-rose-400'
                 : 'bg-rose-950/20 border-rose-500/30'
-            }`}
+              }`}
           >
             <View className="flex-row items-center justify-between">
               <Text className="text-rose-400 text-[10px] font-bold uppercase">Out of Stock</Text>
@@ -455,9 +448,8 @@ export const InventoryScreen = () => {
         >
           <TouchableOpacity
             onPress={() => setActiveTab('BALANCE')}
-            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'BALANCE' ? 'bg-[#5D3FD3]' : 'bg-slate-950 border border-slate-800'
-            }`}
+            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'BALANCE' ? 'bg-[#5D3FD3]' : 'bg-slate-950 border border-slate-800'
+              }`}
           >
             <Package size={14} color={activeTab === 'BALANCE' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'BALANCE' ? 'text-white' : 'text-slate-400'}`}>
@@ -467,9 +459,8 @@ export const InventoryScreen = () => {
 
           <TouchableOpacity
             onPress={() => setActiveTab('STOCK_IN_LOGS')}
-            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'STOCK_IN_LOGS' ? 'bg-emerald-600' : 'bg-slate-950 border border-slate-800'
-            }`}
+            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'STOCK_IN_LOGS' ? 'bg-emerald-600' : 'bg-slate-950 border border-slate-800'
+              }`}
           >
             <Truck size={14} color={activeTab === 'STOCK_IN_LOGS' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'STOCK_IN_LOGS' ? 'text-white' : 'text-slate-400'}`}>
@@ -479,9 +470,8 @@ export const InventoryScreen = () => {
 
           <TouchableOpacity
             onPress={() => setActiveTab('KITCHEN_ISSUE_LOGS')}
-            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${
-              activeTab === 'KITCHEN_ISSUE_LOGS' ? 'bg-amber-600' : 'bg-slate-950 border border-slate-800'
-            }`}
+            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'KITCHEN_ISSUE_LOGS' ? 'bg-amber-600' : 'bg-slate-950 border border-slate-800'
+              }`}
           >
             <Utensils size={14} color={activeTab === 'KITCHEN_ISSUE_LOGS' ? '#FFFFFF' : '#94A3B8'} />
             <Text className={`text-xs font-black ml-1.5 ${activeTab === 'KITCHEN_ISSUE_LOGS' ? 'text-white' : 'text-slate-400'}`}>
@@ -519,9 +509,8 @@ export const InventoryScreen = () => {
                 <TouchableOpacity
                   key={cat}
                   onPress={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1 rounded-full border ${
-                    selectedCategory === cat ? 'bg-indigo-600/30 border-indigo-400' : 'bg-slate-950 border-slate-800'
-                  }`}
+                  className={`px-3 py-1 rounded-full border ${selectedCategory === cat ? 'bg-indigo-600/30 border-indigo-400' : 'bg-slate-950 border-slate-800'
+                    }`}
                 >
                   <Text className={`text-xs font-bold ${selectedCategory === cat ? 'text-indigo-300' : 'text-slate-400'}`}>
                     {cat}
@@ -578,9 +567,8 @@ export const InventoryScreen = () => {
                         {/* Status Badge */}
                         <View className="flex-row items-center gap-1.5">
                           <View className={`w-2 h-2 rounded-full ${isOutOfStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                          <Text className={`text-[11px] font-bold uppercase tracking-wider ${
-                            isOutOfStock ? 'text-rose-400' : isLowStock ? 'text-amber-300' : 'text-emerald-400'
-                          }`}>
+                          <Text className={`text-[11px] font-bold uppercase tracking-wider ${isOutOfStock ? 'text-rose-400' : isLowStock ? 'text-amber-300' : 'text-emerald-400'
+                            }`}>
                             {isOutOfStock ? 'OUT OF STOCK' : isLowStock ? `LOW STOCK (Min: ${min} ${item.unit})` : 'HEALTHY BALANCE'}
                           </Text>
                         </View>
@@ -589,9 +577,8 @@ export const InventoryScreen = () => {
                       {/* Current Active Balance Highlight */}
                       <View className="items-end bg-slate-950/80 border border-slate-800 px-3.5 py-2 rounded-2xl">
                         <Text className="text-slate-400 text-[10px] font-bold uppercase">Store Balance</Text>
-                        <Text className={`text-2xl font-black ${
-                          isOutOfStock ? 'text-rose-400' : isLowStock ? 'text-amber-300' : 'text-emerald-400'
-                        }`}>
+                        <Text className={`text-2xl font-black ${isOutOfStock ? 'text-rose-400' : isLowStock ? 'text-amber-300' : 'text-emerald-400'
+                          }`}>
                           {stock} <Text className="text-xs text-slate-400 font-bold">{item.unit}</Text>
                         </Text>
                       </View>
@@ -602,9 +589,8 @@ export const InventoryScreen = () => {
                       <View className="h-2 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800">
                         <View
                           style={{ width: `${pct}%` }}
-                          className={`h-full rounded-full ${
-                            isOutOfStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
-                          }`}
+                          className={`h-full rounded-full ${isOutOfStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`}
                         />
                       </View>
                     </View>
@@ -667,11 +653,10 @@ export const InventoryScreen = () => {
                       <TouchableOpacity
                         onPress={() => handleOpenKitchenIssue(item)}
                         disabled={isOutOfStock}
-                        className={`flex-1 py-2.5 rounded-2xl flex-row items-center justify-center border ${
-                          isOutOfStock
+                        className={`flex-1 py-2.5 rounded-2xl flex-row items-center justify-center border ${isOutOfStock
                             ? 'bg-slate-800/40 border-slate-800 opacity-40'
                             : 'bg-amber-600/20 border-amber-500/40 active:bg-amber-600/30'
-                        }`}
+                          }`}
                       >
                         <Utensils size={14} color="#FBBF24" />
                         <Text className="text-amber-300 font-black text-xs ml-1">🍳 Kitchen Issue</Text>
@@ -1081,9 +1066,8 @@ export const InventoryScreen = () => {
                         <TouchableOpacity
                           key={c}
                           onPress={() => setFormCategory(c)}
-                          className={`px-3 py-1.5 rounded-xl border ${
-                            formCategory === c ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-950 border-slate-800'
-                          }`}
+                          className={`px-3 py-1.5 rounded-xl border ${formCategory === c ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-950 border-slate-800'
+                            }`}
                         >
                           <Text className={`text-xs font-bold ${formCategory === c ? 'text-white' : 'text-slate-400'}`}>
                             {c}
@@ -1100,9 +1084,8 @@ export const InventoryScreen = () => {
                         <TouchableOpacity
                           key={u}
                           onPress={() => setFormUnit(u)}
-                          className={`px-3.5 py-1.5 rounded-xl border ${
-                            formUnit === u ? 'bg-[#5D3FD3] border-indigo-400' : 'bg-slate-950 border-slate-800'
-                          }`}
+                          className={`px-3.5 py-1.5 rounded-xl border ${formUnit === u ? 'bg-[#5D3FD3] border-indigo-400' : 'bg-slate-950 border-slate-800'
+                            }`}
                         >
                           <Text className={`text-xs font-bold ${formUnit === u ? 'text-white' : 'text-slate-400'}`}>
                             {u}
@@ -1138,7 +1121,7 @@ export const InventoryScreen = () => {
                     </View>
                   </View>
 
-                  </View>
+                </View>
               </ScrollView>
 
               <View className="flex-row gap-2 pt-2 border-t border-slate-800">

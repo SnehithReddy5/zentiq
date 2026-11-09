@@ -1,4 +1,5 @@
 import { toast } from '../../utils/toast';
+import { confirmDialog } from '../../utils/confirm';
 import { MenuScreen } from '../menu/MenuScreen';
 import React, { useState, useEffect } from 'react';
 import {
@@ -8,8 +9,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Modal,
-  Switch,
-  Alert
+  Switch
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -110,9 +110,9 @@ export const HomeScreen = () => {
   }, [orders, startOfTodayMs, endOfTodayMs]);
 
   const { occupiedTablesCount, availableTablesCount } = React.useMemo(() => {
-    const occupied = tables.filter(t => 
-      t.status === 'running' || 
-      t.status === 'OCCUPIED' || 
+    const occupied = tables.filter(t =>
+      t.status === 'running' ||
+      t.status === 'OCCUPIED' ||
       ((t as any).cartItems && (t as any).cartItems.length > 0)
     );
     return {
@@ -123,18 +123,18 @@ export const HomeScreen = () => {
 
   // LIVE Aggregator orders from real Firestore database (NO hardcoded fake data)
   const liveAggregatorOrders = React.useMemo(() => {
-    return orders.filter(o => 
+    return orders.filter(o =>
       (o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY') &&
       o.status !== 'COMPLETED' && o.status !== 'CANCELLED'
     );
   }, [orders]);
 
-  const zomatoOrders = React.useMemo(() => 
+  const zomatoOrders = React.useMemo(() =>
     liveAggregatorOrders.filter(o => o.orderType === 'ONLINE_ZOMATO'),
     [liveAggregatorOrders]
   );
 
-  const swiggyOrders = React.useMemo(() => 
+  const swiggyOrders = React.useMemo(() =>
     liveAggregatorOrders.filter(o => o.orderType === 'ONLINE_SWIGGY'),
     [liveAggregatorOrders]
   );
@@ -203,25 +203,21 @@ export const HomeScreen = () => {
   };
 
   const handleCancelOnlineOrder = async (orderId: string, orderDisplayNo: string) => {
-    Alert.alert(
-      'Cancel Online Order',
-      `Are you sure you want to cancel order #${orderDisplayNo}?`,
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel Order',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await DBServices.updateOrderStatus(orderId, 'CANCELLED', tenant?.id, activeLocationId || undefined);
-              toast.info(`Order #${orderDisplayNo} has been cancelled.`);
-            } catch (e: any) {
-              toast.error(e?.message || 'Failed to cancel', 'Error');
-            }
-          }
+    confirmDialog({
+            title: 'Cancel Online Order',
+            message: `Are you sure you want to cancel order #${orderDisplayNo} ? `,
+      confirmText: 'Yes, Cancel Order',
+      cancelText: 'No',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await DBServices.updateOrderStatus(orderId, 'CANCELLED', tenant?.id, activeLocationId || undefined);
+          toast.info(`Order #${ orderDisplayNo } has been cancelled.`);
+        } catch (e: any) {
+          toast.error(e?.message || 'Failed to cancel', 'Error');
         }
-      ]
-    );
+      },
+    });
   };
 
   const handleSimulateTestOrder = async (platform: 'ZOMATO' | 'SWIGGY') => {
@@ -229,7 +225,7 @@ export const HomeScreen = () => {
     setIsSimulatingAggregator(true);
     try {
       const res = await DBServices.simulateTestAggregatorOrder(tenant.id, platform, activeLocationId || undefined);
-      toast.success(`${platform} Order #${res.kotNo} Ingested! It is now live in POS.`);
+      toast.success(`${ platform } Order #${ res.kotNo } Ingested! It is now live in POS.`);
     } catch (e: any) {
       toast.error(e?.message || 'Simulation error', 'Error');
     } finally {
@@ -499,7 +495,7 @@ export const HomeScreen = () => {
                       {isZomatoOnline ? 'Live Store' : 'Paused'}
                     </Text>
                     <Text className="text-slate-400 text-[10px]">
-                      {isZomatoOnline ? `${zomatoOrdersCount} Incoming` : 'Offline'}
+                      {isZomatoOnline ? `${ zomatoOrdersCount } Incoming` : 'Offline'}
                     </Text>
                   </View>
 
@@ -530,7 +526,7 @@ export const HomeScreen = () => {
                       {isSwiggyOnline ? 'Live Store' : 'Paused'}
                     </Text>
                     <Text className="text-slate-400 text-[10px]">
-                      {isSwiggyOnline ? `${swiggyOrdersCount} Incoming` : 'Offline'}
+                      {isSwiggyOnline ? `${ swiggyOrdersCount } Incoming` : 'Offline'}
                     </Text>
                   </View>
 
@@ -994,7 +990,7 @@ export const HomeScreen = () => {
                     <Text className="text-white font-bold text-xs ml-2">
                       {isSimulatingAggregator
                         ? 'Simulating Order...'
-                        : `Test Live ${selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} Order`}
+                        : `Test Live ${ selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} Order`}
                     </Text>
                   </TouchableOpacity>
 
@@ -1028,7 +1024,7 @@ export const HomeScreen = () => {
                       </View>
 
                       <Text className="text-slate-300 text-xs font-semibold mb-2">
-                        Customer: {order.customerName || 'Online Diner'} {order.customerPhone ? `(${order.customerPhone})` : ''}
+                        Customer: {order.customerName || 'Online Diner'} {order.customerPhone ? `(${ order.customerPhone })` : ''}
                       </Text>
 
                       <View className="bg-slate-900/90 rounded-xl p-3 mb-3 border border-slate-800">
@@ -1052,7 +1048,7 @@ export const HomeScreen = () => {
                         <View className="flex-row items-center mb-3 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl">
                           <Bike size={14} color="#818CF8" />
                           <Text className="text-indigo-300 text-xs font-medium ml-2 flex-1" numberOfLines={1}>
-                            {order.deliveryRiderName} {order.deliveryRiderPhone ? `• ${order.deliveryRiderPhone}` : ''}
+                            {order.deliveryRiderName} {order.deliveryRiderPhone ? `• ${ order.deliveryRiderPhone } ` : ''}
                           </Text>
                         </View>
                       )}

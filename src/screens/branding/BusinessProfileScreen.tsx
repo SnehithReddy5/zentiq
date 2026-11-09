@@ -1,6 +1,6 @@
 import { toast } from '../../utils/toast';
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, Switch, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Switch, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Save,
@@ -447,8 +447,8 @@ export const BusinessProfileScreen = () => {
 
               {/* Gated Split Payments Toggle */}
               <View className={`p-3.5 rounded-2xl border mt-2 ${canEnableSplit
-                  ? 'bg-purple-950/20 border-purple-500/30'
-                  : 'bg-slate-950/40 border-slate-800 opacity-60'
+                ? 'bg-purple-950/20 border-purple-500/30'
+                : 'bg-slate-950/40 border-slate-800 opacity-60'
                 }`}>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-1 mr-3">
@@ -562,8 +562,8 @@ export const BusinessProfileScreen = () => {
                       key={preset.label}
                       onPress={() => applyGstPreset(preset.total)}
                       className={`flex-1 py-2 rounded-xl border items-center justify-center ${isMatch
-                          ? 'bg-sky-500/20 border-sky-400'
-                          : 'bg-slate-950/80 border-slate-800'
+                        ? 'bg-sky-500/20 border-sky-400'
+                        : 'bg-slate-950/80 border-slate-800'
                         }`}
                     >
                       <Text className={`text-[11px] font-black ${isMatch ? 'text-sky-300' : 'text-slate-400'}`}>
@@ -772,7 +772,7 @@ export const BusinessProfileScreen = () => {
                   const res = await DBServices.simulateTestAggregatorOrder(tenant.id, 'ZOMATO');
                   toast.success(`Zomato Order #ZOM-${res.kotNo} Ingested! Check Running Orders.`);
                 } catch (err: any) {
-                  Alert.alert('Simulation Error', err?.message || 'Could not place test order');
+                  toast.error(err?.message || 'Could not place test order', 'Simulation Error');
                 } finally {
                   setIsSimulatingAggregator(false);
                 }
@@ -793,7 +793,7 @@ export const BusinessProfileScreen = () => {
                   const res = await DBServices.simulateTestAggregatorOrder(tenant.id, 'SWIGGY');
                   toast.success(`Swiggy Order #SWIG-${res.kotNo} Ingested! Check Running Orders.`);
                 } catch (err: any) {
-                  Alert.alert('Simulation Error', err?.message || 'Could not place test order');
+                  toast.error(err?.message || 'Could not place test order', 'Simulation Error');
                 } finally {
                   setIsSimulatingAggregator(false);
                 }
@@ -859,9 +859,8 @@ export const BusinessProfileScreen = () => {
                       <TouchableOpacity
                         key={f.key}
                         onPress={() => setWhatsappReportFrequency(f.key as any)}
-                        className={`flex-1 py-2.5 px-3 rounded-xl border items-center justify-center ${
-                          isSelected ? 'bg-emerald-500/20 border-emerald-400' : 'bg-slate-900 border-slate-700'
-                        }`}
+                        className={`flex-1 py-2.5 px-3 rounded-xl border items-center justify-center ${isSelected ? 'bg-emerald-500/20 border-emerald-400' : 'bg-slate-900 border-slate-700'
+                          }`}
                       >
                         <Text className={`text-xs font-bold ${isSelected ? 'text-emerald-300 font-black' : 'text-slate-400'}`}>
                           {f.label}

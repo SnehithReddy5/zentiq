@@ -1,6 +1,7 @@
 import { toast } from '../../utils/toast';
+import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Plus, LayoutGrid, Users, Trash2, CheckCircle2, Clock, QrCode, Smartphone } from 'lucide-react-native';
@@ -82,24 +83,19 @@ export const TablesScreen = () => {
 
   const handleDeleteTable = (item: Table) => {
     const hasItems = carts[item.tableNo] && carts[item.tableNo].length > 0;
-    Alert.alert(
-      'Delete Table',
-      'Are you sure you want to delete Table ' + item.tableNo + '?' + (hasItems ? ' Note: This table has active items in cart.' : ''),
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete Table',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await DBServices.deleteTable(item.id, tenant?.id, activeLocationId || undefined);
-            } catch (err: any) {
-              toast.error(err.message, 'Failed');
-            }
-          },
-        },
-      ]
-    );
+    confirmDialog({
+      title: 'Delete Table',
+      message: 'Are you sure you want to delete Table ' + item.tableNo + '?' + (hasItems ? ' Note: This table has active items in cart.' : ''),
+      confirmText: 'Delete Table',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await DBServices.deleteTable(item.id, tenant?.id, activeLocationId || undefined);
+        } catch (err: any) {
+          toast.error(err.message, 'Failed');
+        }
+      },
+    });
   };
 
   const handleTablePress = (item: Table) => {
@@ -150,8 +146,8 @@ export const TablesScreen = () => {
           isBillRequested
             ? 'bg-amber-500/25 border-2 border-amber-400 shadow-lg shadow-amber-500/30'
             : isOccupied
-            ? 'bg-amber-950/30 border-amber-500/50'
-            : 'bg-emerald-950/20 border-emerald-500/40'
+              ? 'bg-amber-950/30 border-amber-500/50'
+              : 'bg-emerald-950/20 border-emerald-500/40'
         )}
         style={{ flex: 1 / tableGridColumns }}
         activeOpacity={0.8}
