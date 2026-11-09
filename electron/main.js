@@ -9,7 +9,7 @@ if (app && app.commandLine && typeof app.commandLine.appendSwitch === 'function'
   try {
     app.commandLine.appendSwitch('disable-background-timer-throttling');
     app.commandLine.appendSwitch('disable-renderer-backgrounding');
-  } catch (_) {}
+  } catch (_) { }
 }
 
 let mainWindow;
@@ -21,6 +21,13 @@ function printToNetworkPrinter(ip, port, dataArray) {
     if (!ip) {
       return reject(new Error('Printer IP address is required'));
     }
+    let buffer;
+    try {
+      buffer = Buffer.isBuffer(dataArray) ? dataArray : Buffer.from(dataArray || []);
+    } catch (bufErr) {
+      return reject(new Error('Invalid print data buffer: ' + bufErr.message));
+    }
+
     const targetPort = parseInt(port, 10) || 9100;
     const socket = new net.Socket();
     let isFinished = false;
@@ -28,12 +35,11 @@ function printToNetworkPrinter(ip, port, dataArray) {
     socket.setTimeout(3000);
 
     socket.connect(targetPort, ip, () => {
-      const buffer = Buffer.from(dataArray);
       socket.write(buffer, (err) => {
         if (err) {
           if (!isFinished) {
             isFinished = true;
-            try { socket.destroy(); } catch (_) {}
+            try { socket.destroy(); } catch (_) { }
             reject(err);
           }
         } else {
@@ -41,7 +47,7 @@ function printToNetworkPrinter(ip, port, dataArray) {
           setTimeout(() => {
             if (!isFinished) {
               isFinished = true;
-              try { socket.end(); } catch (_) {}
+              try { socket.end(); } catch (_) { }
               resolve({ success: true });
             }
           }, 50);
@@ -52,7 +58,7 @@ function printToNetworkPrinter(ip, port, dataArray) {
     socket.on('error', (err) => {
       if (!isFinished) {
         isFinished = true;
-        socket.destroy();
+        try { socket.destroy(); } catch (_) { }
         reject(err);
       }
     });
@@ -60,7 +66,7 @@ function printToNetworkPrinter(ip, port, dataArray) {
     socket.on('timeout', () => {
       if (!isFinished) {
         isFinished = true;
-        socket.destroy();
+        try { socket.destroy(); } catch (_) { }
         reject(new Error('Connection timed out connecting to printer at ' + ip + ':' + targetPort));
       }
     });
@@ -68,8 +74,9 @@ function printToNetworkPrinter(ip, port, dataArray) {
 }
 
 // IPC Handler for window.electronPrinter.printRaw
-ipcMain.handle('print-raw', async (event, { ip, port, data }) => {
+ipcMain.handle('print-raw', async (event, payload) => {
   try {
+    const { ip, port, data } = payload || {};
     const res = await printToNetworkPrinter(ip, port, data);
     return res;
   } catch (err) {

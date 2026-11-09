@@ -74,13 +74,17 @@ export const HomeScreen = () => {
   const [isSimulatingAggregator, setIsSimulatingAggregator] = useState(false);
 
   useEffect(() => {
+    if (user?.role === 'KITCHEN' || user?.role === 'KITCHEN_STAFF') {
+      navigation.replace(Routes.KITCHEN_STOCK);
+      return;
+    }
     const unsubOrders = subscribeToOrders();
     const unsubTables = subscribeToTables();
     return () => {
       unsubOrders();
       unsubTables();
     };
-  }, [tenant?.id, activeLocationId]);
+  }, [tenant?.id, activeLocationId, user?.role]);
 
   const isClientAdmin = user?.role === 'CLIENT_ADMIN' || user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'admin';
   const isManagerOrAbove = isClientAdmin || user?.role === 'PLATFORM_ADMIN' || user?.role === 'MANAGER' || user?.role === 'manager';
@@ -618,7 +622,7 @@ export const HomeScreen = () => {
           </View>
         ) : (
           /* DESKTOP / LARGE POS VIEW (>= 768px): Enterprise Multi-Column Dashboard */
-          <>
+          <View className="w-full">
             {/* Top 4 KPI Dashboard Cards */}
             <View className="flex-row flex-wrap gap-3 mb-6">
               <View className="flex-1 min-w-[160px] bg-slate-900 border border-slate-800 p-4 rounded-3xl shadow-md">
@@ -945,7 +949,7 @@ export const HomeScreen = () => {
                 </View>
               </View>
             </View>
-          </>
+          </View>
         )}
       </ScrollView>
 

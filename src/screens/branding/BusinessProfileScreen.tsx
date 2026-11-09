@@ -300,10 +300,10 @@ export const BusinessProfileScreen = () => {
             {isSaving ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <>
+              <View className="flex-row items-center">
                 <Save size={14} color="white" />
                 <Text className="text-white font-bold text-xs ml-1.5">Save Settings</Text>
-              </>
+              </View>
             )}
           </TouchableOpacity>
         }
@@ -899,12 +899,12 @@ export const BusinessProfileScreen = () => {
                 {isSendingWhatsAppTest ? (
                   <ActivityIndicator size="small" color="white" />
                 ) : (
-                  <>
+                  <View className="flex-row items-center">
                     <Send size={16} color="white" />
                     <Text className="text-white font-bold text-xs sm:text-sm ml-2">
                       📲 Send Today's Sales Summary to WhatsApp Now
                     </Text>
-                  </>
+                  </View>
                 )}
               </TouchableOpacity>
             </View>

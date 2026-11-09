@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/auth.store';
 import { useTenantStore } from '../store/tenant.store';
 import { AuthNavigator } from './AuthNavigator';
 import { AppNavigator } from './AppNavigator';
+import { KitchenStockScreen } from '../screens/menu/KitchenStockScreen';
 import { Routes } from '../constants/routes';
 import { ShieldAlert, LogOut } from 'lucide-react-native';
 import { useLiveOrderNotifications } from '../hooks/useLiveOrderNotifications';
@@ -85,18 +86,22 @@ export const RootNavigator = () => {
     );
   }
 
+  const isKitchenStaff = user?.role === 'KITCHEN' || user?.role === 'KITCHEN_STAFF';
+
   return (
     <NavigationContainer theme={CustomDarkTheme}>
-      {user && <GlobalOrderWatcher />}
+      {user && !isKitchenStaff && <GlobalOrderWatcher />}
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: '#090D1A' },
-          animation: 'slide_from_right',
+          animation: 'fade',
         }}
       >
         {!user ? (
           <Stack.Screen name={Routes.AUTH} component={AuthNavigator} />
+        ) : isKitchenStaff ? (
+          <Stack.Screen name={Routes.KITCHEN_STOCK} component={KitchenStockScreen} />
         ) : (
           <Stack.Screen name={Routes.APP} component={AppNavigator} />
         )}

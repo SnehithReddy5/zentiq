@@ -645,18 +645,18 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             ListEmptyComponent={
               <View className="py-16 items-center">
                 {activeCategory === 'favorites' ? (
-                  <>
+                  <View className="items-center">
                     <Star size={36} color="#F59E0B" />
                     <Text className="text-white font-bold text-sm mt-3">No Favorite Items Starred</Text>
                     <Text className="text-slate-400 text-xs mt-1 text-center px-6">
                       Star your most popular favorite items in Menu Management for rapid 1-touch ordering!
                     </Text>
-                  </>
+                  </View>
                 ) : (
-                  <>
+                  <View className="items-center">
                     <ShoppingBag size={36} color="#475569" />
                     <Text className="text-slate-400 text-xs mt-3">No menu items found in this section</Text>
-                  </>
+                  </View>
                 )}
               </View>
             }
@@ -805,7 +805,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           {/* Action Buttons Row: Equal width side-by-side or full width */}
           <View className="flex-row gap-2">
             {isDualPrinterMode && unsentItems.length > 0 ? (
-              <>
+              <View className="flex-1 flex-row gap-2">
                 <TouchableOpacity
                   onPress={handleSendToKitchen}
                   disabled={isSendingKOT}
@@ -814,12 +814,12 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                   {isSendingKOT ? (
                     <ActivityIndicator size="small" color="#F59E0B" />
                   ) : (
-                    <>
+                    <View className="flex-row items-center">
                       <Send size={15} color="#FBBF24" />
                       <Text className="text-amber-300 font-black text-xs ml-1.5" numberOfLines={1}>
                         Send KOT ({unsentItems.reduce((s, i) => s + i.qty, 0)})
                       </Text>
-                    </>
+                    </View>
                   )}
                 </TouchableOpacity>
 
@@ -832,7 +832,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                     {paymentsEnabled ? "View Cart & Pay →" : "View & Send KOT →"}
                   </Text>
                 </TouchableOpacity>
-              </>
+              </View>
             ) : (
               <TouchableOpacity
                 onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}

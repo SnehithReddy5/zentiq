@@ -119,6 +119,9 @@ export const UserManagementScreen = () => {
       case 'BILLER':
       case 'CASHIER':
         return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+      case 'KITCHEN':
+      case 'KITCHEN_STAFF':
+        return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
       default:
         return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
     }
@@ -261,6 +264,7 @@ export const UserManagementScreen = () => {
                   <View className="space-y-2">
                     {[
                       { r: 'WAITER', title: 'Waiter / Captain', desc: 'Order entry & KOT printing only' },
+                      { r: 'KITCHEN', title: 'Kitchen Staff', desc: 'Can only view menu & mark items In-Stock / Out-of-Stock' },
                       { r: 'BILLER', title: 'Biller / Cashier', desc: 'Orders, KOT, checkout & bill settlement' },
                       { r: 'MANAGER', title: 'Store Manager', desc: 'Orders, billing, tables, printer config & inventory' },
                       { r: 'CLIENT_ADMIN', title: 'Restaurant Admin / Owner', desc: 'Full restaurant control, staff management & branch access' },

@@ -548,15 +548,15 @@ export const MenuManagementScreen = () => {
                       }`}
                   >
                     {isOutOfStock ? (
-                      <>
+                      <View className="flex-row items-center">
                         <Ban size={13} color="#F43F5E" />
                         <Text className="text-rose-400 font-bold text-xs ml-1.5">Out of Stock</Text>
-                      </>
+                      </View>
                     ) : (
-                      <>
+                      <View className="flex-row items-center">
                         <CheckCircle2 size={13} color="#34D399" />
                         <Text className="text-emerald-400 font-bold text-xs ml-1.5">In Stock</Text>
-                      </>
+                      </View>
                     )}
                   </TouchableOpacity>
 

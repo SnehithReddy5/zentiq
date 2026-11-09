@@ -7,6 +7,8 @@ export type UserRole =
   | 'BILLER'              // Cashier / Billing Counter
   | 'WAITER'              // Waiter / Captain
   | 'CASHIER'
+  | 'KITCHEN'             // Kitchen Staff (Menu availability / Out of Stock toggle only)
+  | 'KITCHEN_STAFF'       // Alias for Kitchen Staff
   // Legacy aliases
   | 'admin'
   | 'manager'

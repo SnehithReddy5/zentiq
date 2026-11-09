@@ -94,7 +94,7 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
           },
           tenant.id,
           activeLocationId
-        ).catch(() => {});
+        ).catch(() => { });
       }
     } catch (e: any) {
       console.warn('Auto Kitchen KOT build/dispatch error:', e?.message);
@@ -148,11 +148,17 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
     if (!isQROrder) return;
 
     // 3. New QR Order needing Kitchen KOT print:
-    // If order has NOT been printed yet (kotPrinted !== true), print Round 1 immediately!
     const isUnprinted = order.kotPrinted !== true;
     const previousItemCount = printedItemCounts.get(order.id) || 0;
     const hasMoreItems = orderItems.length > previousItemCount;
 
+    // A) If order is ALREADY printed in Firestore and has no new QR items, seed local count and do not reprint
+    if (!isUnprinted && !printedItemCounts.has(order.id) && order.hasNewQRItems !== true) {
+      printedItemCounts.set(order.id, orderItems.length);
+      return;
+    }
+
+    // B) Brand new unprinted QR order (Round 1)
     if (isUnprinted && !printedItemCounts.has(order.id)) {
       printedItemCounts.set(order.id, orderItems.length);
       roundCounts.set(order.id, 1);
@@ -173,7 +179,7 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
       return;
     }
 
-    // 4. Multi-Round Additional Items Ordered via QR (Round 2, 3, etc.)
+    // C) Multi-Round Additional Items Ordered via QR (Round 2, 3, etc.)
     if (hasMoreItems || order.hasNewQRItems === true) {
       if (orderItems.length > previousItemCount) {
         const newItems = orderItems.slice(previousItemCount);
@@ -242,7 +248,7 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
             processIncomingOrder(ord);
           }
         });
-      } catch (_) {}
+      } catch (_) { }
     }, 4000);
 
     // 3. Immediate check whenever user switches back to or focuses the POS app
@@ -255,7 +261,7 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
             processIncomingOrder(ord);
           }
         });
-      } catch (_) {}
+      } catch (_) { }
     };
 
     // React Native AppState listener (100% safe on Android / iOS / Native)
@@ -266,7 +272,7 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
           handleFocus();
         }
       });
-    } catch (_) {}
+    } catch (_) { }
 
     // Web-only focus & visibility listeners (strictly guarded for Web)
     let cleanupWeb: (() => void) | null = null;
@@ -286,9 +292,9 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
             if (typeof document.removeEventListener === 'function') {
               document.removeEventListener('visibilitychange', handleFocus);
             }
-          } catch (_) {}
+          } catch (_) { }
         };
-      } catch (_) {}
+      } catch (_) { }
     }
 
     return () => {

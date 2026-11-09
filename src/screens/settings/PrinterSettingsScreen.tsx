@@ -351,10 +351,10 @@ export const PrinterSettingsScreen = () => {
             {isSaving ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <>
+              <View className="flex-row items-center">
                 <Check size={14} color="white" />
                 <Text className="text-white font-bold text-xs ml-1.5">Save Changes</Text>
-              </>
+              </View>
             )}
           </TouchableOpacity>
         }
@@ -815,13 +815,13 @@ export const PrinterSettingsScreen = () => {
                 {isTestingBilling ? (
                   <ActivityIndicator size="small" color="#818CF8" />
                 ) : (
-                  <>
+                  <View className="items-center">
                     <Printer size={16} color="#818CF8" />
                     <Text className="text-indigo-300 font-bold text-xs mt-1">Test Counter Bill</Text>
                     <Text className="text-slate-400 text-[10px] mt-0.5" numberOfLines={1}>
                       {printerType === 'USB' ? (printerName || 'USB') : (ipAddress || 'Not set')}
                     </Text>
-                  </>
+                  </View>
                 )}
               </TouchableOpacity>
 
@@ -833,13 +833,13 @@ export const PrinterSettingsScreen = () => {
                 {isTestingKitchen ? (
                   <ActivityIndicator size="small" color="#F59E0B" />
                 ) : (
-                  <>
+                  <View className="items-center">
                     <Printer size={16} color="#F59E0B" />
                     <Text className="text-amber-300 font-bold text-xs mt-1">Test Kitchen KOT</Text>
                     <Text className="text-slate-400 text-[10px] mt-0.5" numberOfLines={1}>
                       {kitchenPrinterType === 'USB' ? (kitchenPrinterName || 'USB') : (kitchenIpAddress || 'Not set')}
                     </Text>
-                  </>
+                  </View>
                 )}
               </TouchableOpacity>
             </View>
@@ -854,13 +854,13 @@ export const PrinterSettingsScreen = () => {
               {isTestingBilling ? (
                 <ActivityIndicator size="small" color="#F59E0B" />
               ) : (
-                <>
+                <View className="items-center">
                   <Printer size={16} color="#F59E0B" />
                   <Text className="text-amber-300 font-bold text-xs mt-1">Test Counter Bill Print</Text>
                   <Text className="text-slate-400 text-[10px] mt-0.5">
                     {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
                   </Text>
-                </>
+                </View>
               )}
             </TouchableOpacity>
           )}
@@ -874,13 +874,13 @@ export const PrinterSettingsScreen = () => {
               {isTestingTiffin ? (
                 <ActivityIndicator size="small" color="#34D399" />
               ) : (
-                <>
+                <View className="items-center">
                   <Coffee size={16} color="#34D399" />
                   <Text className="text-emerald-300 font-bold text-xs mt-1">Test 2-Print Slip (Bill + Kitchen Slip)</Text>
                   <Text className="text-slate-400 text-[10px] mt-0.5">
                     {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
                   </Text>
-                </>
+                </View>
               )}
             </TouchableOpacity>
           )}

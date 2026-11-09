@@ -734,12 +734,12 @@ export const CartScreen = () => {
                     {isSettling ? (
                       <ActivityIndicator size="small" color="#1E293B" />
                     ) : (
-                      <>
+                      <View className="flex-row items-center">
                         <Printer size={18} color="#0F172A" />
                         <Text className="text-slate-950 font-black text-base ml-2">
                           Print KOT & Dispatch
                         </Text>
-                      </>
+                      </View>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -887,12 +887,12 @@ export const CartScreen = () => {
                             {isPrintingBillOnly ? (
                               <ActivityIndicator size="small" color="#A5B4FC" />
                             ) : (
-                              <>
+                              <View className="flex-row items-center">
                                 <Printer size={18} color="#A5B4FC" />
                                 <Text className="text-indigo-200 font-black text-sm ml-2">
                                   Print Bill
                                 </Text>
-                              </>
+                              </View>
                             )}
                           </TouchableOpacity>
 
@@ -909,12 +909,12 @@ export const CartScreen = () => {
                             {isSettling ? (
                               <ActivityIndicator size="small" color="white" />
                             ) : (
-                              <>
+                              <View className="flex-row items-center">
                                 <CheckCircle2 size={18} color="white" />
                                 <Text className="text-white font-black text-sm ml-2">
                                   Save & Settle
                                 </Text>
-                              </>
+                              </View>
                             )}
                           </TouchableOpacity>
                         </View>
@@ -933,12 +933,12 @@ export const CartScreen = () => {
                             {isPrintingBillOnly ? (
                               <ActivityIndicator size="small" color="#A5B4FC" />
                             ) : (
-                              <>
+                              <View className="flex-row items-center">
                                 <Printer size={18} color="#A5B4FC" />
                                 <Text className="text-indigo-200 font-black text-sm ml-2">
                                   Print Bill
                                 </Text>
-                              </>
+                              </View>
                             )}
                           </TouchableOpacity>
 
@@ -955,12 +955,12 @@ export const CartScreen = () => {
                             {isSettling ? (
                               <ActivityIndicator size="small" color="white" />
                             ) : (
-                              <>
+                              <View className="flex-row items-center">
                                 <Printer size={18} color="white" />
                                 <Text className="text-white font-black text-sm ml-2">
                                   Settle & Print (₹{cartTotal.toFixed(2)})
                                 </Text>
-                              </>
+                              </View>
                             )}
                           </TouchableOpacity>
                         </View>
@@ -1078,12 +1078,12 @@ export const CartScreen = () => {
                             {isPrintingBillOnly ? (
                               <ActivityIndicator size="small" color="#A5B4FC" />
                             ) : (
-                              <>
+                              <View className="flex-row items-center">
                                 <Printer size={18} color="#A5B4FC" />
                                 <Text className="text-indigo-200 font-black text-sm ml-2">
                                   Print Bill
                                 </Text>
-                              </>
+                              </View>
                             )}
                           </TouchableOpacity>
 
@@ -1100,12 +1100,12 @@ export const CartScreen = () => {
                             {isSettling ? (
                               <ActivityIndicator size="small" color="white" />
                             ) : (
-                              <>
+                              <View className="flex-row items-center">
                                 <CheckCircle2 size={18} color="white" />
                                 <Text className="text-white font-black text-sm ml-2">
                                   {remaining === 0 ? 'Save & Settle' : `Pending ₹${remaining.toFixed(2)}`}
                                 </Text>
-                              </>
+                              </View>
                             )}
                           </TouchableOpacity>
                         </View>
@@ -1124,12 +1124,12 @@ export const CartScreen = () => {
                             {isPrintingBillOnly ? (
                               <ActivityIndicator size="small" color="#A5B4FC" />
                             ) : (
-                              <>
+                              <View className="flex-row items-center">
                                 <Printer size={18} color="#A5B4FC" />
                                 <Text className="text-indigo-200 font-black text-sm ml-2">
                                   Print Bill
                                 </Text>
-                              </>
+                              </View>
                             )}
                           </TouchableOpacity>
 
@@ -1146,12 +1146,12 @@ export const CartScreen = () => {
                             {isSettling ? (
                               <ActivityIndicator size="small" color="white" />
                             ) : (
-                              <>
+                              <View className="flex-row items-center">
                                 <Printer size={18} color="white" />
                                 <Text className="text-white font-black text-sm ml-2">
                                   {remaining === 0 ? 'Settle & Print' : `Pending ₹${remaining.toFixed(2)}`}
                                 </Text>
-                              </>
+                              </View>
                             )}
                           </TouchableOpacity>
                         </View>

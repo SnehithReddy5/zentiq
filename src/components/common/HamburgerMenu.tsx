@@ -24,6 +24,7 @@ import {
 import { Routes } from '../../constants/routes';
 import { useAuthStore } from '../../store/auth.store';
 import { useTenantStore } from '../../store/tenant.store';
+import packageJson from '../../../package.json';
 
 interface HamburgerMenuProps {
   isVisible: boolean;
@@ -46,6 +47,7 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
   const isSuperAdmin = user?.role === 'PLATFORM_ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'admin';
   const isManager = isSuperAdmin || user?.role === 'MANAGER' || user?.role === 'manager';
   const isBiller = isManager || user?.role === 'BILLER' || user?.role === 'CASHIER';
+  const isKitchenStaff = user?.role === 'KITCHEN' || user?.role === 'KITCHEN_STAFF';
 
   const activeLocation = getActiveLocation();
   const businessName = branding?.displayName || branding?.businessName || tenant?.businessName || 'Zentiq POS';
@@ -90,47 +92,34 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
               </View>
             </View>
 
-            {/* Navigation Items (Filtered by Role) */}
-            <View className="space-y-1.5">
-              {/* Tables: Available to All */}
-              {features.tablesEnabled && (
+            {/* Navigation Items (Filtered by Role - Kitchen Staff gets 0 access to POS modules) */}
+            {!isKitchenStaff && (
+              <View className="space-y-1.5">
+                {/* Tables & Floor Plan */}
+                {features.tablesEnabled && (
+                  <TouchableOpacity
+                    onPress={() => navigateTo(Routes.TABLES)}
+                    className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  >
+                    <View className="flex-row items-center">
+                      <LayoutGrid size={18} color="#818CF8" />
+                      <Text className="text-slate-200 text-sm font-semibold ml-3">Floor Plan & Tables</Text>
+                    </View>
+                    <ChevronRight size={16} color="#64748B" />
+                  </TouchableOpacity>
+                )}
+
+                {/* Running Orders: Available to All */}
                 <TouchableOpacity
-                  onPress={() => navigateTo(Routes.TABLES)}
+                  onPress={() => navigateTo(Routes.ORDERS)}
                   className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
                 >
                   <View className="flex-row items-center">
-                    <LayoutGrid size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Floor Plan & Tables</Text>
+                    <ClipboardList size={18} color="#818CF8" />
+                    <Text className="text-slate-200 text-sm font-semibold ml-3">Orders History & Ledger</Text>
                   </View>
                   <ChevronRight size={16} color="#64748B" />
                 </TouchableOpacity>
-              )}
-
-              {/* Table QR Codes & Standees */}
-              {features.tablesEnabled && (
-                <TouchableOpacity
-                  onPress={() => navigateTo(Routes.TABLES)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
-                >
-                  <View className="flex-row items-center">
-                    <QrCode size={18} color="#34D399" />
-                    <Text className="text-emerald-300 text-sm font-semibold ml-3">Table QR Codes & Standees</Text>
-                  </View>
-                  <ChevronRight size={16} color="#64748B" />
-                </TouchableOpacity>
-              )}
-
-              {/* Running Orders: Available to All */}
-              <TouchableOpacity
-                onPress={() => navigateTo(Routes.ORDERS)}
-                className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
-              >
-                <View className="flex-row items-center">
-                  <ClipboardList size={18} color="#818CF8" />
-                  <Text className="text-slate-200 text-sm font-semibold ml-3">Orders History & Ledger</Text>
-                </View>
-                <ChevronRight size={16} color="#64748B" />
-              </TouchableOpacity>
 
               {/* Kitchen Inventory & Store Load */}
               {isManager && (
@@ -244,6 +233,7 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
                 </TouchableOpacity>
               )}
             </View>
+            )}
           </ScrollView>
 
           {/* Logout Footer */}
@@ -252,7 +242,7 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
             <View className="flex-row items-center justify-between px-2 pb-3 mb-1">
               <Text className="text-slate-500 text-xs font-medium">App Version</Text>
               <View className="bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700/60">
-                <Text className="text-indigo-400 text-xs font-bold font-mono">v1.3.0</Text>
+                <Text className="text-indigo-400 text-xs font-bold font-mono">v{packageJson.version}</Text>
               </View>
             </View>
 

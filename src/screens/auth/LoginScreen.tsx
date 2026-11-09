@@ -19,6 +19,7 @@ import { Utensils, Lock, User, Eye, EyeOff, Sparkles } from 'lucide-react-native
 import { db } from '../../services/firebase/config';
 import { doc, getDoc, setDoc, collection, collectionGroup, query, where, getDocs } from 'firebase/firestore';
 import { DBServices } from '../../services/firebase/db';
+import packageJson from '../../../package.json';
 
 export const LoginScreen = () => {
   const insets = useSafeAreaInsets();
