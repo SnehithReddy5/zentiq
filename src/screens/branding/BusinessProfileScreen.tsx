@@ -19,14 +19,19 @@ import {
   CheckCircle2,
   Lock,
   KeyRound,
-  ShieldCheck
+  ShieldCheck,
+  MessageSquare,
+  Send
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
+import { useOrderStore } from '../../store/order.store';
 import { DBServices } from '../../services/firebase/db';
+import { WhatsAppReportService } from '../../services/whatsapp/whatsappReport.service';
+import { OrderSummaryExcelService } from '../../services/excel/orderSummaryExcel.service';
 
 export const BusinessProfileScreen = () => {
   const insets = useSafeAreaInsets();
@@ -101,6 +106,20 @@ export const BusinessProfileScreen = () => {
     features.splitPaymentsEnabled !== undefined ? features.splitPaymentsEnabled : true
   );
 
+  // WhatsApp Automated Reports Settings
+  const [whatsappReportsEnabled, setWhatsappReportsEnabled] = useState(
+    branding?.whatsappReportsEnabled !== undefined
+      ? branding.whatsappReportsEnabled
+      : (features.whatsappReportsEnabled !== undefined ? features.whatsappReportsEnabled : false)
+  );
+  const [whatsappReportsPhone, setWhatsappReportsPhone] = useState(
+    branding?.whatsappReportsPhone || features.whatsappReportsPhone || branding?.phone || ''
+  );
+  const [whatsappReportFrequency, setWhatsappReportFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>(
+    branding?.whatsappReportFrequency || features.whatsappReportFrequency || 'DAILY'
+  );
+  const [isSendingWhatsAppTest, setIsSendingWhatsAppTest] = useState(false);
+
   const [isSaving, setIsSaving] = useState(false);
   const [isSimulatingAggregator, setIsSimulatingAggregator] = useState(false);
 
@@ -136,6 +155,40 @@ export const BusinessProfileScreen = () => {
     setCustomMethods(customMethods.filter(m => m !== methodName));
   };
 
+  const handleSendWhatsAppReportTest = async () => {
+    setIsSendingWhatsAppTest(true);
+    try {
+      const orders = useOrderStore.getState().orders;
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+      const todayOrders = orders.filter(o => {
+        const d = OrderSummaryExcelService.parseOrderDate(o.createdAt);
+        return d >= todayStart && d <= todayEnd;
+      });
+
+      const todayStr = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
+
+      const res = await WhatsAppReportService.shareReport({
+        orders: todayOrders,
+        tenantName: displayName || businessName || 'Our Restaurant',
+        locationName: 'Main Branch',
+        periodLabel: `Today (${todayStr})`,
+        phoneNumber: whatsappReportsPhone.trim() || phone.trim(),
+        frequency: whatsappReportFrequency,
+      });
+
+      if (res) {
+        toast.success('WhatsApp opened with formatted sales summary!', 'Report Dispatched');
+      }
+    } catch (err: any) {
+      toast.error(err.message, 'WhatsApp Error');
+    } finally {
+      setIsSendingWhatsAppTest(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!tenant?.id) return;
     setIsSaving(true);
@@ -158,6 +211,9 @@ export const BusinessProfileScreen = () => {
         gstType,
         cgstRate: parseFloat(cgstRate) || 0,
         sgstRate: parseFloat(sgstRate) || 0,
+        whatsappReportsEnabled,
+        whatsappReportsPhone: whatsappReportsPhone.trim(),
+        whatsappReportFrequency,
       };
       await DBServices.updateTenantBranding(tenant.id, brandingPayload);
       setBranding(brandingPayload);
@@ -186,6 +242,9 @@ export const BusinessProfileScreen = () => {
         gstType,
         cgstRate: parseFloat(cgstRate) || 0,
         sgstRate: parseFloat(sgstRate) || 0,
+        whatsappReportsEnabled,
+        whatsappReportsPhone: whatsappReportsPhone.trim(),
+        whatsappReportFrequency,
       };
       await DBServices.updateTenantFeatures(tenant.id, featuresPayload);
       setFeatures({ ...features, ...featuresPayload });
@@ -746,6 +805,110 @@ export const BusinessProfileScreen = () => {
               </Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* 4C. WHATSAPP AUTOMATED SALES REPORTS (100% FREE VIA WA.ME) */}
+        <View className="bg-slate-900 border border-emerald-500/30 rounded-3xl p-5 mb-6 shadow-sm">
+          <View className="flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-1">
+            <View className="flex-row items-center flex-1 mr-2 min-w-[160px]">
+              <MessageSquare size={18} color="#25D366" />
+              <Text className="text-white font-black text-sm sm:text-base ml-2">WhatsApp Sales Reports</Text>
+            </View>
+            <View className="px-2.5 py-0.5 rounded-full border bg-emerald-500/10 border-emerald-500/30 shrink-0 self-start sm:self-auto">
+              <Text className="text-[10px] font-bold uppercase text-emerald-400">
+                ₹0 Free API • Direct Dispatch
+              </Text>
+            </View>
+          </View>
+
+          <Text className="text-slate-400 text-xs mb-4 leading-relaxed">
+            Send end-of-day sales summaries, collection breakdowns (Cash, UPI, Card), and top-selling items directly to the restaurant owner or manager's WhatsApp at zero recurring cost.
+          </Text>
+
+          {/* Toggle: Enable WhatsApp Reports */}
+          <View className="flex-row items-center justify-between p-3.5 bg-slate-950/80 border border-slate-800 rounded-2xl mb-4">
+            <View className="flex-1 mr-3">
+              <Text className="text-white font-bold text-sm">Enable WhatsApp Reports</Text>
+              <Text className="text-slate-400 text-xs mt-0.5">
+                Enables WhatsApp report triggers and daily/monthly summaries.
+              </Text>
+            </View>
+            <Switch
+              value={whatsappReportsEnabled}
+              onValueChange={setWhatsappReportsEnabled}
+              trackColor={{ false: '#334155', true: '#25D366' }}
+              thumbColor={whatsappReportsEnabled ? '#FFFFFF' : '#94A3B8'}
+            />
+          </View>
+
+          {whatsappReportsEnabled && (
+            <View className="gap-3">
+              {/* Frequency Selector */}
+              <View className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800">
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-slate-300 font-bold text-xs">Report Frequency</Text>
+                  <Text className="text-[10px] text-indigo-400 font-semibold">Auto 12:00 AM Schedule</Text>
+                </View>
+                <View className="flex-row gap-2">
+                  {[
+                    { key: 'DAILY', label: '☀️ Daily (12:00 AM Midnight)' },
+                    { key: 'MONTHLY', label: '🗓️ Monthly (12:00 AM on 1st)' }
+                  ].map(f => {
+                    const isSelected = whatsappReportFrequency === f.key;
+                    return (
+                      <TouchableOpacity
+                        key={f.key}
+                        onPress={() => setWhatsappReportFrequency(f.key as any)}
+                        className={`flex-1 py-2.5 px-3 rounded-xl border items-center justify-center ${
+                          isSelected ? 'bg-emerald-500/20 border-emerald-400' : 'bg-slate-900 border-slate-700'
+                        }`}
+                      >
+                        <Text className={`text-xs font-bold ${isSelected ? 'text-emerald-300 font-black' : 'text-slate-400'}`}>
+                          {f.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Recipient Phone Numbers */}
+              <View className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-slate-300 font-bold text-xs">Recipient WhatsApp Numbers</Text>
+                  <Text className="text-[10px] text-emerald-400 font-semibold">1 or Multiple Numbers</Text>
+                </View>
+                <TextInput
+                  placeholder="e.g. 9876543210, 9123456789"
+                  placeholderTextColor="#64748B"
+                  value={whatsappReportsPhone}
+                  onChangeText={setWhatsappReportsPhone}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-sm"
+                />
+                <Text className="text-slate-500 text-[10px] mt-1">
+                  Enter mobile numbers separated by comma. Automated 12:00 AM reports will be dispatched to each number.
+                </Text>
+              </View>
+
+              {/* Test Trigger Button */}
+              <TouchableOpacity
+                disabled={isSendingWhatsAppTest}
+                onPress={handleSendWhatsAppReportTest}
+                className="w-full mt-1 py-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
+              >
+                {isSendingWhatsAppTest ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <Send size={16} color="white" />
+                    <Text className="text-white font-bold text-xs sm:text-sm ml-2">
+                      📲 Send Today's Sales Summary to WhatsApp Now
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* 5. CLIENT ADMIN CREDENTIALS CARD */}

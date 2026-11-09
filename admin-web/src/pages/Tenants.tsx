@@ -154,6 +154,9 @@ export const Tenants = () => {
   const [multiLocationEnabled, setMultiLocationEnabled] = useState(true);
   const [dineInEnabled, setDineInEnabled] = useState(true);
   const [pickupEnabled, setPickupEnabled] = useState(true);
+  const [whatsappSenderPhone, setWhatsappSenderPhone] = useState('');
+  const [whatsappReportsEnabled, setWhatsappReportsEnabled] = useState(false);
+  const [whatsappReportFrequency, setWhatsappReportFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
 
   // Edit Modal State
   const [editingTenant, setEditingTenant] = useState<any>(null);
@@ -173,6 +176,9 @@ export const Tenants = () => {
   const [editMultiLocationEnabled, setEditMultiLocationEnabled] = useState(true);
   const [editDineInEnabled, setEditDineInEnabled] = useState(true);
   const [editPickupEnabled, setEditPickupEnabled] = useState(true);
+  const [editWhatsappSenderPhone, setEditWhatsappSenderPhone] = useState('');
+  const [editWhatsappReportsEnabled, setEditWhatsappReportsEnabled] = useState(false);
+  const [editWhatsappReportFrequency, setEditWhatsappReportFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editRenewalDate, setEditRenewalDate] = useState('');
   const [deleteTargetTenant, setDeleteTargetTenant] = useState<any | null>(null);
@@ -320,6 +326,7 @@ Zentiq Platform Team`;
         adminUsername: adminMobile.trim(),
         adminPassword: adminPassword.trim(),
         apkUrl: effectiveApkUrl,
+        whatsappSenderPhone: whatsappSenderPhone.trim() || undefined,
         subscriptionPlan: 'ANNUAL',
         renewalDate: renewalDate.toISOString(),
         provisionedAt: serverTimestamp(),
@@ -387,6 +394,8 @@ Zentiq Platform Team`;
         splitPaymentsEnabled: true,
         inventoryEnabled: false,
         insightsEnabled: true,
+        whatsappReportsEnabled,
+        whatsappReportFrequency,
         createdAt: serverTimestamp(),
       });
 
@@ -397,6 +406,9 @@ Zentiq Platform Team`;
         email: adminEmail.trim(),
         receiptHeader: tenantName.toUpperCase().trim(),
         receiptFooter: 'Thank You & Visit Again!!',
+        whatsappSenderPhone: whatsappSenderPhone.trim(),
+        whatsappReportsEnabled,
+        whatsappReportFrequency,
         createdAt: serverTimestamp(),
       });
 
@@ -415,6 +427,9 @@ Zentiq Platform Team`;
       setAdminEmail('');
       setAdminMobile('');
       setAdminPassword('');
+      setWhatsappSenderPhone('');
+      setWhatsappReportsEnabled(false);
+      setWhatsappReportFrequency('DAILY');
       setIsModalOpen(false);
     } catch (err: any) {
       console.error(err);
@@ -433,6 +448,7 @@ Zentiq Platform Team`;
     setEditAdminMobile(tenant.adminUsername || '');
     setEditAdminPassword(tenant.adminPassword || '');
     setEditApkUrl(tenant.apkUrl || '');
+    setEditWhatsappSenderPhone(tenant.whatsappSenderPhone || '');
     setEditMultiLocationEnabled(tenant.multiLocationEnabled ?? true);
     if (tenant.renewalDate) {
       setEditRenewalDate(tenant.renewalDate.split('T')[0]);
@@ -450,6 +466,19 @@ Zentiq Platform Team`;
         setEditDineInEnabled(f.dineInEnabled ?? true);
         setEditPickupEnabled(f.pickupEnabled ?? true);
         setEditMultiLocationEnabled(f.multiLocationEnabled ?? true);
+        if (f.whatsappReportsEnabled !== undefined) setEditWhatsappReportsEnabled(f.whatsappReportsEnabled);
+        if (f.whatsappReportFrequency) setEditWhatsappReportFrequency(f.whatsappReportFrequency);
+      }
+    });
+
+    // Fetch branding configuration
+    const brandRef = doc(db, 'tenants', tenant.id, 'branding', 'config');
+    onSnapshot(brandRef, (bSnap) => {
+      if (bSnap.exists()) {
+        const b = bSnap.data();
+        if (b.whatsappSenderPhone) setEditWhatsappSenderPhone(b.whatsappSenderPhone);
+        if (b.whatsappReportsEnabled !== undefined) setEditWhatsappReportsEnabled(b.whatsappReportsEnabled);
+        if (b.whatsappReportFrequency) setEditWhatsappReportFrequency(b.whatsappReportFrequency);
       }
     });
   };
@@ -473,6 +502,7 @@ Zentiq Platform Team`;
         adminUsername: editAdminMobile.trim() || undefined,
         adminPassword: editAdminPassword.trim() || undefined,
         apkUrl: editApkUrl.trim() || undefined,
+        whatsappSenderPhone: editWhatsappSenderPhone.trim() || undefined,
         renewalDate: editRenewalDate ? new Date(editRenewalDate).toISOString() : undefined,
         updatedAt: serverTimestamp(),
       });
@@ -483,6 +513,16 @@ Zentiq Platform Team`;
         dineInEnabled: editDineInEnabled,
         pickupEnabled: editPickupEnabled,
         multiLocationEnabled: editMultiLocationEnabled,
+        whatsappReportsEnabled: editWhatsappReportsEnabled,
+        whatsappReportFrequency: editWhatsappReportFrequency,
+      }, { merge: true });
+
+      // Update branding
+      await setDoc(doc(db, 'tenants', editingTenant.id, 'branding', 'config'), {
+        whatsappSenderPhone: editWhatsappSenderPhone.trim(),
+        whatsappReportsEnabled: editWhatsappReportsEnabled,
+        whatsappReportFrequency: editWhatsappReportFrequency,
+        updatedAt: serverTimestamp(),
       }, { merge: true });
 
       // If admin credentials changed, synchronize user documents
@@ -1078,6 +1118,44 @@ Zentiq Platform Team`;
                     <p className="text-[10px] text-slate-500 mt-0.5">Pre-filled with latest active release URL. Editable per client if needed.</p>
                   </div>
                 </div>
+
+                {/* WhatsApp Reports Configuration */}
+                <div className="bg-slate-800/40 border border-emerald-500/30 p-3 rounded-2xl space-y-2.5 mt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>💬</span> WhatsApp Reports Setup
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                      ₹0 API Cost
+                    </span>
+                  </div>
+
+                  <label className="flex items-center justify-between text-xs text-slate-200 cursor-pointer">
+                    <span>Enable WhatsApp Reports for Client</span>
+                    <input
+                      type="checkbox"
+                      checked={whatsappReportsEnabled}
+                      onChange={e => setWhatsappReportsEnabled(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-500 rounded"
+                    />
+                  </label>
+
+                  <div>
+                    <label className="text-xs text-slate-300 font-semibold block mb-1">
+                      WhatsApp Sender Number
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 919876543210"
+                      value={whatsappSenderPhone}
+                      onChange={e => setWhatsappSenderPhone(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      The official WhatsApp sender number used to send automated reports to client recipients.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-2.5 pt-3">
@@ -1320,6 +1398,44 @@ Zentiq Platform Team`;
                       onChange={e => setEditAdminPassword(e.target.value)}
                       className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
                     />
+                  </div>
+                </div>
+
+                {/* WhatsApp Reports Configuration */}
+                <div className="bg-slate-800/40 border border-emerald-500/30 p-3 rounded-2xl space-y-2.5 mt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>💬</span> WhatsApp Reports Setup
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                      ₹0 API Cost
+                    </span>
+                  </div>
+
+                  <label className="flex items-center justify-between text-xs text-slate-200 cursor-pointer">
+                    <span>Enable WhatsApp Reports for Client</span>
+                    <input
+                      type="checkbox"
+                      checked={editWhatsappReportsEnabled}
+                      onChange={e => setEditWhatsappReportsEnabled(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-500 rounded"
+                    />
+                  </label>
+
+                  <div>
+                    <label className="text-xs text-slate-300 font-semibold block mb-1">
+                      WhatsApp Sender Number
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 919876543210"
+                      value={editWhatsappSenderPhone}
+                      onChange={e => setEditWhatsappSenderPhone(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 text-xs text-white p-2.5 rounded-xl focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      The official WhatsApp sender number used to send automated reports to client recipients.
+                    </p>
                   </div>
                 </div>
               </div>

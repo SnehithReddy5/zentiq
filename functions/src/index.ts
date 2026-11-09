@@ -260,3 +260,282 @@ app.post('/email-order', async (req: express.Request, res: express.Response) => 
 
 export const aggregatorWebhook = functions.https.onRequest(app);
 
+// ============================================================================
+// AUTOMATED 12:00 AM WHATSAPP SALES REPORTS (DAILY & MONTHLY CRON)
+// ============================================================================
+
+interface WhatsAppDispatchSummary {
+  totalRevenue: number;
+  totalOrders: number;
+  avgOrderValue: number;
+  cashTotal: number;
+  cashCount: number;
+  upiTotal: number;
+  upiCount: number;
+  cardTotal: number;
+  cardCount: number;
+  topItems: Array<{ name: string; qty: number; revenue: number }>;
+}
+
+function cleanPhoneNumber(phone?: string): string {
+  if (!phone) return '';
+  let cleaned = phone.replace(/[^0-9+]/g, '');
+  if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
+  if (cleaned.length === 10) cleaned = '91' + cleaned;
+  return cleaned;
+}
+
+function buildWhatsAppReportText(options: {
+  tenantName: string;
+  periodLabel: string;
+  frequency: 'DAILY' | 'MONTHLY';
+  summary: WhatsAppDispatchSummary;
+}): string {
+  const { tenantName, periodLabel, frequency, summary } = options;
+  const now = new Date();
+  const timestamp = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()} 00:00 AM`;
+  const badge = frequency === 'MONTHLY' ? '🗓️ MONTHLY AUDIT' : '☀️ DAILY SALES';
+
+  let msg = `📊 *ZENTIQ POS - AUTOMATED SALES REPORT*\n`;
+  msg += `🏷️ *Type:* ${badge} (Auto 12:00 AM Schedule)\n`;
+  msg += `🏪 *Store:* ${tenantName}\n`;
+  msg += `📅 *Period:* ${periodLabel}\n`;
+  msg += `⏰ *Generated:* ${timestamp}\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  msg += `💰 *Total Sales:* ₹${summary.totalRevenue.toFixed(2)}\n`;
+  msg += `🧾 *Completed Orders:* ${summary.totalOrders}\n`;
+  msg += `📈 *Avg Order Value:* ₹${summary.avgOrderValue.toFixed(2)}\n\n`;
+
+  msg += `💳 *Tender Breakdown:*\n`;
+  if (summary.cashTotal > 0) msg += `• 💵 *Cash:* ₹${summary.cashTotal.toFixed(2)} (${summary.cashCount} parts)\n`;
+  if (summary.upiTotal > 0) msg += `• 📱 *UPI:* ₹${summary.upiTotal.toFixed(2)} (${summary.upiCount} parts)\n`;
+  if (summary.cardTotal > 0) msg += `• 💳 *Card:* ₹${summary.cardTotal.toFixed(2)} (${summary.cardCount} parts)\n`;
+  if (summary.cashTotal === 0 && summary.upiTotal === 0 && summary.cardTotal === 0) {
+    msg += `• No recorded collections\n`;
+  }
+  msg += `\n`;
+
+  if (summary.topItems.length > 0) {
+    msg += `⭐ *Top Selling Items:*\n`;
+    summary.topItems.forEach((it, idx) => {
+      msg += `${idx + 1}. *${it.name}* - ${it.qty} sold (₹${it.revenue.toFixed(0)})\n`;
+    });
+    msg += `\n`;
+  }
+
+  msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `✨ _Automated via Zentiq POS Server (12:00 AM Auto-Report)_`;
+  return msg;
+}
+
+export const scheduledWhatsAppReports = functions.pubsub
+  .schedule('0 0 * * *')
+  .timeZone('Asia/Kolkata')
+  .onRun(async (context) => {
+    console.log('⏰ Starting 12:00 AM Automated WhatsApp Sales Report run (Asia/Kolkata)...');
+
+    const now = new Date();
+    const isFirstDayOfMonth = now.getDate() === 1;
+
+    // Yesterday Date Range for DAILY reports
+    const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+    const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+    const yesterdayDateStr = `${yesterdayStart.getDate().toString().padStart(2, '0')}/${(yesterdayStart.getMonth() + 1).toString().padStart(2, '0')}/${yesterdayStart.getFullYear()}`;
+
+    // Last Month Date Range for MONTHLY reports
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const prevMonthName = `${monthNames[prevMonthStart.getMonth()]} ${prevMonthStart.getFullYear()}`;
+
+    try {
+      const tenantsSnap = await db.collection('tenants').where('status', '==', 'ACTIVE').get();
+      console.log(`Found ${tenantsSnap.size} active tenants.`);
+
+      for (const tenantDoc of tenantsSnap.docs) {
+        const tenantId = tenantDoc.id;
+        const tenantData = tenantDoc.data();
+
+        // 1. Check Branding & Feature config
+        const brandSnap = await db.collection('tenants').doc(tenantId).collection('branding').doc('config').get();
+        const brandData = brandSnap.exists ? brandSnap.data() : {};
+        const featSnap = await db.collection('tenants').doc(tenantId).collection('features').doc('config').get();
+        const featData = featSnap.exists ? featSnap.data() : {};
+
+        const isEnabled = brandData?.whatsappReportsEnabled === true || featData?.whatsappReportsEnabled === true;
+        if (!isEnabled) {
+          continue;
+        }
+
+        const frequency: 'DAILY' | 'MONTHLY' = (brandData?.whatsappReportFrequency || featData?.whatsappReportFrequency || 'DAILY') === 'MONTHLY'
+          ? 'MONTHLY'
+          : 'DAILY';
+
+        // If MONTHLY schedule, only run on 1st day of month
+        if (frequency === 'MONTHLY' && !isFirstDayOfMonth) {
+          continue;
+        }
+
+        const businessName = brandData?.displayName || brandData?.businessName || tenantData.displayName || tenantData.businessName || 'Restaurant';
+
+        // Determine targets & date boundaries
+        const periodLabel = frequency === 'MONTHLY' ? `Month of ${prevMonthName}` : `Yesterday (${yesterdayDateStr})`;
+        const startDate = frequency === 'MONTHLY' ? prevMonthStart : yesterdayStart;
+        const endDate = frequency === 'MONTHLY' ? prevMonthEnd : yesterdayEnd;
+
+        // 2. Aggregate orders across branches
+        const locsSnap = await db.collection('tenants').doc(tenantId).collection('locations').get();
+        const allOrders: any[] = [];
+
+        for (const locDoc of locsSnap.docs) {
+          const ordersSnap = await db
+            .collection('tenants')
+            .doc(tenantId)
+            .collection('locations')
+            .doc(locDoc.id)
+            .collection('orders')
+            .where('status', 'in', ['COMPLETED', 'PAID', 'SERVED', 'RUNNING'])
+            .get();
+
+          ordersSnap.forEach(oDoc => {
+            const o = oDoc.data();
+            let oTime: number | null = null;
+            if (o.createdAt?.toMillis) oTime = o.createdAt.toMillis();
+            else if (o.createdAt instanceof Date) oTime = o.createdAt.getTime();
+            else if (typeof o.createdAt === 'string') oTime = new Date(o.createdAt).getTime();
+
+            if (oTime && oTime >= startDate.getTime() && oTime <= endDate.getTime()) {
+              allOrders.push(o);
+            }
+          });
+        }
+
+        // 3. Compute Metrics
+        const totalOrders = allOrders.length;
+        const totalRevenue = allOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+        const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+        let cashTotal = 0;
+        let cashCount = 0;
+        let upiTotal = 0;
+        let upiCount = 0;
+        let cardTotal = 0;
+        let cardCount = 0;
+
+        allOrders.forEach(o => {
+          if (o.payments && Array.isArray(o.payments) && o.payments.length > 0) {
+            o.payments.forEach((p: any) => {
+              const m = String(p.method || '').toUpperCase();
+              const amt = Number(p.amount) || 0;
+              if (m.includes('CASH')) { cashTotal += amt; cashCount++; }
+              else if (m.includes('UPI')) { upiTotal += amt; upiCount++; }
+              else if (m.includes('CARD')) { cardTotal += amt; cardCount++; }
+            });
+          } else {
+            const m = String(o.paymentMethod || 'CASH').toUpperCase();
+            const amt = Number(o.totalAmount) || 0;
+            if (m.includes('CASH')) { cashTotal += amt; cashCount++; }
+            else if (m.includes('UPI')) { upiTotal += amt; upiCount++; }
+            else if (m.includes('CARD')) { cardTotal += amt; cardCount++; }
+          }
+        });
+
+        // Top items
+        const itemMap = new Map<string, { qty: number; revenue: number }>();
+        allOrders.forEach(o => {
+          if (o.items && Array.isArray(o.items)) {
+            o.items.forEach((it: any) => {
+              const name = String(it.itemName || it.name || 'Item').trim();
+              const qty = Number(it.qty) || 1;
+              const price = Number(it.price) || 0;
+              const curr = itemMap.get(name) || { qty: 0, revenue: 0 };
+              itemMap.set(name, { qty: curr.qty + qty, revenue: curr.revenue + (price * qty) });
+            });
+          }
+        });
+
+        const topItems = Array.from(itemMap.entries())
+          .sort((a, b) => b[1].qty - a[1].qty)
+          .slice(0, 5)
+          .map(([name, d]) => ({ name, qty: d.qty, revenue: d.revenue }));
+
+        // 4. Build Report Text
+        const reportText = buildWhatsAppReportText({
+          tenantName: businessName,
+          periodLabel,
+          frequency,
+          summary: {
+            totalRevenue,
+            totalOrders,
+            avgOrderValue,
+            cashTotal,
+            cashCount,
+            upiTotal,
+            upiCount,
+            cardTotal,
+            cardCount,
+            topItems,
+          },
+        });
+
+        // 5. Parse recipient phone numbers (comma-separated support)
+        const rawPhones = brandData?.whatsappReportsPhone || featData?.whatsappReportsPhone || tenantData.adminUsername || tenantData.phone || '';
+        const recipientList = rawPhones
+          .split(/[,;]/)
+          .map((p: string) => cleanPhoneNumber(p.trim()))
+          .filter((p: string) => p.length >= 10);
+
+        const dispatchId = `dispatch-${frequency.toLowerCase()}-${Date.now()}`;
+        const dispatchRecord = {
+          id: dispatchId,
+          tenantId,
+          frequency,
+          periodLabel,
+          reportText,
+          recipientPhones: recipientList,
+          senderPhone: cleanPhoneNumber(brandData?.whatsappSenderPhone || tenantData.whatsappSenderPhone || ''),
+          metrics: {
+            totalRevenue,
+            totalOrders,
+            avgOrderValue,
+          },
+          scheduledAt: '12:00 AM',
+          status: 'PROCESSED',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        // 6. Save in tenant dispatches
+        await db
+          .collection('tenants')
+          .doc(tenantId)
+          .collection('whatsapp_dispatches')
+          .doc(dispatchId)
+          .set(dispatchRecord);
+
+        // 7. Store in POS notifications
+        await db
+          .collection('tenants')
+          .doc(tenantId)
+          .collection('notifications')
+          .doc(dispatchId)
+          .set({
+            title: `🌙 12:00 AM WhatsApp ${frequency === 'MONTHLY' ? 'Monthly' : 'Daily'} Report Generated`,
+            message: `Sales summary for ${periodLabel}: ₹${totalRevenue.toFixed(0)} (${totalOrders} orders) scheduled for ${recipientList.length} recipients.`,
+            type: 'WHATSAPP_REPORT',
+            data: dispatchRecord,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+        console.log(`✅ Dispatched 12:00 AM WhatsApp ${frequency} report for tenant "${businessName}" (${recipientList.length} numbers).`);
+      }
+
+      console.log('🏁 12:00 AM Automated WhatsApp Sales Report run completed successfully.');
+      return null;
+    } catch (err: any) {
+      console.error('Error during scheduled WhatsApp report dispatch:', err);
+      return null;
+    }
+  });
+
+

@@ -13,6 +13,7 @@ export interface TenantProfile {
   aggregatorEmail?: string;
   adminUsername?: string;
   adminPassword?: string;
+  whatsappSenderPhone?: string;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -34,6 +35,10 @@ export interface TenantBranding {
   gstType?: 'INCLUSIVE' | 'EXCLUSIVE';
   cgstRate?: number;
   sgstRate?: number;
+  whatsappReportsEnabled?: boolean;
+  whatsappReportsPhone?: string;
+  whatsappReportFrequency?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  whatsappSenderPhone?: string;
 }
 
 export interface TenantFeatures {
@@ -54,6 +59,10 @@ export interface TenantFeatures {
   gstType?: 'INCLUSIVE' | 'EXCLUSIVE';
   cgstRate?: number;
   sgstRate?: number;
+  whatsappReportsEnabled?: boolean;
+  whatsappReportsPhone?: string;
+  whatsappReportFrequency?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  whatsappSenderPhone?: string;
 }
 
 export type LocationStatus = 'REQUESTED' | 'APPROVED' | 'ACTIVE' | 'DISABLED' | 'SUSPENDED' | 'DEACTIVATED';

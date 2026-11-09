@@ -14,11 +14,13 @@ import {
   Banknote,
   Smartphone,
   CreditCard,
-  Utensils
+  Utensils,
+  MessageSquare
 } from 'lucide-react-native';
 import { toast } from '../../utils/toast';
 import { Order } from '../../types/order.types';
 import { OrderSummaryExcelService } from '../../services/excel/orderSummaryExcel.service';
+import { WhatsAppReportService } from '../../services/whatsapp/whatsappReport.service';
 import { useTenantStore } from '../../store/tenant.store';
 
 interface OrderSummaryDownloadModalProps {
@@ -36,7 +38,7 @@ const OrderSummaryDownloadModalInner: React.FC<OrderSummaryDownloadModalProps> =
   tenantName = 'Vasudha Restaurant',
   locationName = 'Main Branch',
 }) => {
-  const { features } = useTenantStore();
+  const { features, branding } = useTenantStore();
   const isPaymentsEnabled = features?.paymentsEnabled !== false;
 
   const [selectedMode, setSelectedMode] = useState<'TODAY' | 'LAST_MONTH' | 'CUSTOM'>('TODAY');
@@ -242,6 +244,43 @@ const OrderSummaryDownloadModalInner: React.FC<OrderSummaryDownloadModalProps> =
     }
   };
 
+  // WhatsApp Share Handlers (100% Free wa.me / whatsapp://)
+  const handleShareWhatsAppToday = async () => {
+    const targetPhone = branding?.whatsappReportsPhone || branding?.phone || '';
+    await WhatsAppReportService.shareReport({
+      orders: todayOrders,
+      tenantName,
+      locationName,
+      periodLabel: `Today (${todayDateStr})`,
+      phoneNumber: targetPhone,
+      frequency: 'DAILY',
+    });
+  };
+
+  const handleShareWhatsAppLastMonth = async () => {
+    const targetPhone = branding?.whatsappReportsPhone || branding?.phone || '';
+    await WhatsAppReportService.shareReport({
+      orders: lastMonthOrders,
+      tenantName,
+      locationName,
+      periodLabel: `Last Month (${lastMonthLabel})`,
+      phoneNumber: targetPhone,
+      frequency: 'MONTHLY',
+    });
+  };
+
+  const handleShareWhatsAppCustom = async () => {
+    const targetPhone = branding?.whatsappReportsPhone || branding?.phone || '';
+    await WhatsAppReportService.shareReport({
+      orders: customOrders,
+      tenantName,
+      locationName,
+      periodLabel: `${customStartDate} to ${customEndDate}`,
+      phoneNumber: targetPhone,
+      frequency: 'DAILY',
+    });
+  };
+
   if (!isVisible) return null;
 
   return (
@@ -352,6 +391,14 @@ const OrderSummaryDownloadModalInner: React.FC<OrderSummaryDownloadModalProps> =
                     </View>
                   )}
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleShareWhatsAppToday}
+                  className="w-full mt-2.5 py-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
+                >
+                  <MessageSquare size={16} color="white" />
+                  <Text className="text-white font-bold text-xs sm:text-sm ml-2">Share Today via WhatsApp (Free)</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -442,6 +489,14 @@ const OrderSummaryDownloadModalInner: React.FC<OrderSummaryDownloadModalProps> =
                       <Text className="text-white font-bold text-sm ml-2">Download Last Month Report (.xlsx)</Text>
                     </View>
                   )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleShareWhatsAppLastMonth}
+                  className="w-full mt-2.5 py-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
+                >
+                  <MessageSquare size={16} color="white" />
+                  <Text className="text-white font-bold text-xs sm:text-sm ml-2">Share Last Month via WhatsApp (Free)</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -563,6 +618,14 @@ const OrderSummaryDownloadModalInner: React.FC<OrderSummaryDownloadModalProps> =
                       <Text className="text-white font-bold text-sm ml-2">Download Custom Range Report (.xlsx)</Text>
                     </View>
                   )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleShareWhatsAppCustom}
+                  className="w-full mt-2.5 py-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
+                >
+                  <MessageSquare size={16} color="white" />
+                  <Text className="text-white font-bold text-xs sm:text-sm ml-2">Share Custom Period via WhatsApp (Free)</Text>
                 </TouchableOpacity>
               </View>
             )}

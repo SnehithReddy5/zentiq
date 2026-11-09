@@ -54,7 +54,7 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
 
   // 3. Native & Web File Picker: Open Excel / CSV file
   const handlePickFile = () => {
-    if (typeof document !== 'undefined') {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.xlsx, .xls, .csv';
@@ -86,7 +86,7 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
     try {
       const DocumentPicker = require('expo-document-picker');
       DocumentPicker.getDocumentAsync({
-        type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv'],
+        type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv', '*/*'],
         copyToCacheDirectory: true,
       }).then(async (res: any) => {
         if (res.canceled || !res.assets || res.assets.length === 0) return;
@@ -96,7 +96,7 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
         try {
           const FileSystem = require('expo-file-system');
           const b64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
-          const binary = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const binary = Uint8Array.from(atob(b64), (c: string) => c.charCodeAt(0));
           const parsed = MenuExcelService.parseMenuExcel(binary, items);
           setParseResult(parsed);
           toast.success(`Parsed ${parsed.validItems.length} items from ${asset.name}!`);
@@ -105,6 +105,8 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
         } finally {
           setIsParsing(false);
         }
+      }).catch((pickErr: any) => {
+        console.warn('Document picker error:', pickErr);
       });
     } catch (_) {
       handleLoadSampleExcel();
@@ -165,20 +167,20 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
 
           <ScrollView className="flex-1 p-5" showsVerticalScrollIndicator={true}>
             {/* Step 1 & Step 2 Action Grid */}
-            <View className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+            <View className="flex-col md:flex-row gap-3 mb-5">
               {/* Step 1: Download Template */}
-              <View className="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex-col justify-between">
-                <div>
+              <View className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex-col justify-between">
+                <View>
                   <View className="flex-row items-center gap-2 mb-1.5">
-                    <span className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold text-xs flex items-center justify-center">
-                      1
-                    </span>
+                    <View className="w-5 h-5 rounded-full bg-indigo-500/20 items-center justify-center">
+                      <Text className="text-indigo-300 font-bold text-xs">1</Text>
+                    </View>
                     <Text className="text-white font-bold text-sm">Download Template</Text>
                   </View>
                   <Text className="text-slate-400 text-[11px] leading-relaxed mb-3">
                     Includes columns: <Text className="text-indigo-300 font-semibold">Category</Text>, <Text className="text-indigo-300 font-semibold">Item Name</Text>, <Text className="text-indigo-300 font-semibold">Price</Text>, <Text className="text-indigo-300 font-semibold">Has Variant</Text>, <Text className="text-indigo-300 font-semibold">Variant Name</Text>, <Text className="text-indigo-300 font-semibold">Variant Price</Text>.
                   </Text>
-                </div>
+                </View>
 
                 <View className="flex-row gap-2">
                   <TouchableOpacity
@@ -199,18 +201,18 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
               </View>
 
               {/* Step 2: Upload Excel File */}
-              <View className="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex-col justify-between">
-                <div>
+              <View className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex-col justify-between">
+                <View>
                   <View className="flex-row items-center gap-2 mb-1.5">
-                    <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center justify-center">
-                      2
-                    </span>
+                    <View className="w-5 h-5 rounded-full bg-emerald-500/20 items-center justify-center">
+                      <Text className="text-emerald-300 font-bold text-xs">2</Text>
+                    </View>
                     <Text className="text-white font-bold text-sm">Upload Spreadsheet</Text>
                   </View>
                   <Text className="text-slate-400 text-[11px] leading-relaxed mb-3">
                     Select your populated Excel or CSV file. Items and variants will be validated before saving.
                   </Text>
-                </div>
+                </View>
 
                 <View className="flex-row gap-2">
                   <TouchableOpacity
