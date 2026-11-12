@@ -1,7 +1,7 @@
 import { toast } from '../../utils/toast';
 import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Modal, ScrollView, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, Trash2, Pencil, Users, MapPin, X, Check, Building } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
@@ -14,6 +14,8 @@ import { UserRole } from '../../types/auth.types';
 
 export const UserManagementScreen = () => {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 640;
   const { tenant, locations } = useTenantStore();
   const { user } = useAuthStore();
   const [users, setUsers] = useState<any[]>([]);
@@ -222,9 +224,24 @@ export const UserManagementScreen = () => {
 
       {/* Add / Edit Staff Modal */}
       {isModalOpen && (
-        <Modal visible={true} transparent animationType="slide">
-          <View className="flex-1 justify-center items-center bg-black/80 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-            <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-md max-h-[90%] shadow-2xl">
+        <Modal visible={true} transparent animationType="slide" onRequestClose={() => setModalOpen(false)}>
+          <View
+            className="flex-1 justify-end sm:justify-center items-center bg-black/80"
+            style={{ padding: isMobile ? 0 : 16 }}
+          >
+            <View
+              className="bg-slate-900 border border-slate-800 w-full max-w-md shadow-2xl"
+              style={{
+                height: isMobile ? '92%' : undefined,
+                maxHeight: isMobile ? '92%' : '90%',
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                borderBottomLeftRadius: isMobile ? 0 : 28,
+                borderBottomRightRadius: isMobile ? 0 : 28,
+                padding: isMobile ? 16 : 20,
+                paddingBottom: isMobile ? Math.max(insets.bottom + 8, 20) : 20,
+              }}
+            >
               <View className="flex-row justify-between items-center mb-4 border-b border-slate-800 pb-3">
                 <View>
                   <Text className="text-white font-black text-lg">

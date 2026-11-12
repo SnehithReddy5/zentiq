@@ -310,13 +310,13 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         return;
       }
     }
-    updateQuantity(tableNo, cItem.itemId, cItem.qty + 1);
+    updateQuantity(tableNo, cItem.itemId, cItem.qty + 1, cItem.variantId || cItem.variantName);
   };
 
   const renderItemCard = ({ item }: { item: MenuItem }) => {
     const hasVariants = item.variants && item.variants.length > 0;
-    const cartItem = cartItems.find(i => i.itemId === item.id);
-    const qty = cartItem?.qty || 0;
+    const matchingCartItems = cartItems.filter(i => i.itemId === item.id || (i as any).baseItemId === item.id);
+    const qty = matchingCartItems.reduce((sum, i) => sum + (i.qty || 0), 0);
     const availStock = getAvailableStock(item);
     const isExplicitlyOutOfStock = item.isAvailable === false;
     const isOutOfStock = isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0);
@@ -446,17 +446,19 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             </View>
           ) : (
             cartItems.map((item, index) => (
-              <View key={index} className="flex-row items-center justify-between py-2 border-b border-slate-800/50">
+              <View key={`${item.itemId}_${item.variantId || item.variantName || index}`} className="flex-row items-center justify-between py-2 border-b border-slate-800/50">
                 <View className="flex-1 mr-2">
-                  <Text className="text-white text-xs font-semibold" numberOfLines={1}>{item.itemName}</Text>
+                  <Text className="text-white text-xs font-semibold" numberOfLines={1}>
+                    {item.itemName} {item.variantName ? `(${item.variantName})` : ''}
+                  </Text>
                   <Text className="text-slate-400 text-[10px]">₹{item.price} each</Text>
                 </View>
                 <View className="flex-row items-center bg-slate-800 rounded p-0.5">
                   <TouchableOpacity
                     className="w-6 h-6 rounded bg-slate-700 items-center justify-center"
                     onPress={() => {
-                      if (item.qty > 1) updateQuantity(tableNo, item.itemId, item.qty - 1);
-                      else removeItem(tableNo, item.itemId);
+                      if (item.qty > 1) updateQuantity(tableNo, item.itemId, item.qty - 1, item.variantId || item.variantName);
+                      else removeItem(tableNo, item.itemId, item.variantId || item.variantName);
                     }}
                   >
                     <Text className="text-white font-bold">-</Text>
@@ -689,7 +691,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                       const deduction = typeof v.portionDeduction === 'number' ? v.portionDeduction : 1;
                       const canFulfill = selectedItemForVariants.isAvailable !== false && (!selectedItemForVariants.trackInventory || (avail >= deduction));
                       const variantItemId = `${selectedItemForVariants.id}_${v.name}`;
-                      const inCart = cartItems.find(i => i.itemId === variantItemId);
+                      const inCart = cartItems.find(i => i.itemId === variantItemId || (i.itemId === selectedItemForVariants.id && (i.variantId === v.id || i.variantName === v.name)));
                       const vQty = inCart ? inCart.qty : 0;
 
                       return (

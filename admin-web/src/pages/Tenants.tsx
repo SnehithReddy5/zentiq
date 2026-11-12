@@ -326,7 +326,7 @@ Zentiq Platform Team`;
         adminUsername: adminMobile.trim(),
         adminPassword: adminPassword.trim(),
         apkUrl: effectiveApkUrl,
-        whatsappSenderPhone: whatsappSenderPhone.trim() || undefined,
+        whatsappSenderPhone: whatsappSenderPhone.trim(),
         subscriptionPlan: 'ANNUAL',
         renewalDate: renewalDate.toISOString(),
         provisionedAt: serverTimestamp(),
@@ -490,20 +490,24 @@ Zentiq Platform Team`;
 
     setIsSavingEdit(true);
     try {
-      // Update tenant document
+      // Update tenant document (avoid passing undefined values to Firestore updateDoc)
       await updateDoc(doc(db, 'tenants', editingTenant.id), {
         businessName: editName.trim(),
         displayName: editName.trim(),
         businessType: editType,
         multiLocationEnabled: editMultiLocationEnabled,
-        adminEmail: editAdminEmail.trim() ? editAdminEmail.trim().toLowerCase() : undefined,
-        email: editAdminEmail.trim() ? editAdminEmail.trim().toLowerCase() : undefined,
-        aggregatorEmail: editAdminEmail.trim() ? editAdminEmail.trim().toLowerCase() : undefined,
-        adminUsername: editAdminMobile.trim() || undefined,
-        adminPassword: editAdminPassword.trim() || undefined,
-        apkUrl: editApkUrl.trim() || undefined,
-        whatsappSenderPhone: editWhatsappSenderPhone.trim() || undefined,
-        renewalDate: editRenewalDate ? new Date(editRenewalDate).toISOString() : undefined,
+        ...(editAdminEmail.trim()
+          ? {
+              adminEmail: editAdminEmail.trim().toLowerCase(),
+              email: editAdminEmail.trim().toLowerCase(),
+              aggregatorEmail: editAdminEmail.trim().toLowerCase(),
+            }
+          : {}),
+        ...(editAdminMobile.trim() ? { adminUsername: editAdminMobile.trim() } : {}),
+        ...(editAdminPassword.trim() ? { adminPassword: editAdminPassword.trim() } : {}),
+        ...(editApkUrl.trim() ? { apkUrl: editApkUrl.trim() } : {}),
+        whatsappSenderPhone: editWhatsappSenderPhone.trim(),
+        ...(editRenewalDate ? { renewalDate: new Date(editRenewalDate).toISOString() } : {}),
         updatedAt: serverTimestamp(),
       });
 

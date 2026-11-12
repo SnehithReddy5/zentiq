@@ -1,6 +1,7 @@
 import { toast } from '../../utils/toast';
 import React, { useState, useRef } from 'react';
-import { View, Text, Modal, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ScrollView, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Download, Upload, CheckCircle2, AlertTriangle, X, FileSpreadsheet, Layers, Sparkles, RefreshCw, FileText } from 'lucide-react-native';
 import { Button } from '../../components/common/Button';
 import { MenuExcelService, ParseResult, ParsedMenuItem } from '../../services/excel/menuExcel.service';
@@ -14,6 +15,10 @@ interface MenuExcelImportModalProps {
 }
 
 export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVisible, onClose }) => {
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isMobile = width < 640;
+
   const { tenant, activeLocationId } = useTenantStore();
   const { items } = useMenuStore();
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
@@ -140,36 +145,52 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
   if (!isVisible) return null;
 
   return (
-    <Modal visible={isVisible} transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 justify-center items-center bg-black/85 p-4">
-        <View className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[90%] shadow-2xl overflow-hidden flex-col">
+    <Modal visible={isVisible} transparent animationType={isMobile ? "slide" : "fade"} onRequestClose={onClose}>
+      <View
+        className="flex-1 justify-end sm:justify-center items-center bg-black/85"
+        style={{ padding: isMobile ? 0 : 16 }}
+      >
+        <View
+          className="bg-slate-900 border border-slate-800 w-full max-w-2xl shadow-2xl overflow-hidden flex-col"
+          style={{
+            height: isMobile ? '94%' : undefined,
+            maxHeight: isMobile ? '94%' : '90%',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            borderBottomLeftRadius: isMobile ? 0 : 28,
+            borderBottomRightRadius: isMobile ? 0 : 28,
+            paddingBottom: isMobile ? Math.max(insets.bottom, 8) : 0,
+          }}
+        >
           {/* Modal Header */}
-          <View className="p-5 border-b border-slate-800 flex-row items-center justify-between bg-slate-950/60">
-            <View className="flex-row items-center">
-              <View className="w-10 h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 items-center justify-center mr-3">
-                <FileSpreadsheet size={22} color="#818CF8" />
+          <View className="px-4 py-3.5 sm:p-5 border-b border-slate-800 flex-row items-center justify-between bg-slate-950/70">
+            <View className="flex-row items-center flex-1 mr-2">
+              <View className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 items-center justify-center mr-2.5 sm:mr-3 shrink-0">
+                <FileSpreadsheet size={isMobile ? 18 : 22} color="#818CF8" />
               </View>
-              <View>
-                <Text className="text-white font-black text-lg">Excel / CSV Menu Import</Text>
-                <Text className="text-slate-400 text-xs mt-0.5">
-                  Bulk add or update menu items & variants via spreadsheet
+              <View className="flex-1">
+                <Text className="text-white font-black text-base sm:text-lg" numberOfLines={1}>
+                  Excel / CSV Menu Import
+                </Text>
+                <Text className="text-slate-400 text-[11px] sm:text-xs mt-0.5" numberOfLines={1}>
+                  Bulk add or update items via spreadsheet
                 </Text>
               </View>
             </View>
             <TouchableOpacity
               onPress={onClose}
-              className="p-2 bg-slate-800 hover:bg-slate-700 rounded-full"
+              className="p-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-700 rounded-full shrink-0"
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <X size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
 
-          <ScrollView className="flex-1 p-5" showsVerticalScrollIndicator={true}>
+          <ScrollView className="flex-1 p-3.5 sm:p-5" showsVerticalScrollIndicator={true}>
             {/* Step 1 & Step 2 Action Grid */}
-            <View className="flex-col md:flex-row gap-3 mb-5">
+            <View className={`gap-3 mb-4 ${isMobile ? 'flex-col' : 'flex-row'}`}>
               {/* Step 1: Download Template */}
-              <View className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex-col justify-between">
+              <View className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-3.5 sm:p-4 flex-col justify-between">
                 <View>
                   <View className="flex-row items-center gap-2 mb-1.5">
                     <View className="w-5 h-5 rounded-full bg-indigo-500/20 items-center justify-center">
@@ -178,14 +199,14 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
                     <Text className="text-white font-bold text-sm">Download Template</Text>
                   </View>
                   <Text className="text-slate-400 text-[11px] leading-relaxed mb-3">
-                    Includes columns: <Text className="text-indigo-300 font-semibold">Category</Text>, <Text className="text-indigo-300 font-semibold">Item Name</Text>, <Text className="text-indigo-300 font-semibold">Price</Text>, <Text className="text-indigo-300 font-semibold">Has Variant</Text>, <Text className="text-indigo-300 font-semibold">Variant Name</Text>, <Text className="text-indigo-300 font-semibold">Variant Price</Text>.
+                    Columns: <Text className="text-indigo-300 font-semibold">Category, Item Name, Price, Variants</Text>.
                   </Text>
                 </View>
 
                 <View className="flex-row gap-2">
                   <TouchableOpacity
                     onPress={() => handleDownloadTemplate('xlsx')}
-                    className="flex-1 py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl flex-row items-center justify-center shadow-md shadow-indigo-600/20"
+                    className="flex-1 py-2.5 px-2.5 sm:px-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl flex-row items-center justify-center shadow-md shadow-indigo-600/20"
                   >
                     <Download size={14} color="white" />
                     <Text className="text-white font-black text-xs ml-1.5">.XLSX Template</Text>
@@ -201,7 +222,7 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
               </View>
 
               {/* Step 2: Upload Excel File */}
-              <View className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-4 flex-col justify-between">
+              <View className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-3.5 sm:p-4 flex-col justify-between">
                 <View>
                   <View className="flex-row items-center gap-2 mb-1.5">
                     <View className="w-5 h-5 rounded-full bg-emerald-500/20 items-center justify-center">
@@ -210,7 +231,7 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
                     <Text className="text-white font-bold text-sm">Upload Spreadsheet</Text>
                   </View>
                   <Text className="text-slate-400 text-[11px] leading-relaxed mb-3">
-                    Select your populated Excel or CSV file. Items and variants will be validated before saving.
+                    Select your populated file to validate and import into menu.
                   </Text>
                 </View>
 
@@ -218,14 +239,14 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
                   <TouchableOpacity
                     onPress={handlePickFile}
                     disabled={isParsing}
-                    className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-xl flex-row items-center justify-center shadow-md shadow-emerald-600/20"
+                    className="flex-1 py-2.5 px-2.5 sm:px-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-xl flex-row items-center justify-center shadow-md shadow-emerald-600/20"
                   >
                     {isParsing ? (
                       <ActivityIndicator size="small" color="white" />
                     ) : (
                       <View className="flex-row items-center justify-center">
                         <Upload size={14} color="white" />
-                        <Text className="text-white font-black text-xs ml-1.5">
+                        <Text className="text-white font-black text-xs ml-1.5" numberOfLines={1}>
                           {fileName ? 'Change File' : 'Browse File...'}
                         </Text>
                       </View>
@@ -247,22 +268,22 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
             {/* Validation & Preview Card */}
             {parseResult ? (
               <View className="space-y-4">
-                {/* Metrics Badges */}
-                <View className="flex-row gap-2.5">
-                  <View className="flex-1 bg-slate-800/80 border border-slate-700/60 p-3 rounded-2xl items-center">
+                {/* Metrics Badges - Responsive wrap for mobile */}
+                <View className="flex-row flex-wrap gap-2">
+                  <View className="flex-1 min-w-[130px] bg-slate-800/80 border border-slate-700/60 p-3 rounded-2xl items-center">
                     <Text className="text-slate-400 text-[10px] uppercase font-bold">Total Items</Text>
                     <Text className="text-white font-black text-xl mt-0.5">{parseResult.validItems.length}</Text>
                   </View>
-                  <View className="flex-1 bg-emerald-950/40 border border-emerald-500/40 p-3 rounded-2xl items-center">
+                  <View className="flex-1 min-w-[130px] bg-emerald-950/40 border border-emerald-500/40 p-3 rounded-2xl items-center">
                     <Text className="text-emerald-400 text-[10px] uppercase font-bold">New to Add</Text>
                     <Text className="text-emerald-300 font-black text-xl mt-0.5">+{parseResult.newRows}</Text>
                   </View>
-                  <View className="flex-1 bg-blue-950/40 border border-blue-500/40 p-3 rounded-2xl items-center">
+                  <View className="flex-1 min-w-[130px] bg-blue-950/40 border border-blue-500/40 p-3 rounded-2xl items-center">
                     <Text className="text-blue-400 text-[10px] uppercase font-bold">To Update</Text>
                     <Text className="text-blue-300 font-black text-xl mt-0.5">{parseResult.updatedRows}</Text>
                   </View>
                   {parseResult.errors.length > 0 && (
-                    <View className="flex-1 bg-rose-950/40 border border-rose-500/40 p-3 rounded-2xl items-center">
+                    <View className="flex-1 min-w-[130px] bg-rose-950/40 border border-rose-500/40 p-3 rounded-2xl items-center">
                       <Text className="text-rose-400 text-[10px] uppercase font-bold">Errors</Text>
                       <Text className="text-rose-300 font-black text-xl mt-0.5">{parseResult.errors.length}</Text>
                     </View>
@@ -295,13 +316,13 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
                       Validated Items Preview ({parseResult.validItems.length})
                     </Text>
                     {fileName && (
-                      <Text className="text-slate-400 text-[11px] font-mono">
+                      <Text className="text-slate-400 text-[11px] font-mono" numberOfLines={1}>
                         📄 {fileName}
                       </Text>
                     )}
                   </View>
 
-                  <ScrollView className="max-h-60" showsVerticalScrollIndicator={true}>
+                  <ScrollView style={{ maxHeight: isMobile ? 240 : 320 }} showsVerticalScrollIndicator={true}>
                     {parseResult.validItems.map((item, idx) => {
                       const isExisting = items.some(
                         i => (i.name || '').toLowerCase() === item.itemName.toLowerCase()
@@ -389,7 +410,10 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
           </ScrollView>
 
           {/* Modal Footer Actions */}
-          <View className="p-4 border-t border-slate-800 bg-slate-950/80 flex-row gap-3">
+          <View
+            className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-950/90 flex-row gap-2.5 sm:gap-3"
+            style={{ paddingBottom: isMobile ? Math.max(insets.bottom, 12) : 16 }}
+          >
             <TouchableOpacity
               onPress={onClose}
               disabled={isImporting}

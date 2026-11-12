@@ -35,7 +35,7 @@ import { OrderSummaryExcelService } from '../../services/excel/orderSummaryExcel
 
 export const BusinessProfileScreen = () => {
   const insets = useSafeAreaInsets();
-  const { tenant, branding, features, setBranding, setFeatures } = useTenantStore();
+  const { tenant, branding, features, setTenant, setBranding, setFeatures } = useTenantStore();
   const { user, setUser } = useAuthStore();
   const isClientAdmin = user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'CLIENT_ADMIN';
 
@@ -268,6 +268,13 @@ export const BusinessProfileScreen = () => {
           );
           if (user) {
             setUser({ ...user, id: updatedId });
+          }
+          if (tenant) {
+            setTenant({
+              ...tenant,
+              adminUsername: updatedId,
+              ...(adminPassword.trim() ? { adminPassword: adminPassword.trim() } : {}),
+            } as any);
           }
           credMessage = targetUsername.toLowerCase() !== oldUsername.toLowerCase()
             ? ` Admin username changed to "${updatedId}".`

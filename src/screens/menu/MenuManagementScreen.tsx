@@ -587,9 +587,24 @@ export const MenuManagementScreen = () => {
 
       {/* Add / Edit Item Modal */}
       {isItemModalOpen && (
-        <Modal visible={true} transparent animationType="slide">
-          <View className="flex-1 justify-center items-center bg-black/75 p-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-            <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-md max-h-[85%] relative overflow-hidden">
+        <Modal visible={true} transparent animationType="slide" onRequestClose={() => setItemModalOpen(false)}>
+          <View
+            className="flex-1 justify-end sm:justify-center items-center bg-black/75"
+            style={{ padding: isPhone ? 0 : 16 }}
+          >
+            <View
+              className="bg-slate-900 border border-slate-800 w-full max-w-md relative overflow-hidden"
+              style={{
+                height: isPhone ? '92%' : undefined,
+                maxHeight: isPhone ? '92%' : '85%',
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                borderBottomLeftRadius: isPhone ? 0 : 28,
+                borderBottomRightRadius: isPhone ? 0 : 28,
+                padding: isPhone ? 16 : 20,
+                paddingBottom: isPhone ? Math.max(insets.bottom + 8, 20) : 20,
+              }}
+            >
               {/* DEDICATED INVENTORY CONFIGURATION DIALOG / MODAL */}
               {isInventoryModalVisible && (
                 <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#0B1120', zIndex: 100, padding: 20, justifyContent: 'center' }}>

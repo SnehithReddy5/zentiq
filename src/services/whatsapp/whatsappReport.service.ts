@@ -32,6 +32,17 @@ export class WhatsAppReportService {
   }
 
   /**
+   * Extracts clean phone numbers from comma/semicolon/newline separated string
+   */
+  static extractPhoneNumbers(phoneInput?: string): string[] {
+    if (!phoneInput) return [];
+    return phoneInput
+      .split(/[,;\n]/)
+      .map(p => this.cleanPhoneNumber(p.trim()))
+      .filter(p => p.length >= 10);
+  }
+
+  /**
    * Builds an attractive, formatted WhatsApp message summary
    */
   static generateReportMessage(options: WhatsAppReportOptions): string {
@@ -175,23 +186,36 @@ export class WhatsAppReportService {
 
   /**
    * Shares report directly via WhatsApp DeepLink / Web URL.
-   * 100% FREE with ZERO API costs, zero monthly fees.
+   * On Windows Electron: Uses shell.openExternal to launch cleanly in default browser / WhatsApp Desktop.
+   * On Mobile: Uses native WhatsApp deep link with web wa.me fallback.
    */
   static async shareReport(options: WhatsAppReportOptions): Promise<boolean> {
     try {
       const message = this.generateReportMessage(options);
       const encodedMessage = encodeURIComponent(message);
-      const cleanPhone = this.cleanPhoneNumber(options.phoneNumber);
+      const recipientPhones = this.extractPhoneNumbers(options.phoneNumber);
+      const targetPhone = recipientPhones[0] || '';
 
       // WhatsApp URL targets
-      const nativeUrl = cleanPhone
-        ? `whatsapp://send?phone=${cleanPhone}&text=${encodedMessage}`
+      const nativeUrl = targetPhone
+        ? `whatsapp://send?phone=${targetPhone}&text=${encodedMessage}`
         : `whatsapp://send?text=${encodedMessage}`;
 
-      const webUrl = cleanPhone
-        ? `https://wa.me/${cleanPhone}?text=${encodedMessage}`
+      const webUrl = targetPhone
+        ? `https://wa.me/${targetPhone}?text=${encodedMessage}`
         : `https://wa.me/?text=${encodedMessage}`;
 
+      // 1. Electron on Windows Desktop: Open natively in default browser or WhatsApp Desktop via shell.openExternal
+      const electronBridge = typeof window !== 'undefined' ? (window as any).electronPrinter : null;
+      if (electronBridge && typeof electronBridge.openExternal === 'function') {
+        const res = await electronBridge.openExternal(webUrl);
+        if (res && res.success === false) {
+          throw new Error(res.error || 'Failed to launch external browser');
+        }
+        return true;
+      }
+
+      // 2. Standard Web Browser
       if (Platform.OS === 'web') {
         if (typeof window !== 'undefined') {
           window.open(webUrl, '_blank');
@@ -199,7 +223,7 @@ export class WhatsAppReportService {
         }
       }
 
-      // On Android / iOS, try native WhatsApp scheme first, fallback to web wa.me
+      // 3. Native Android / iOS
       const canOpen = await Linking.canOpenURL(nativeUrl).catch(() => false);
       if (canOpen) {
         await Linking.openURL(nativeUrl);

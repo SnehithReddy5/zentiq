@@ -31,81 +31,178 @@ export const LoginScreen = () => {
 
   const handleLogin = async () => {
     const cleanId = userId.trim();
+    const lowerId = cleanId.toLowerCase();
     const cleanPassword = password.trim();
 
     if (!cleanId || !cleanPassword) {
       toast.warning('Please enter your User ID / Mobile / Email and Password', 'Required');
       return;
     }
+
+    const passwordMatches = (stored: any): boolean => {
+      if (stored === undefined || stored === null) return false;
+      return String(stored).trim() === cleanPassword;
+    };
+
+    const identifierMatches = (val: any): boolean => {
+      if (!val || typeof val !== 'string') return false;
+      return val.trim().toLowerCase() === lowerId;
+    };
+
     setLoading(true);
     try {
       let matchedUser: any = null;
+      let foundIdMatchWithWrongPassword = false;
+      let missingTenantError = false;
 
-      // 1. First try direct Firestore users collection lookup
-      try {
-        let userRef = doc(db, 'users', cleanId.toLowerCase());
-        let userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists() && cleanId !== cleanId.toLowerCase()) {
-          userRef = doc(db, 'users', cleanId);
-          userSnap = await getDoc(userRef);
+      const buildMatchedUser = (u: any, fallbackTenantId?: string) => {
+        const resolvedTenantId = u.tenantId || fallbackTenantId;
+        if (!resolvedTenantId) {
+          missingTenantError = true;
+          return null;
         }
+        return {
+          id: u.id || cleanId,
+          name: u.name || cleanId,
+          role: u.role || 'WAITER',
+          tenantId: resolvedTenantId,
+          locationIds: u.locationIds || ['*'],
+          assignedLocationId: u.assignedLocationId || null,
+          lastActiveLocationId: u.lastActiveLocationId || null,
+        };
+      };
 
-        // Fallback: If not found in root users collection, search across tenant users subcollections
-        if (!userSnap.exists()) {
-          try {
-            const cgQuery = query(collectionGroup(db, 'users'), where('mobile', '==', cleanId));
-            const cgSnap = await getDocs(cgQuery);
-            if (!cgSnap.empty) {
-              userSnap = cgSnap.docs[0];
-              // Backfill into root users for next time
-              try {
-                await setDoc(doc(db, 'users', cleanId.toLowerCase()), userSnap.data());
-              } catch (_) {}
-            }
-          } catch (cgErr) {
-            console.warn('collectionGroup search error:', cgErr);
+      const evaluateCandidate = async (u: any, fallbackTenantId?: string): Promise<boolean> => {
+        if (!u) return false;
+        if (passwordMatches(u.password)) {
+          let resolvedTenant = u.tenantId || fallbackTenantId;
+          if (!resolvedTenant) {
+            try {
+              const tSnap = await getDocs(query(collection(db, 'tenants'), where('adminUsername', '==', u.id || cleanId)));
+              if (!tSnap.empty) {
+                resolvedTenant = tSnap.docs[0].id;
+              }
+            } catch (_) {}
+          }
+          const built = buildMatchedUser(u, resolvedTenant);
+          if (built) {
+            matchedUser = built;
+            return true;
+          }
+        } else if (u.password !== undefined && u.password !== null && String(u.password).trim() !== '') {
+          foundIdMatchWithWrongPassword = true;
+        }
+        return false;
+      };
+
+      try {
+        // 1. Fast path: Direct lookup in root `users` collection (lowercase + exact case)
+        const rootDocIds = lowerId !== cleanId ? [lowerId, cleanId] : [cleanId];
+        for (const docId of rootDocIds) {
+          if (matchedUser) break;
+          const snap = await getDoc(doc(db, 'users', docId));
+          if (snap.exists()) {
+            await evaluateCandidate(snap.data());
           }
         }
 
-        if (userSnap.exists()) {
-          const u = userSnap.data();
-          if (u.password === cleanPassword) {
-            let userTenantId = u.tenantId;
+        // 2. Fallback: Query root `users` by mobile or email
+        if (!matchedUser) {
+          const rootQueries = [
+            query(collection(db, 'users'), where('email', '==', lowerId)),
+            query(collection(db, 'users'), where('mobile', '==', cleanId)),
+          ];
+          if (lowerId !== cleanId) {
+            rootQueries.push(query(collection(db, 'users'), where('mobile', '==', lowerId)));
+          }
+          for (const qRef of rootQueries) {
+            if (matchedUser) break;
+            try {
+              const qSnap = await getDocs(qRef);
+              for (const d of qSnap.docs) {
+                if (await evaluateCandidate(d.data())) break;
+              }
+            } catch (_) {}
+          }
+        }
 
-            // If tenantId is missing, resolve directly from tenants collection
-            if (!userTenantId) {
+        // 3. Fallback: collectionGroup search across tenant users subcollections
+        if (!matchedUser) {
+          const cgQueries = [
+            query(collectionGroup(db, 'users'), where('mobile', '==', cleanId)),
+            query(collectionGroup(db, 'users'), where('email', '==', lowerId)),
+          ];
+          if (lowerId !== cleanId) {
+            cgQueries.push(query(collectionGroup(db, 'users'), where('mobile', '==', lowerId)));
+          }
+          for (const cgQ of cgQueries) {
+            if (matchedUser) break;
+            try {
+              const cgSnap = await getDocs(cgQ);
+              for (const d of cgSnap.docs) {
+                const pathTenantId = d.ref.parent?.parent?.id;
+                if (await evaluateCandidate(d.data(), pathTenantId)) {
+                  break;
+                }
+              }
+            } catch (cgErr) {
+              console.warn('collectionGroup search skipped:', cgErr);
+            }
+          }
+        }
+
+        // 4. Guaranteed Index-Free Fallback: Search `tenants` (Admin credentials & tenant staff subcollections)
+        // Handles: mixed-case IDs, email logins, stale/corrupted root `users` docs, or cross-tenant duplicate usernames
+        if (!matchedUser) {
+          const tenantsSnap = await getDocs(collection(db, 'tenants'));
+
+          // 4a. Check Tenant Admin credentials directly on tenant docs
+          for (const tDoc of tenantsSnap.docs) {
+            if (matchedUser) break;
+            const tData = tDoc.data();
+            const matchesAdminId =
+              identifierMatches(tData.adminUsername) ||
+              identifierMatches(tData.adminEmail) ||
+              identifierMatches(tData.email);
+            if (matchesAdminId) {
+              if (passwordMatches(tData.adminPassword)) {
+                const adminId = (tData.adminUsername || cleanId).trim();
+                matchedUser = {
+                  id: adminId,
+                  name: `${tData.displayName || tData.businessName || 'Restaurant'} Admin`,
+                  role: 'ADMIN',
+                  tenantId: tDoc.id,
+                  locationIds: ['*'],
+                  assignedLocationId: null,
+                  lastActiveLocationId: null,
+                };
+              } else if (tData.adminPassword) {
+                foundIdMatchWithWrongPassword = true;
+              }
+            }
+          }
+
+          // 4b. Scan tenant staff subcollections case-insensitively
+          if (!matchedUser) {
+            for (const tDoc of tenantsSnap.docs) {
+              if (matchedUser) break;
               try {
-                const tQuery = query(collection(db, 'tenants'), where('adminUsername', '==', cleanId));
-                const tSnap = await getDocs(tQuery);
-                if (!tSnap.empty) {
-                  userTenantId = tSnap.docs[0].id;
-                  try {
-                    await setDoc(doc(db, 'users', cleanId), { tenantId: userTenantId }, { merge: true });
-                  } catch (_) {}
+                const staffSnap = await getDocs(collection(db, 'tenants', tDoc.id, 'users'));
+                for (const sDoc of staffSnap.docs) {
+                  const sData = sDoc.data();
+                  const isMatch =
+                    identifierMatches(sDoc.id) ||
+                    identifierMatches(sData.id) ||
+                    identifierMatches(sData.mobile) ||
+                    identifierMatches(sData.email);
+                  if (isMatch) {
+                    if (await evaluateCandidate(sData, tDoc.id)) {
+                      break;
+                    }
+                  }
                 }
               } catch (_) {}
             }
-
-            if (!userTenantId) {
-              toast.error('This user account is not linked to any active restaurant.', 'Account Error');
-              setLoading(false);
-              return;
-            }
-
-            matchedUser = {
-              id: u.id || cleanId,
-              name: u.name || cleanId,
-              role: u.role || 'WAITER',
-              tenantId: userTenantId,
-              locationIds: u.locationIds || ['*'],
-              assignedLocationId: u.assignedLocationId || null,
-              lastActiveLocationId: u.lastActiveLocationId || null,
-            };
-          } else {
-            toast.error('Incorrect password for this user.', 'Login Failed');
-            setLoading(false);
-            return;
           }
         }
       } catch (firestoreErr: any) {
@@ -124,7 +221,13 @@ export const LoginScreen = () => {
       }
 
       if (!matchedUser) {
-        toast.error('No user found with this ID or Mobile. Please check your credentials.', 'User Not Found');
+        if (foundIdMatchWithWrongPassword) {
+          toast.error('Incorrect password for this user.', 'Login Failed');
+        } else if (missingTenantError) {
+          toast.error('This user account is not linked to any active restaurant.', 'Account Error');
+        } else {
+          toast.error('No user found with this ID or Mobile. Please check your credentials.', 'User Not Found');
+        }
         setLoading(false);
         return;
       }

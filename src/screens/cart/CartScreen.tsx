@@ -71,6 +71,7 @@ export const CartScreen = () => {
     }
   }, [tableNo, orders]);
   const rawItemsSum = cartItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
+  const totalUnits = useMemo(() => cartItems.reduce((sum, i) => sum + (i.qty || 0), 0), [cartItems]);
 
   // Dynamic GST Tax Configuration from Store Settings
   const gstEnabled = features.gstEnabled !== false;
@@ -570,7 +571,7 @@ export const CartScreen = () => {
     <SafeAreaView className="flex-1 bg-[#090D1A]">
       <Header
         title={tableNo === 0 ? 'Pick Up Checkout' : ('Table ' + tableNo + ' Bill Settlement')}
-        subtitle={'Total: ₹' + cartTotal.toFixed(2) + ' • ' + cartItems.length + ' item' + (cartItems.length === 1 ? '' : 's')}
+        subtitle={'Total: ₹' + cartTotal.toFixed(2) + ' • ' + totalUnits + ' item' + (totalUnits === 1 ? '' : 's')}
       />
 
       <ScrollView

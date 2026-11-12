@@ -679,24 +679,35 @@ export const DBServices = {
     const targetCleanId = (newId || updates.mobile || oldCleanId).trim();
     const updatePayload = { ...updates, id: targetCleanId, mobile: targetCleanId, updatedAt: serverTimestamp() };
 
+    let existingData: any = {};
+    if (tenantId) {
+      try {
+        const oldSnap = await getDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId));
+        if (oldSnap.exists()) existingData = oldSnap.data();
+      } catch (_) {}
+    }
+    if (!existingData.password || !existingData.tenantId) {
+      try {
+        const oldRootSnap = await getDoc(doc(db, 'users', oldCleanId.toLowerCase()));
+        if (oldRootSnap.exists() && (!tenantId || oldRootSnap.data().tenantId === tenantId)) {
+          existingData = { ...oldRootSnap.data(), ...existingData };
+        } else if (oldCleanId !== oldCleanId.toLowerCase()) {
+          const exactRootSnap = await getDoc(doc(db, 'users', oldCleanId));
+          if (exactRootSnap.exists() && (!tenantId || exactRootSnap.data().tenantId === tenantId)) {
+            existingData = { ...exactRootSnap.data(), ...existingData };
+          }
+        }
+      } catch (_) {}
+    }
+
+    const mergedPayload = {
+      ...existingData,
+      ...updatePayload,
+      ...(tenantId ? { tenantId } : {}),
+    };
+
     // If username / login ID has changed, migrate document keys
     if (targetCleanId.toLowerCase() !== oldCleanId.toLowerCase()) {
-      let existingData: any = {};
-      if (tenantId) {
-        try {
-          const oldSnap = await getDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId));
-          if (oldSnap.exists()) existingData = oldSnap.data();
-        } catch (_) {}
-      }
-      if (!existingData.name) {
-        try {
-          const oldRootSnap = await getDoc(doc(db, 'users', oldCleanId.toLowerCase()));
-          if (oldRootSnap.exists()) existingData = oldRootSnap.data();
-        } catch (_) {}
-      }
-
-      const mergedPayload = { ...existingData, ...updatePayload };
-
       // 1. Create new documents
       if (tenantId) {
         await setDoc(doc(db, 'tenants', tenantId, 'users', targetCleanId), mergedPayload);
@@ -710,9 +721,19 @@ export const DBServices = {
       if (tenantId) {
         try { await deleteDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId)); } catch (_) {}
       }
-      try { await deleteDoc(doc(db, 'users', oldCleanId)); } catch (_) {}
+      try {
+        const oldSnap = await getDoc(doc(db, 'users', oldCleanId));
+        if (oldSnap.exists() && (!tenantId || oldSnap.data().tenantId === tenantId)) {
+          await deleteDoc(doc(db, 'users', oldCleanId));
+        }
+      } catch (_) {}
       if (oldCleanId.toLowerCase() !== oldCleanId) {
-        try { await deleteDoc(doc(db, 'users', oldCleanId.toLowerCase())); } catch (_) {}
+        try {
+          const oldLowerSnap = await getDoc(doc(db, 'users', oldCleanId.toLowerCase()));
+          if (oldLowerSnap.exists() && (!tenantId || oldLowerSnap.data().tenantId === tenantId)) {
+            await deleteDoc(doc(db, 'users', oldCleanId.toLowerCase()));
+          }
+        } catch (_) {}
       }
 
       // 3. Only update tenant document if this user is the registered primary owner / admin of the tenant
@@ -720,7 +741,8 @@ export const DBServices = {
         try {
           const tSnap = await getDoc(doc(db, 'tenants', tenantId));
           const tData = tSnap.exists() ? tSnap.data() : null;
-          if (tData && (tData.adminUsername === oldCleanId || tData.adminUsername === targetCleanId)) {
+          const tAdmin = (tData?.adminUsername || '').trim().toLowerCase();
+          if (tData && (tAdmin === oldCleanId.toLowerCase() || tAdmin === targetCleanId.toLowerCase())) {
             await updateDoc(doc(db, 'tenants', tenantId), {
               adminUsername: targetCleanId,
               ...(updates.password ? { adminPassword: updates.password } : {}),
@@ -732,34 +754,36 @@ export const DBServices = {
 
       return targetCleanId;
     } else {
-      // Normal update without changing username / ID
+      // Normal update (or casing-only change) — always use mergedPayload so password & tenantId are never lost
       if (tenantId) {
-        await setDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId), updatePayload, { merge: true });
+        await setDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId), mergedPayload, { merge: true });
       }
       try {
-        await setDoc(doc(db, 'users', oldCleanId), updatePayload, { merge: true });
+        await setDoc(doc(db, 'users', targetCleanId), mergedPayload, { merge: true });
       } catch (_) {}
-      if (oldCleanId.toLowerCase() !== oldCleanId) {
+      if (targetCleanId.toLowerCase() !== targetCleanId) {
         try {
-          await setDoc(doc(db, 'users', oldCleanId.toLowerCase()), updatePayload, { merge: true });
+          await setDoc(doc(db, 'users', targetCleanId.toLowerCase()), mergedPayload, { merge: true });
         } catch (_) {}
       }
 
       // If password changed and this user is the registered primary owner of the tenant, sync tenant doc
-      if (tenantId && updates.password) {
+      if (tenantId && (updates.password || targetCleanId !== oldCleanId)) {
         try {
           const tSnap = await getDoc(doc(db, 'tenants', tenantId));
           const tData = tSnap.exists() ? tSnap.data() : null;
-          if (tData && (tData.adminUsername === oldCleanId || tData.adminUsername === targetCleanId)) {
+          const tAdmin = (tData?.adminUsername || '').trim().toLowerCase();
+          if (tData && (tAdmin === oldCleanId.toLowerCase() || tAdmin === targetCleanId.toLowerCase())) {
             await updateDoc(doc(db, 'tenants', tenantId), {
-              adminPassword: updates.password,
+              adminUsername: targetCleanId,
+              ...(updates.password ? { adminPassword: updates.password } : {}),
               updatedAt: serverTimestamp(),
             });
           }
         } catch (_) {}
       }
 
-      return oldCleanId;
+      return targetCleanId;
     }
   },
 

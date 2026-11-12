@@ -7,6 +7,31 @@ import { useTenantStore } from './tenant.store';
 
 export type CartItem = Omit<OrderItem, 'id' | 'orderId'> & { sentQty?: number };
 
+export const getCartItemKey = (item: { itemId: string; variantId?: string | null; variantName?: string | null }): string => {
+  const variant = item.variantId || item.variantName || 'base';
+  return `${item.itemId}:::${variant}`;
+};
+
+export const consolidateCartItems = (items: CartItem[]): CartItem[] => {
+  if (!Array.isArray(items)) return [];
+  const map = new Map<string, CartItem>();
+  for (const item of items) {
+    if (!item || !item.itemId) continue;
+    const key = getCartItemKey(item);
+    if (!map.has(key)) {
+      map.set(key, { ...item });
+    } else {
+      const existing = map.get(key)!;
+      existing.qty = (existing.qty || 0) + (item.qty || 0);
+      existing.sentQty = (existing.sentQty || 0) + (item.sentQty || 0);
+      if (item.note && !existing.note) {
+        existing.note = item.note;
+      }
+    }
+  }
+  return Array.from(map.values());
+};
+
 const syncTimeouts: Record<number, any> = {};
 const lastLocalWriteTime: Record<number, number> = {};
 
@@ -41,9 +66,9 @@ interface CartState {
   syncRemoteCarts: (remoteCarts: Record<number, CartItem[]>) => void;
   syncRunningOrderItems: (tableNo: number, confirmedItems: CartItem[]) => void;
   addItem: (tableNo: number, item: Omit<OrderItem, 'id' | 'orderId'>) => void;
-  removeItem: (tableNo: number, itemId: string) => void;
-  updateQuantity: (tableNo: number, itemId: string, qty: number) => void;
-  updateNote: (tableNo: number, itemId: string, note: string) => void;
+  removeItem: (tableNo: number, itemId: string, variantId?: string | null) => void;
+  updateQuantity: (tableNo: number, itemId: string, qty: number, variantId?: string | null) => void;
+  updateNote: (tableNo: number, itemId: string, note: string, variantId?: string | null) => void;
   markAsSent: (tableNo: number) => void;
   clearCart: (tableNo: number) => void;
   getCart: (tableNo: number) => CartItem[];
@@ -53,7 +78,7 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       carts: {},
-      getCart: (tableNo) => get().carts[tableNo] || [],
+      getCart: (tableNo) => consolidateCartItems(get().carts[tableNo] || []),
       setCarts: (carts) => {
         const currentCarts = get().carts;
         const updatedCarts = { ...currentCarts };
@@ -62,8 +87,9 @@ export const useCartStore = create<CartState>()(
         Object.keys(carts).forEach((tableKey) => {
           const tableNo = Number(tableKey);
           if (!shouldIgnoreFirestoreUpdate(tableNo)) {
-            if (JSON.stringify(currentCarts[tableNo] || []) !== JSON.stringify(carts[tableNo] || [])) {
-              updatedCarts[tableNo] = carts[tableNo];
+            const incoming = consolidateCartItems(carts[tableNo] || []);
+            if (JSON.stringify(currentCarts[tableNo] || []) !== JSON.stringify(incoming)) {
+              updatedCarts[tableNo] = incoming;
               hasChanges = true;
             }
           }
@@ -81,7 +107,7 @@ export const useCartStore = create<CartState>()(
         Object.keys(remoteCarts).forEach((tableKey) => {
           const tableNo = Number(tableKey);
           if (!shouldIgnoreFirestoreUpdate(tableNo)) {
-            const incoming = remoteCarts[tableNo] || [];
+            const incoming = consolidateCartItems(remoteCarts[tableNo] || []);
             const current = currentCarts[tableNo] || [];
             if (JSON.stringify(current) !== JSON.stringify(incoming)) {
               updatedCarts[tableNo] = incoming;
@@ -97,40 +123,76 @@ export const useCartStore = create<CartState>()(
       syncRunningOrderItems: (tableNo, confirmedItems) => {
         if (tableNo === 0) return;
         const currentCarts = get().carts;
-        const tableCart = currentCarts[tableNo] || [];
+        const rawTableCart = currentCarts[tableNo] || [];
 
-        // Identify any un-sent draft items the waiter has locally that haven't been sent to kitchen yet
-        const unsentDraftItems = tableCart.filter(i => {
-          const unsentQty = (i.qty || 0) - (i.sentQty || 0);
-          return unsentQty > 0;
-        }).map(i => ({
-          ...i,
-          qty: (i.qty || 0) - (i.sentQty || 0),
-          sentQty: 0,
-        }));
+        // 1. First consolidate any duplicate rows that might already exist in tableCart
+        const consolidatedLocal = consolidateCartItems(rawTableCart);
 
-        // Build merged cart: all confirmed items from running order (with sentQty = qty)
-        const merged: CartItem[] = confirmedItems.map(c => ({
-          ...c,
-          sentQty: c.sentQty ?? c.qty,
-        }));
+        // Map existing local items by composite key (itemId + variant)
+        const localMap = new Map<string, CartItem>();
+        for (const item of consolidatedLocal) {
+          localMap.set(getCartItemKey(item), item);
+        }
 
-        // Add back any unsent draft items
-        unsentDraftItems.forEach(draft => {
-          const existing = merged.find(m =>
-            m.itemId === draft.itemId &&
-            (m.variantId || null) === (draft.variantId || null) &&
-            (m.sentQty || 0) < m.qty
-          );
-          if (existing) {
-            existing.qty += draft.qty;
+        // Map confirmed items from running order by composite key
+        const confirmedMap = new Map<string, CartItem>();
+        for (const item of confirmedItems) {
+          if (!item || !item.itemId) continue;
+          const key = getCartItemKey(item);
+          const confQty = item.qty || 1;
+          const confSentQty = item.sentQty ?? confQty;
+
+          if (!confirmedMap.has(key)) {
+            confirmedMap.set(key, {
+              ...item,
+              qty: confQty,
+              sentQty: confSentQty,
+            });
           } else {
-            merged.push(draft);
+            const existing = confirmedMap.get(key)!;
+            existing.qty += confQty;
+            existing.sentQty = (existing.sentQty || 0) + confSentQty;
           }
-        });
+        }
+
+        // 2. Build merged cart: exactly ONE entry per item/variant
+        const merged: CartItem[] = [];
+
+        // Add confirmed items (merging in any unsent local additions)
+        for (const [key, confItem] of confirmedMap.entries()) {
+          const localItem = localMap.get(key);
+          if (localItem) {
+            // Unsent additions the waiter added locally beyond what was sent
+            const localDraftQty = Math.max(0, (localItem.qty || 0) - (localItem.sentQty || 0));
+            // Final total quantity is confirmed quantity + draft additions (at least confItem.qty)
+            const finalQty = Math.max(confItem.qty, confItem.qty + localDraftQty);
+            merged.push({
+              ...localItem,
+              ...confItem,
+              qty: finalQty,
+              sentQty: confItem.qty,
+              note: localItem.note || confItem.note || '',
+            });
+          } else {
+            merged.push({
+              ...confItem,
+              sentQty: confItem.qty,
+            });
+          }
+        }
+
+        // Add pure draft items that have not yet been placed into the confirmed order
+        for (const [key, localItem] of localMap.entries()) {
+          if (!confirmedMap.has(key)) {
+            merged.push({
+              ...localItem,
+              sentQty: 0,
+            });
+          }
+        }
 
         // Only update if different
-        if (JSON.stringify(tableCart) !== JSON.stringify(merged)) {
+        if (JSON.stringify(rawTableCart) !== JSON.stringify(merged)) {
           set({
             carts: {
               ...currentCarts,
@@ -142,11 +204,14 @@ export const useCartStore = create<CartState>()(
       addItem: (tableNo, item) => {
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
-        const tableCart = currentCarts[tableNo] || [];
-        const existing = tableCart.find(i => i.itemId === item.itemId);
+        const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
+        const itemKey = getCartItemKey(item);
+        const existingIndex = tableCart.findIndex(i => getCartItemKey(i) === itemKey);
         let newItems: CartItem[];
-        if (existing) {
-          newItems = tableCart.map(i => i.itemId === item.itemId ? { ...i, qty: i.qty + 1 } : i);
+        if (existingIndex >= 0) {
+          newItems = tableCart.map((i, idx) => 
+            idx === existingIndex ? { ...i, qty: (i.qty || 0) + 1 } : i
+          );
         } else {
           newItems = [...tableCart, { ...item, qty: 1 }];
         }
@@ -158,11 +223,16 @@ export const useCartStore = create<CartState>()(
         });
         debounceSyncCart(tableNo, newItems);
       },
-      removeItem: (tableNo, itemId) => {
+      removeItem: (tableNo, itemId, variantId) => {
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
-        const tableCart = currentCarts[tableNo] || [];
-        const newItems = tableCart.filter(i => i.itemId !== itemId);
+        const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
+        const newItems = tableCart.filter(i => {
+          if (variantId !== undefined && variantId !== null) {
+            return !(i.itemId === itemId && (i.variantId === variantId || i.variantName === variantId));
+          }
+          return i.itemId !== itemId;
+        });
         set({
           carts: {
             ...currentCarts,
@@ -171,17 +241,33 @@ export const useCartStore = create<CartState>()(
         });
         debounceSyncCart(tableNo, newItems);
       },
-      updateQuantity: (tableNo, itemId, qty) => {
+      updateQuantity: (tableNo, itemId, qty, variantId) => {
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
-        const tableCart = currentCarts[tableNo] || [];
-        // If quantity is 0 or negative, automatically remove the item from the cart
+        const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
+
         let newItems: CartItem[];
         if (qty <= 0) {
-          newItems = tableCart.filter(i => i.itemId !== itemId);
+          newItems = tableCart.filter(i => {
+            if (variantId !== undefined && variantId !== null) {
+              return !(i.itemId === itemId && (i.variantId === variantId || i.variantName === variantId));
+            }
+            return i.itemId !== itemId;
+          });
         } else {
-          newItems = tableCart.map(i => i.itemId === itemId ? { ...i, qty } : i);
+          let updated = false;
+          newItems = tableCart.map(i => {
+            const matches = (variantId !== undefined && variantId !== null)
+              ? (i.itemId === itemId && (i.variantId === variantId || i.variantName === variantId))
+              : (i.itemId === itemId);
+            if (matches && !updated) {
+              updated = true;
+              return { ...i, qty };
+            }
+            return i;
+          });
         }
+
         set({
           carts: {
             ...currentCarts,
@@ -190,11 +276,21 @@ export const useCartStore = create<CartState>()(
         });
         debounceSyncCart(tableNo, newItems);
       },
-      updateNote: (tableNo, itemId, note) => {
+      updateNote: (tableNo, itemId, note, variantId) => {
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
-        const tableCart = currentCarts[tableNo] || [];
-        const newItems = tableCart.map(i => i.itemId === itemId ? { ...i, note } : i);
+        const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
+        let updated = false;
+        const newItems = tableCart.map(i => {
+          const matches = (variantId !== undefined && variantId !== null)
+            ? (i.itemId === itemId && (i.variantId === variantId || i.variantName === variantId))
+            : (i.itemId === itemId);
+          if (matches && !updated) {
+            updated = true;
+            return { ...i, note };
+          }
+          return i;
+        });
         set({
           carts: {
             ...currentCarts,
@@ -206,7 +302,7 @@ export const useCartStore = create<CartState>()(
       markAsSent: (tableNo) => {
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
-        const tableCart = currentCarts[tableNo] || [];
+        const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
         const newItems = tableCart.map(i => ({ ...i, sentQty: i.qty }));
         set({
           carts: {

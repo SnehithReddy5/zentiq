@@ -1,8 +1,12 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
+
+// Fixed local port ensures persistent origin (http://127.0.0.1:18492) across app restarts,
+// so localStorage, user login session (auth-storage), and cache are NEVER wiped on app kill/restart.
+const FIXED_POS_PORT = 18492;
 
 // Prevent background throttling so live order listeners and thermal printing never pause
 if (app && app.commandLine && typeof app.commandLine.appendSwitch === 'function') {
@@ -79,6 +83,20 @@ ipcMain.handle('print-raw', async (event, payload) => {
     const { ip, port, data } = payload || {};
     const res = await printToNetworkPrinter(ip, port, data);
     return res;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler to safely open external links (e.g. WhatsApp, documentation, portals)
+// in the user's default Windows browser without corrupting or hijacking Electron's keyboard focus
+ipcMain.handle('open-external', async (event, url) => {
+  try {
+    if (url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('whatsapp://') || url.startsWith('mailto:'))) {
+      await shell.openExternal(url);
+      return { success: true };
+    }
+    return { success: false, error: 'Invalid URL scheme' };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -169,15 +187,24 @@ function startLocalServer(distDir) {
       });
     });
 
-    // Listen on random available port on 127.0.0.1
-    server.listen(0, '127.0.0.1', () => {
-      const port = server.address().port;
-      console.log('Zentiq POS desktop server listening on port ' + port);
-      resolve({ server, port });
+    // Listen on fixed dedicated port (18492) so the origin http://127.0.0.1:18492 is static across app restarts.
+    // This permanently protects localStorage, AsyncStorage, and user login tokens from being wiped.
+    server.listen(FIXED_POS_PORT, '127.0.0.1', () => {
+      console.log('Zentiq POS desktop server listening on static port ' + FIXED_POS_PORT);
+      resolve({ server, port: FIXED_POS_PORT });
     });
 
     server.on('error', (err) => {
-      reject(err);
+      if (err.code === 'EADDRINUSE') {
+        console.warn('Port ' + FIXED_POS_PORT + ' in use, falling back to OS-assigned port...');
+        server.listen(0, '127.0.0.1', () => {
+          const port = server.address().port;
+          console.log('Zentiq POS desktop server listening on fallback port ' + port);
+          resolve({ server, port });
+        });
+      } else {
+        reject(err);
+      }
     });
   });
 }
@@ -197,6 +224,25 @@ async function createWindow() {
       contextIsolation: true,
       backgroundThrottling: false,
     },
+  });
+
+  // Intercept all window.open / target="_blank" links (e.g. WhatsApp, links) and open
+  // cleanly in the user's default browser (Chrome/Edge/WhatsApp Desktop).
+  // Strictly denies internal child windows so Electron's keyboard focus is NEVER corrupted or frozen.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      if (url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('whatsapp://') || url.startsWith('mailto:'))) {
+        shell.openExternal(url);
+      }
+    } catch (_) { }
+    return { action: 'deny' };
+  });
+
+  // Restore Chromium webContents keyboard focus whenever the main window receives OS focus
+  mainWindow.on('focus', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.focus();
+    }
   });
 
   const distDir = path.join(__dirname, '../dist');
