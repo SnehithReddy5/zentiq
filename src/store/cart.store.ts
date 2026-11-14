@@ -7,17 +7,24 @@ import { useTenantStore } from './tenant.store';
 
 export type CartItem = Omit<OrderItem, 'id' | 'orderId'> & { sentQty?: number };
 
-export const getCartItemKey = (item: { itemId: string; variantId?: string | null; variantName?: string | null }): string => {
-  const variant = item.variantId || item.variantName || 'base';
-  return `${item.itemId}:::${variant}`;
+export const getCartItemKey = (item: { itemId?: string; variantId?: string | null; variantName?: string | null; itemName?: string; name?: string }): string => {
+  const variant = (item.variantId || item.variantName || 'base').trim().toLowerCase();
+  const name = (item.itemName || (item as any).name || '').trim().toLowerCase();
+  const id = (item.itemId || '').trim();
+  // Using normalized dish name + variant guarantees items with the same name & variant coalesce
+  if (name) {
+    return `${name}:::${variant}`;
+  }
+  return `${id}:::${variant}`;
 };
 
 export const consolidateCartItems = (items: CartItem[]): CartItem[] => {
   if (!Array.isArray(items)) return [];
   const map = new Map<string, CartItem>();
   for (const item of items) {
-    if (!item || !item.itemId) continue;
+    if (!item) continue;
     const key = getCartItemKey(item);
+    if (!key || key === ':::base') continue;
     if (!map.has(key)) {
       map.set(key, { ...item });
     } else {
@@ -26,6 +33,13 @@ export const consolidateCartItems = (items: CartItem[]): CartItem[] => {
       existing.sentQty = (existing.sentQty || 0) + (item.sentQty || 0);
       if (item.note && !existing.note) {
         existing.note = item.note;
+      }
+      // Prefer master itemId over generic item-0
+      if ((!existing.itemId || existing.itemId.startsWith('item-')) && item.itemId && !item.itemId.startsWith('item-')) {
+        existing.itemId = item.itemId;
+      }
+      if (!existing.baseItemId && (item as any).baseItemId) {
+        (existing as any).baseItemId = (item as any).baseItemId;
       }
     }
   }
@@ -227,12 +241,17 @@ export const useCartStore = create<CartState>()(
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
         const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
-        const newItems = tableCart.filter(i => {
-          if (variantId !== undefined && variantId !== null) {
-            return !(i.itemId === itemId && (i.variantId === variantId || i.variantName === variantId));
-          }
-          return i.itemId !== itemId;
-        });
+        const checkItemMatches = (i: CartItem): boolean => {
+          const vMatch = (variantId !== undefined && variantId !== null)
+            ? (i.variantId === variantId || i.variantName === variantId)
+            : true;
+          if (!vMatch) return false;
+          if (i.itemId === itemId) return true;
+          if ((i as any).baseItemId === itemId) return true;
+          if (i.itemName && itemId && i.itemName.trim().toLowerCase() === itemId.trim().toLowerCase()) return true;
+          return false;
+        };
+        const newItems = tableCart.filter(i => !checkItemMatches(i));
         set({
           carts: {
             ...currentCarts,
@@ -246,21 +265,24 @@ export const useCartStore = create<CartState>()(
         const currentCarts = get().carts;
         const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
 
+        const checkItemMatches = (i: CartItem): boolean => {
+          const vMatch = (variantId !== undefined && variantId !== null)
+            ? (i.variantId === variantId || i.variantName === variantId)
+            : true;
+          if (!vMatch) return false;
+          if (i.itemId === itemId) return true;
+          if ((i as any).baseItemId === itemId) return true;
+          if (i.itemName && itemId && i.itemName.trim().toLowerCase() === itemId.trim().toLowerCase()) return true;
+          return false;
+        };
+
         let newItems: CartItem[];
         if (qty <= 0) {
-          newItems = tableCart.filter(i => {
-            if (variantId !== undefined && variantId !== null) {
-              return !(i.itemId === itemId && (i.variantId === variantId || i.variantName === variantId));
-            }
-            return i.itemId !== itemId;
-          });
+          newItems = tableCart.filter(i => !checkItemMatches(i));
         } else {
           let updated = false;
           newItems = tableCart.map(i => {
-            const matches = (variantId !== undefined && variantId !== null)
-              ? (i.itemId === itemId && (i.variantId === variantId || i.variantName === variantId))
-              : (i.itemId === itemId);
-            if (matches && !updated) {
+            if (checkItemMatches(i) && !updated) {
               updated = true;
               return { ...i, qty };
             }

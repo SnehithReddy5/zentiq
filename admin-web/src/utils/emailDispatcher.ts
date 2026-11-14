@@ -63,12 +63,14 @@ export const dispatchSystemEmail = async (
     console.warn('Mail logging skipped:', err);
   }
 
-  // 2. Direct background sending via Resend if configured
-  if (settings.resendApiKey) {
+  // 2. Direct background sending via Resend proxy if explicitly selected
+  if (settings.sendMethod === 'RESEND' && settings.resendApiKey) {
     try {
-      const endpoint = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      // In dev use Vite proxy; in production use Cloud Function server proxy with CORS headers
+      const endpoint = isLocal
         ? '/api/resend/emails'
-        : 'https://api.resend.com/emails';
+        : 'https://us-central1-zentiq-b5d40.cloudfunctions.net/aggregatorWebhook/send-email';
 
       // Resend requires onboarding@resend.dev unless a custom domain is verified
       const isPublicProvider = settings.communicationEmail.includes('@gmail.com') ||
@@ -80,26 +82,38 @@ export const dispatchSystemEmail = async (
         ? `${settings.senderName || 'Zentiq POS'} <onboarding@resend.dev>`
         : `${settings.senderName || 'Zentiq POS'} <${settings.communicationEmail}>`;
 
+      const payload = isLocal
+        ? {
+            from: senderFrom,
+            to: options.isBcc ? [settings.communicationEmail] : recipientList,
+            bcc: options.isBcc ? recipientList : undefined,
+            reply_to: settings.communicationEmail,
+            subject: options.subject,
+            text: options.body,
+          }
+        : {
+            apiKey: settings.resendApiKey.trim(),
+            from: senderFrom,
+            to: options.isBcc ? [settings.communicationEmail] : recipientList,
+            bcc: options.isBcc ? recipientList : undefined,
+            replyTo: settings.communicationEmail,
+            subject: options.subject,
+            text: options.body,
+          };
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${settings.resendApiKey.trim()}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          from: senderFrom,
-          to: options.isBcc ? [settings.communicationEmail] : recipientList,
-          bcc: options.isBcc ? recipientList : undefined,
-          reply_to: settings.communicationEmail,
-          subject: options.subject,
-          text: options.body,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const responseData = await res.json();
 
       if (!res.ok) {
-        throw new Error(responseData.message || responseData.error || 'Resend API rejected the request');
+        throw new Error(responseData.error || responseData.message || 'Email API rejected the request');
       }
 
       alert(`✓ Success! Email dispatched in the background to ${toStr} from ${settings.communicationEmail}`);
@@ -107,7 +121,7 @@ export const dispatchSystemEmail = async (
     } catch (err: any) {
       console.error('Direct background Resend failed:', err);
       const shouldFallback = window.confirm(
-        `Background sending error from Resend: \n\n"${err.message}"\n\nWould you like to open Gmail Compose as a fallback to send it now?`
+        `Background sending error: \n\n"${err.message}"\n\nWould you like to open Gmail Compose as a fallback to send it now?`
       );
       if (!shouldFallback) {
         return { success: false, method: 'RESEND', message: err.message };

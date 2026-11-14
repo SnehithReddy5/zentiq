@@ -132,6 +132,7 @@ export const TablesScreen = () => {
     const isOccupied = isTableOccupied(item);
 
     const isBillRequested = (item as any).billRequested === true || runningOrder?.billRequested === true;
+    const isBillPrinted = (item as any).billPrinted === true || runningOrder?.billPrinted === true;
     const isQrOrder = runningOrder?.orderSource === 'QR_SELF_ORDER';
 
     const orderItemsCount = runningOrder?.items
@@ -145,9 +146,11 @@ export const TablesScreen = () => {
         className={'aspect-square m-1.5 rounded-3xl border p-3 justify-between shadow-sm ' + (
           isBillRequested
             ? 'bg-amber-500/25 border-2 border-amber-400 shadow-lg shadow-amber-500/30'
-            : isOccupied
-              ? 'bg-amber-950/30 border-amber-500/50'
-              : 'bg-emerald-950/20 border-emerald-500/40'
+            : isBillPrinted
+              ? 'bg-cyan-950/30 border-2 border-cyan-400/80 shadow-lg shadow-cyan-500/20'
+              : isOccupied
+                ? 'bg-amber-950/30 border-amber-500/50'
+                : 'bg-emerald-950/20 border-emerald-500/40'
         )}
         style={{ flex: 1 / tableGridColumns }}
         activeOpacity={0.8}
@@ -156,11 +159,11 @@ export const TablesScreen = () => {
       >
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-1.5">
-            <View className={'w-2.5 h-2.5 rounded-full ' + (isBillRequested ? 'bg-amber-400' : isOccupied ? 'bg-amber-500' : 'bg-emerald-500')} />
+            <View className={'w-2.5 h-2.5 rounded-full ' + (isBillRequested ? 'bg-amber-400' : isBillPrinted ? 'bg-cyan-400' : isOccupied ? 'bg-amber-500' : 'bg-emerald-500')} />
             <Text className={'text-[10px] font-bold uppercase tracking-wider ' + (
-              isBillRequested ? 'text-amber-300' : isOccupied ? (isQrOrder ? 'text-amber-300' : 'text-amber-400') : 'text-emerald-400'
+              isBillRequested ? 'text-amber-300' : isBillPrinted ? 'text-cyan-300 font-black' : isOccupied ? (isQrOrder ? 'text-amber-300' : 'text-amber-400') : 'text-emerald-400'
             )}>
-              {isBillRequested ? '🛎️ BILL REQ' : isOccupied ? (isQrOrder ? '📱 QR ORDER' : 'RUNNING') : 'AVAIL'}
+              {isBillRequested ? '🛎️ BILL REQ' : isBillPrinted ? '🧾 PRINTED' : isOccupied ? (isQrOrder ? '📱 QR ORDER' : 'RUNNING') : 'AVAIL'}
             </Text>
           </View>
 

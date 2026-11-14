@@ -52,7 +52,7 @@ export const CommunicationSettingsModal: React.FC<CommunicationSettingsModalProp
 
     setIsSaving(true);
     try {
-      const activeSendMethod = resendApiKey.trim() ? 'RESEND' : sendMethod;
+      const activeSendMethod = sendMethod;
       await setDoc(doc(db, 'system', 'settings'), {
         communicationEmail: communicationEmail.trim(),
         senderName: senderName.trim(),

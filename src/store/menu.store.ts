@@ -73,6 +73,13 @@ export const useMenuStore = create<MenuState>((set) => ({
         snapshot.forEach((doc) => {
           categories.push({ ...doc.data(), id: doc.id } as MenuCategory);
         });
+        // Sort categories by rank / sortOrder ascending (1, 2, 3...), then alphabetically
+        categories.sort((a, b) => {
+          const rankA = (typeof a.sortOrder === 'number' && !isNaN(a.sortOrder) && a.sortOrder > 0) ? a.sortOrder : 999999;
+          const rankB = (typeof b.sortOrder === 'number' && !isNaN(b.sortOrder) && b.sortOrder > 0) ? b.sortOrder : 999999;
+          if (rankA !== rankB) return rankA - rankB;
+          return (a.name || '').localeCompare(b.name || '');
+        });
         set({ categories, isLoadingCategories: false });
       },
       (err) => {

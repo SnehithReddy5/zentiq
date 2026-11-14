@@ -219,9 +219,34 @@ export const DBServices = {
           activeWaiterId: null,
           currentOrderId: null,
           billRequested: false,
-          billRequestedAt: null
+          billRequestedAt: null,
+          billPrinted: false,
+          billPrintedAt: null,
+          billNo: null,
         } : {}),
         updatedAt: serverTimestamp()
+      })
+    );
+    await Promise.all(updatePromises);
+  },
+
+  async updateTableBillPrinted(tableNo: number | string, billPrinted: boolean, billNo?: number, tenantId?: string, locationId?: string): Promise<void> {
+    const numericTableNo = Number(tableNo);
+    const stringTableNo = String(tableNo);
+    const colRef = (tenantId && locationId)
+      ? collection(db, 'tenants', tenantId, 'locations', locationId, 'tables')
+      : collection(db, 'tables');
+
+    let snapshot = await getDocs(query(colRef, where('tableNo', '==', numericTableNo)));
+    if (snapshot.empty) {
+      snapshot = await getDocs(query(colRef, where('tableNo', '==', stringTableNo)));
+    }
+    const updatePromises = snapshot.docs.map(d =>
+      updateDoc(d.ref, {
+        billPrinted,
+        billPrintedAt: billPrinted ? serverTimestamp() : null,
+        ...(billNo !== undefined ? { billNo } : {}),
+        updatedAt: serverTimestamp(),
       })
     );
     await Promise.all(updatePromises);
@@ -235,19 +260,32 @@ export const DBServices = {
   },
 
   // 5. Menu Categories & Items
-  async addMenuCategory(name: string, tenantId?: string, locationId?: string): Promise<void> {
+  async addMenuCategory(name: string, tenantId?: string, locationId?: string, sortOrder?: number): Promise<void> {
     const colRef = (tenantId && locationId)
       ? collection(db, 'tenants', tenantId, 'locations', locationId, 'menuCategories')
       : collection(db, 'menuCategories');
     const categoryRef = doc(colRef);
-    await setDoc(categoryRef, { id: categoryRef.id, name, active: true });
+    const catData: any = {
+      id: categoryRef.id,
+      name,
+      active: true,
+      createdAt: serverTimestamp(),
+    };
+    if (typeof sortOrder === 'number' && !isNaN(sortOrder)) {
+      catData.sortOrder = sortOrder;
+    }
+    await setDoc(categoryRef, catData);
   },
 
-  async updateMenuCategory(id: string, name: string, tenantId?: string, locationId?: string): Promise<void> {
+  async updateMenuCategory(id: string, name: string, tenantId?: string, locationId?: string, sortOrder?: number): Promise<void> {
     const catRef = (tenantId && locationId)
       ? doc(db, 'tenants', tenantId, 'locations', locationId, 'menuCategories', id)
       : doc(db, 'menuCategories', id);
-    await updateDoc(catRef, { name });
+    const updates: any = { name, updatedAt: serverTimestamp() };
+    if (typeof sortOrder === 'number' && !isNaN(sortOrder)) {
+      updates.sortOrder = sortOrder;
+    }
+    await updateDoc(catRef, updates);
   },
 
   async deleteMenuCategory(id: string, tenantId?: string, locationId?: string): Promise<void> {
@@ -267,12 +305,12 @@ export const DBServices = {
     // 2. Delete the category document across all possible paths (location, tenant, root)
     const deletionAttempts: Promise<any>[] = [];
     if (tenantId && locationId) {
-      deletionAttempts.push(deleteDoc(doc(db, 'tenants', tenantId, 'locations', locationId, 'menuCategories', id)).catch(() => {}));
+      deletionAttempts.push(deleteDoc(doc(db, 'tenants', tenantId, 'locations', locationId, 'menuCategories', id)).catch(() => { }));
     }
     if (tenantId) {
-      deletionAttempts.push(deleteDoc(doc(db, 'tenants', tenantId, 'menuCategories', id)).catch(() => {}));
+      deletionAttempts.push(deleteDoc(doc(db, 'tenants', tenantId, 'menuCategories', id)).catch(() => { }));
     }
-    deletionAttempts.push(deleteDoc(doc(db, 'menuCategories', id)).catch(() => {}));
+    deletionAttempts.push(deleteDoc(doc(db, 'menuCategories', id)).catch(() => { }));
     await Promise.all(deletionAttempts);
   },
 
@@ -362,11 +400,11 @@ export const DBServices = {
 
         const formattedVariants = (item.hasVariants && item.variants && item.variants.length > 0)
           ? item.variants.map((v, idx) => ({
-              id: v.id || `var_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
-              name: v.name,
-              price: v.price,
-              active: v.active !== false,
-            }))
+            id: v.id || `var_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
+            name: v.name,
+            price: v.price,
+            active: v.active !== false,
+          }))
           : [];
 
         const effectivePrice = formattedVariants.length > 0 ? formattedVariants[0].price : item.price;
@@ -684,7 +722,7 @@ export const DBServices = {
       try {
         const oldSnap = await getDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId));
         if (oldSnap.exists()) existingData = oldSnap.data();
-      } catch (_) {}
+      } catch (_) { }
     }
     if (!existingData.password || !existingData.tenantId) {
       try {
@@ -697,7 +735,7 @@ export const DBServices = {
             existingData = { ...exactRootSnap.data(), ...existingData };
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     const mergedPayload = {
@@ -719,21 +757,21 @@ export const DBServices = {
 
       // 2. Delete old documents
       if (tenantId) {
-        try { await deleteDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId)); } catch (_) {}
+        try { await deleteDoc(doc(db, 'tenants', tenantId, 'users', oldCleanId)); } catch (_) { }
       }
       try {
         const oldSnap = await getDoc(doc(db, 'users', oldCleanId));
         if (oldSnap.exists() && (!tenantId || oldSnap.data().tenantId === tenantId)) {
           await deleteDoc(doc(db, 'users', oldCleanId));
         }
-      } catch (_) {}
+      } catch (_) { }
       if (oldCleanId.toLowerCase() !== oldCleanId) {
         try {
           const oldLowerSnap = await getDoc(doc(db, 'users', oldCleanId.toLowerCase()));
           if (oldLowerSnap.exists() && (!tenantId || oldLowerSnap.data().tenantId === tenantId)) {
             await deleteDoc(doc(db, 'users', oldCleanId.toLowerCase()));
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // 3. Only update tenant document if this user is the registered primary owner / admin of the tenant
@@ -749,7 +787,7 @@ export const DBServices = {
               updatedAt: serverTimestamp(),
             });
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       return targetCleanId;
@@ -760,11 +798,11 @@ export const DBServices = {
       }
       try {
         await setDoc(doc(db, 'users', targetCleanId), mergedPayload, { merge: true });
-      } catch (_) {}
+      } catch (_) { }
       if (targetCleanId.toLowerCase() !== targetCleanId) {
         try {
           await setDoc(doc(db, 'users', targetCleanId.toLowerCase()), mergedPayload, { merge: true });
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // If password changed and this user is the registered primary owner of the tenant, sync tenant doc
@@ -780,7 +818,7 @@ export const DBServices = {
               updatedAt: serverTimestamp(),
             });
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       return targetCleanId;
@@ -794,11 +832,11 @@ export const DBServices = {
     }
     try {
       await deleteDoc(doc(db, 'users', cleanId));
-    } catch (_) {}
+    } catch (_) { }
     if (cleanId.toLowerCase() !== cleanId) {
       try {
         await deleteDoc(doc(db, 'users', cleanId.toLowerCase()));
-      } catch (_) {}
+      } catch (_) { }
     }
   },
 
@@ -1337,7 +1375,7 @@ export const DBServices = {
       if (!locSnap.empty) {
         locationId = locSnap.docs[0].id;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     return {
       tenantId,
@@ -1403,7 +1441,7 @@ export const DBServices = {
         const item = d.data() as MenuItem;
         existingItemsMap.set(item.name.toLowerCase().trim(), { ...item, id: d.id });
       });
-    } catch (_) {}
+    } catch (_) { }
 
     const orderItems: OrderItem[] = payload.items.map(it => {
       const matched = existingItemsMap.get(it.itemName.toLowerCase().trim());
@@ -1473,15 +1511,15 @@ export const DBServices = {
     const isZomato = platform === 'ZOMATO';
     const sampleItems: OrderItem[] = isZomato
       ? [
-          { itemId: 'sim-1', itemName: 'Special Chicken Dum Biryani', qty: 2, price: 320, note: 'Extra Raita & Salan' },
-          { itemId: 'sim-2', itemName: 'Butter Garlic Naan', qty: 3, price: 55 },
-          { itemId: 'sim-3', itemName: 'Gulab Jamun (2 pcs)', qty: 1, price: 90 },
-        ]
+        { itemId: 'sim-1', itemName: 'Special Chicken Dum Biryani', qty: 2, price: 320, note: 'Extra Raita & Salan' },
+        { itemId: 'sim-2', itemName: 'Butter Garlic Naan', qty: 3, price: 55 },
+        { itemId: 'sim-3', itemName: 'Gulab Jamun (2 pcs)', qty: 1, price: 90 },
+      ]
       : [
-          { itemId: 'sim-4', itemName: 'Paneer Butter Masala', qty: 1, price: 260, note: 'Medium Spicy' },
-          { itemId: 'sim-5', itemName: 'Jeera Fried Rice', qty: 1, price: 180 },
-          { itemId: 'sim-6', itemName: 'Masala Chaas (Spiced Buttermilk)', qty: 2, price: 40 },
-        ];
+        { itemId: 'sim-4', itemName: 'Paneer Butter Masala', qty: 1, price: 260, note: 'Medium Spicy' },
+        { itemId: 'sim-5', itemName: 'Jeera Fried Rice', qty: 1, price: 180 },
+        { itemId: 'sim-6', itemName: 'Masala Chaas (Spiced Buttermilk)', qty: 2, price: 40 },
+      ];
 
     const totalAmount = sampleItems.reduce((acc, it) => acc + (it.price * it.qty), 0);
     const orderRef = doc(collection(db, 'tenants', tenantId, 'locations', locationId, 'orders'));

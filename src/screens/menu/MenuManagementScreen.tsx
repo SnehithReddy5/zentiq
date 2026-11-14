@@ -34,6 +34,7 @@ export const MenuManagementScreen = () => {
   // Category Add / Edit State
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [catName, setCatName] = useState('');
+  const [catRank, setCatRank] = useState('');
 
   // Item Add / Edit State
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export const MenuManagementScreen = () => {
   const openAddCategoryModal = () => {
     setEditingCategoryId(null);
     setCatName('');
+    setCatRank('');
     setCategoryModalOpen(true);
   };
 
@@ -326,16 +328,19 @@ export const MenuManagementScreen = () => {
   const handleSaveCategory = async () => {
     if (!catName.trim()) return;
     try {
+      const rankNum = parseInt(catRank.trim(), 10);
+      const sortOrder = !isNaN(rankNum) && rankNum > 0 ? rankNum : undefined;
       if (editingCategoryId) {
-        await DBServices.updateMenuCategory(editingCategoryId, catName.trim(), tenant?.id, activeLocationId || undefined);
+        await DBServices.updateMenuCategory(editingCategoryId, catName.trim(), tenant?.id, activeLocationId || undefined, sortOrder);
       } else {
-        await DBServices.addMenuCategory(catName.trim(), tenant?.id, activeLocationId || undefined);
+        await DBServices.addMenuCategory(catName.trim(), tenant?.id, activeLocationId || undefined, sortOrder);
       }
       setCatName('');
+      setCatRank('');
       setEditingCategoryId(null);
       setCategoryModalOpen(false);
     } catch (e: any) {
-      toast.error(e.message, 'Item Save Error');
+      toast.error(e.message, 'Category Save Error');
     }
   };
 
@@ -443,6 +448,7 @@ export const MenuManagementScreen = () => {
                       onPress={() => {
                         setEditingCategoryId(cat.id);
                         setCatName(cat.name);
+                        setCatRank(cat.sortOrder ? String(cat.sortOrder) : '');
                         setCategoryModalOpen(true);
                       }}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -1016,6 +1022,18 @@ export const MenuManagementScreen = () => {
                 value={catName}
                 onChangeText={setCatName}
               />
+              <View className="mt-2.5">
+                <Input
+                  label="Display Rank / Order (Optional)"
+                  placeholder="e.g. 1 for Starters, 2 for Main Course..."
+                  value={catRank}
+                  onChangeText={setCatRank}
+                  keyboardType="numeric"
+                />
+                <Text className="text-slate-400 text-[10px] -mt-1.5 mb-1 px-1">
+                  Categories are ordered by rank (1, 2, 3...). Favorites always stay as the first option.
+                </Text>
+              </View>
               {editingCategoryId && (
                 <TouchableOpacity
                   onPress={() => {
@@ -1157,7 +1175,14 @@ export const MenuManagementScreen = () => {
                         className="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-3.5 mb-2.5 flex-row items-center justify-between"
                       >
                         <View className="flex-1 mr-3">
-                          <Text className="text-white font-bold text-sm">{cat.name}</Text>
+                          <View className="flex-row items-center gap-2 flex-wrap">
+                            <Text className="text-white font-bold text-sm">{cat.name}</Text>
+                            {typeof cat.sortOrder === 'number' && cat.sortOrder > 0 && (
+                              <View className="bg-indigo-500/20 border border-indigo-500/40 px-2 py-0.5 rounded-full">
+                                <Text className="text-indigo-300 font-bold text-[10px]">Rank #{cat.sortOrder}</Text>
+                              </View>
+                            )}
+                          </View>
                           <Text className="text-slate-400 text-xs mt-0.5">
                             {catItemsCount} {catItemsCount === 1 ? 'menu item' : 'menu items'}
                           </Text>
@@ -1169,6 +1194,7 @@ export const MenuManagementScreen = () => {
                               setManageCategoriesOpen(false);
                               setEditingCategoryId(cat.id);
                               setCatName(cat.name);
+                              setCatRank(cat.sortOrder ? String(cat.sortOrder) : '');
                               setCategoryModalOpen(true);
                             }}
                             className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 active:bg-slate-700"

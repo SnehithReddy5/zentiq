@@ -10,6 +10,7 @@ import { Input } from '../../components/common/Input';
 import { useCartStore } from '../../store/cart.store';
 import { useTableStore } from '../../store/table.store';
 import { useOrderStore } from '../../store/order.store';
+import { useMenuStore } from '../../store/menu.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { usePrinterStore } from '../../store/printer.store';
 import { useToastStore } from '../../store/toast.store';
@@ -45,16 +46,25 @@ export const CartScreen = () => {
           (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
         );
         if (runningOrder && runningOrder.items && runningOrder.items.length > 0) {
-          const formatted = runningOrder.items.map((it: any, idx: number) => ({
-            itemId: it.itemId || it.id || `item-${idx}`,
-            itemName: it.itemName || it.name,
-            price: Number(it.price || 0),
-            qty: Number(it.qty || 1),
-            sentQty: Number(it.sentQty ?? it.qty ?? 1),
-            variantId: it.variantId || null,
-            variantName: it.variantName || null,
-            note: it.note || '',
-          }));
+          const menuItems = useMenuStore.getState().items;
+          const formatted = runningOrder.items.map((it: any, idx: number) => {
+            const rawName = (it.itemName || it.name || '').trim().toLowerCase();
+            const matchedMaster = menuItems.find(m =>
+              m.id === it.itemId ||
+              (m.name && m.name.trim().toLowerCase() === rawName)
+            );
+            return {
+              itemId: matchedMaster?.id || it.itemId || it.id || `item-${idx}`,
+              baseItemId: matchedMaster?.id || it.baseItemId || undefined,
+              itemName: matchedMaster?.name || it.itemName || it.name,
+              price: Number(it.price || matchedMaster?.price || 0),
+              qty: Number(it.qty || 1),
+              sentQty: Number(it.sentQty ?? it.qty ?? 1),
+              variantId: it.variantId || null,
+              variantName: it.variantName || null,
+              note: it.note || '',
+            };
+          });
           useCartStore.getState().syncRunningOrderItems(tableNo, formatted);
           return;
         }
@@ -311,7 +321,7 @@ export const CartScreen = () => {
           } else if (existingRunningOrder?.kotNo) {
             billNo = Number(existingRunningOrder.kotNo);
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       if (!billNo) {
@@ -325,31 +335,31 @@ export const CartScreen = () => {
       const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
       const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
 
-      const provisionalPayments = payments.length > 0 
-        ? payments 
+      const provisionalPayments = payments.length > 0
+        ? payments
         : [{ method: selectedMethod, amount: cartTotal }];
 
       const billBuffer = isCombinedMode
         ? ESCPOSService.buildCombinedTiffinPrints(
-            billNo,
-            tableNo,
-            user?.name || 'Staff',
-            cartItems,
-            brandPayload,
-            orderType,
-            provisionalPayments,
-            discountAmount
-          )
+          billNo,
+          tableNo,
+          user?.name || 'Staff',
+          cartItems,
+          brandPayload,
+          orderType,
+          provisionalPayments,
+          discountAmount
+        )
         : ESCPOSService.buildBill(
-            billNo,
-            tableNo,
-            user?.name || 'Staff',
-            cartItems,
-            brandPayload,
-            orderType,
-            provisionalPayments,
-            discountAmount
-          );
+          billNo,
+          tableNo,
+          user?.name || 'Staff',
+          cartItems,
+          brandPayload,
+          orderType,
+          provisionalPayments,
+          discountAmount
+        );
 
       // 3. Dispatch to thermal printer via serialized mutex queue
       await printerService.printReceiptOrKOT(billBuffer, mainTarget, mainPort, mainType);
@@ -360,7 +370,12 @@ export const CartScreen = () => {
           billPrinted: true,
           billPrintedAt: new Date(),
           billNo: billNo,
-        }, tenant?.id, existingRunningOrder.locationId || activeLocationId || undefined).catch(() => {});
+        }, tenant?.id, existingRunningOrder.locationId || activeLocationId || undefined).catch(() => { });
+      }
+
+      // 5. Update Table document in Firestore so all staff devices lock item editing in real-time
+      if (tableNo !== 0) {
+        DBServices.updateTableBillPrinted(tableNo, true, billNo, tenant?.id, activeLocationId || undefined).catch(() => { });
       }
 
       toast.success(
@@ -431,7 +446,7 @@ export const CartScreen = () => {
           existingRunningOrder = useOrderStore.getState().orders.find(
             (o: any) => Number(o.tableNo) === Number(tableNo) && (o.status === 'RUNNING' || o.status === 'running')
           ) || null;
-        } catch (_) {}
+        } catch (_) { }
       }
 
       const paymentRows = finalPayments.map(p => ({
@@ -504,25 +519,25 @@ export const CartScreen = () => {
           try {
             const billBuffer = isCombinedMode
               ? ESCPOSService.buildCombinedTiffinPrints(
-                  billNo,
-                  tableNo,
-                  user?.name || 'Staff',
-                  cartItems,
-                  brandPayload,
-                  orderType,
-                  finalPayments,
-                  discountAmount
-                )
+                billNo,
+                tableNo,
+                user?.name || 'Staff',
+                cartItems,
+                brandPayload,
+                orderType,
+                finalPayments,
+                discountAmount
+              )
               : ESCPOSService.buildBill(
-                  billNo,
-                  tableNo,
-                  user?.name || 'Staff',
-                  cartItems,
-                  brandPayload,
-                  orderType,
-                  finalPayments,
-                  discountAmount
-                );
+                billNo,
+                tableNo,
+                user?.name || 'Staff',
+                cartItems,
+                brandPayload,
+                orderType,
+                finalPayments,
+                discountAmount
+              );
 
             await printerService.printReceiptOrKOT(billBuffer, mainTarget, mainPort, mainType);
           } catch (printErr: any) {
@@ -548,8 +563,8 @@ export const CartScreen = () => {
       useToastStore.getState().showToast({
         type: 'success',
         title: 'Order Settled',
-        message: tableNo !== 0 
-          ? `Table ${tableNo} settled & freed successfully.` 
+        message: tableNo !== 0
+          ? `Table ${tableNo} settled & freed successfully.`
           : `Bill #${billNo} settled successfully.`,
         duration: 3500,
       });
@@ -699,7 +714,7 @@ export const CartScreen = () => {
           {/* Right Panel: Pure KOT Mode OR Dynamic Payment Settlement */}
           <View className={isLargePOS ? 'w-[480px]' : ''}>
             <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-              
+
               {/* CASE 1: PURE KOT MODE (Payments Disabled in Store Settings) */}
               {!paymentsEnabled || activePaymentMethods.length === 0 ? (
                 <View>
@@ -726,11 +741,10 @@ export const CartScreen = () => {
                   <TouchableOpacity
                     onPress={handlePrintKOTOnly}
                     disabled={isSettling || cartItems.length === 0}
-                    className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
-                      cartItems.length > 0
+                    className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
                         ? 'bg-amber-500 shadow-amber-500/30 active:opacity-90'
                         : 'bg-slate-800 opacity-60'
-                    }`}
+                      }`}
                   >
                     {isSettling ? (
                       <ActivityIndicator size="small" color="#1E293B" />
@@ -752,9 +766,8 @@ export const CartScreen = () => {
                     <View className="flex-row bg-slate-950 p-1 rounded-2xl mb-5 border border-slate-800">
                       <TouchableOpacity
                         onPress={() => setPaymentMode('FULL')}
-                        className={`flex-1 py-2 rounded-xl items-center ${
-                          paymentMode === 'FULL' ? 'bg-[#5D3FD3]' : 'bg-transparent'
-                        }`}
+                        className={`flex-1 py-2 rounded-xl items-center ${paymentMode === 'FULL' ? 'bg-[#5D3FD3]' : 'bg-transparent'
+                          }`}
                       >
                         <Text className={`text-xs font-black ${paymentMode === 'FULL' ? 'text-white' : 'text-slate-400'}`}>
                           ⚡ Single Payment (1-Tap)
@@ -766,9 +779,8 @@ export const CartScreen = () => {
                           setPaymentMode('SPLIT');
                           setPaymentAmount(remaining > 0 ? remaining.toString() : cartTotal.toString());
                         }}
-                        className={`flex-1 py-2 rounded-xl items-center ${
-                          paymentMode === 'SPLIT' ? 'bg-[#5D3FD3]' : 'bg-transparent'
-                        }`}
+                        className={`flex-1 py-2 rounded-xl items-center ${paymentMode === 'SPLIT' ? 'bg-[#5D3FD3]' : 'bg-transparent'
+                          }`}
                       >
                         <Text className={`text-xs font-black ${paymentMode === 'SPLIT' ? 'text-white' : 'text-slate-400'}`}>
                           ✂️ Split Payment
@@ -791,9 +803,8 @@ export const CartScreen = () => {
                           return (
                             <TouchableOpacity
                               key={m}
-                              className={`flex-1 min-w-[90px] p-3 rounded-2xl border items-center ${
-                                isSelected ? 'bg-purple-950/60 border-[#5D3FD3]' : 'bg-slate-800/80 border-slate-700'
-                              }`}
+                              className={`flex-1 min-w-[90px] p-3 rounded-2xl border items-center ${isSelected ? 'bg-purple-950/60 border-[#5D3FD3]' : 'bg-slate-800/80 border-slate-700'
+                                }`}
                               onPress={() => setSelectedMethod(m)}
                             >
                               {m === 'CASH' ? (
@@ -879,11 +890,10 @@ export const CartScreen = () => {
                           <TouchableOpacity
                             onPress={handlePrintBillOnly}
                             disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
-                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${
-                              cartItems.length > 0
+                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
                                 ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
                                 : 'bg-slate-850 border-slate-800 opacity-50'
-                            }`}
+                              }`}
                           >
                             {isPrintingBillOnly ? (
                               <ActivityIndicator size="small" color="#A5B4FC" />
@@ -901,11 +911,10 @@ export const CartScreen = () => {
                           <TouchableOpacity
                             onPress={() => handleSaveAndSettle(false)}
                             disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
-                            className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
-                              cartItems.length > 0
+                            className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
                                 ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
                                 : 'bg-slate-800 opacity-60'
-                            }`}
+                              }`}
                           >
                             {isSettling ? (
                               <ActivityIndicator size="small" color="white" />
@@ -925,11 +934,10 @@ export const CartScreen = () => {
                           <TouchableOpacity
                             onPress={handlePrintBillOnly}
                             disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
-                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${
-                              cartItems.length > 0
+                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
                                 ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
                                 : 'bg-slate-850 border-slate-800 opacity-50'
-                            }`}
+                              }`}
                           >
                             {isPrintingBillOnly ? (
                               <ActivityIndicator size="small" color="#A5B4FC" />
@@ -947,11 +955,10 @@ export const CartScreen = () => {
                           <TouchableOpacity
                             onPress={() => handleSaveAndSettle(true)}
                             disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
-                            className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
-                              cartItems.length > 0
+                            className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
                                 ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
                                 : 'bg-slate-800 opacity-60'
-                            }`}
+                              }`}
                           >
                             {isSettling ? (
                               <ActivityIndicator size="small" color="white" />
@@ -980,9 +987,8 @@ export const CartScreen = () => {
                           <Text className="text-slate-500 text-[10px] uppercase font-bold">Recorded</Text>
                           <Text className="text-indigo-400 font-black text-sm mt-0.5">₹{totalPaid.toFixed(2)}</Text>
                         </View>
-                        <View className={`flex-1 p-2.5 rounded-2xl border items-center ${
-                          remaining === 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-amber-500/10 border-amber-500/30'
-                        }`}>
+                        <View className={`flex-1 p-2.5 rounded-2xl border items-center ${remaining === 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-amber-500/10 border-amber-500/30'
+                          }`}>
                           <Text className={`text-[10px] uppercase font-bold ${remaining === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                             {remaining === 0 ? 'Balance' : 'Remaining'}
                           </Text>
@@ -1003,9 +1009,8 @@ export const CartScreen = () => {
                               <TouchableOpacity
                                 key={m}
                                 onPress={() => setSelectedMethod(m)}
-                                className={`flex-1 min-w-[70px] py-1.5 rounded-xl border items-center ${
-                                  selectedMethod === m ? 'bg-purple-950/60 border-[#5D3FD3]' : 'bg-slate-800 border-slate-700'
-                                }`}
+                                className={`flex-1 min-w-[70px] py-1.5 rounded-xl border items-center ${selectedMethod === m ? 'bg-purple-950/60 border-[#5D3FD3]' : 'bg-slate-800 border-slate-700'
+                                  }`}
                               >
                                 <Text className={`text-[11px] font-bold ${selectedMethod === m ? 'text-purple-300' : 'text-slate-400'}`}>
                                   {m}
@@ -1070,11 +1075,10 @@ export const CartScreen = () => {
                           <TouchableOpacity
                             onPress={handlePrintBillOnly}
                             disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
-                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${
-                              cartItems.length > 0
+                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
                                 ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
                                 : 'bg-slate-850 border-slate-800 opacity-50'
-                            }`}
+                              }`}
                           >
                             {isPrintingBillOnly ? (
                               <ActivityIndicator size="small" color="#A5B4FC" />
@@ -1092,11 +1096,10 @@ export const CartScreen = () => {
                           <TouchableOpacity
                             onPress={() => handleSaveAndSettle(false)}
                             disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
-                            className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
-                              remaining === 0 && cartItems.length > 0
+                            className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${remaining === 0 && cartItems.length > 0
                                 ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
                                 : 'bg-slate-800 opacity-60'
-                            }`}
+                              }`}
                           >
                             {isSettling ? (
                               <ActivityIndicator size="small" color="white" />
@@ -1116,11 +1119,10 @@ export const CartScreen = () => {
                           <TouchableOpacity
                             onPress={handlePrintBillOnly}
                             disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
-                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${
-                              cartItems.length > 0
+                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
                                 ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
                                 : 'bg-slate-850 border-slate-800 opacity-50'
-                            }`}
+                              }`}
                           >
                             {isPrintingBillOnly ? (
                               <ActivityIndicator size="small" color="#A5B4FC" />
@@ -1138,11 +1140,10 @@ export const CartScreen = () => {
                           <TouchableOpacity
                             onPress={() => handleSaveAndSettle(true)}
                             disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
-                            className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${
-                              remaining === 0 && cartItems.length > 0
+                            className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${remaining === 0 && cartItems.length > 0
                                 ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
                                 : 'bg-slate-800 opacity-60'
-                            }`}
+                              }`}
                           >
                             {isSettling ? (
                               <ActivityIndicator size="small" color="white" />

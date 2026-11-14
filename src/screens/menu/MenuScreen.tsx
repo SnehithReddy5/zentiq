@@ -3,7 +3,8 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List } from 'lucide-react-native';
 import { useMenuStore } from '../../store/menu.store';
 import { useCartStore } from '../../store/cart.store';
 import { useTableStore } from '../../store/table.store';
@@ -43,16 +44,79 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const rawWorkflowMode = printerSettings.printerWorkflowMode || 'DUAL_PRINTER';
   const isDualPrinterMode = rawWorkflowMode === 'DUAL_PRINTER' || rawWorkflowMode === 'RESTAURANT';
   const { carts, addItem, removeItem, updateQuantity, markAsSent, clearCart } = useCartStore();
+  const { tables } = useTableStore();
   const { orders } = useOrderStore();
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
   const { isSplitView, isLargePOS } = useResponsiveLayout();
+
+  // Role check: Only Admin and Manager are allowed to edit items once bill has been printed
+  const isManagerOrAdmin = Boolean(
+    user?.role && [
+      'ADMIN',
+      'admin',
+      'CLIENT_ADMIN',
+      'TENANT_SUPER_ADMIN',
+      'PLATFORM_ADMIN',
+      'MANAGER',
+      'manager',
+    ].includes(user.role)
+  );
+
+  const currentTable = useMemo(() => {
+    return tables.find((t: any) => Number(t.tableNo) === Number(tableNo));
+  }, [tables, tableNo]);
+
+  const runningOrder = useMemo(() => {
+    return orders.find(
+      (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
+    );
+  }, [orders, tableNo]);
+
+  const isBillPrinted = Boolean(
+    tableNo !== 0 && ((currentTable as any)?.billPrinted === true || (runningOrder as any)?.billPrinted === true)
+  );
+
+  const activePrintedBillNo = (runningOrder as any)?.billNo || (currentTable as any)?.billNo || null;
+
+  const checkCanEditCart = (): boolean => {
+    if (isBillPrinted && !isManagerOrAdmin) {
+      toast.warning(
+        `Bill #${activePrintedBillNo || ''} has already been printed for Table ${tableNo}. Modifying items is restricted to Admin & Manager only.`,
+        'Bill Printed • Locked'
+      );
+      return false;
+    }
+    return true;
+  };
 
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItemForVariants, setSelectedItemForVariants] = useState<MenuItem | null>(null);
   const [isSendingKOT, setIsSendingKOT] = useState(false);
   const [kotToast, setKotToast] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'lines'>('grid');
+
+  useEffect(() => {
+    AsyncStorage.getItem('@zentiq_pos_menu_view_mode')
+      .then((saved) => {
+        if (saved === 'grid' || saved === 'lines') {
+          setViewMode(saved);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSetViewMode = (mode: 'grid' | 'lines') => {
+    setViewMode(mode);
+    AsyncStorage.setItem('@zentiq_pos_menu_view_mode', mode).catch(() => {});
+  };
+
+  const numColumns = useMemo(() => {
+    if (viewMode === 'lines') return 1;
+    if (isLargePOS) return isSplitView ? 3 : 4;
+    return 2;
+  }, [viewMode, isLargePOS, isSplitView]);
 
   useEffect(() => {
     const unsub = subscribeToMenu();
@@ -74,16 +138,24 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
         );
         if (runningOrder && runningOrder.items && runningOrder.items.length > 0) {
-          const formatted = runningOrder.items.map((it: any, idx: number) => ({
-            itemId: it.itemId || it.id || `item-${idx}`,
-            itemName: it.itemName || it.name,
-            price: Number(it.price || 0),
-            qty: Number(it.qty || 1),
-            sentQty: Number(it.sentQty ?? it.qty ?? 1),
-            variantId: it.variantId || null,
-            variantName: it.variantName || null,
-            note: it.note || '',
-          }));
+          const formatted = runningOrder.items.map((it: any, idx: number) => {
+            const rawName = (it.itemName || it.name || '').trim().toLowerCase();
+            const matchedMaster = items.find(m =>
+              m.id === it.itemId ||
+              (m.name && m.name.trim().toLowerCase() === rawName)
+            );
+            return {
+              itemId: matchedMaster?.id || it.itemId || it.id || `item-${idx}`,
+              baseItemId: matchedMaster?.id || it.baseItemId || undefined,
+              itemName: matchedMaster?.name || it.itemName || it.name,
+              price: Number(it.price || matchedMaster?.price || 0),
+              qty: Number(it.qty || 1),
+              sentQty: Number(it.sentQty ?? it.qty ?? 1),
+              variantId: it.variantId || null,
+              variantName: it.variantName || null,
+              note: it.note || '',
+            };
+          });
           useCartStore.getState().syncRunningOrderItems(tableNo, formatted);
           return;
         }
@@ -247,8 +319,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
   // Inventory Calculation & Stock Guard Helpers
   const getReservedStock = (baseItemId: string): number => {
+    const master = items.find(m => m.id === baseItemId);
+    const masterNameNorm = (master?.name || '').trim().toLowerCase();
     return cartItems
-      .filter(i => (i.baseItemId === baseItemId) || (i.itemId === baseItemId))
+      .filter(i => (i.baseItemId === baseItemId) || (i.itemId === baseItemId) || (masterNameNorm && i.itemName && i.itemName.trim().toLowerCase() === masterNameNorm))
       .reduce((total, i) => total + (i.qty * (i.portionDeduction || 1)), 0);
   };
 
@@ -259,6 +333,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   };
 
   const handleAddSimpleItem = (item: MenuItem) => {
+    if (!checkCanEditCart()) return;
     if (item.isAvailable === false) {
       toast.warning(`"${item.name}" is marked out of stock.`, 'Out of Stock');
       return;
@@ -281,6 +356,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   };
 
   const handleIncrementSimpleItem = (item: MenuItem, currentQty: number) => {
+    if (!checkCanEditCart()) return;
     if (item.isAvailable === false) {
       toast.warning(`"${item.name}" is marked out of stock.`, 'Out of Stock');
       return;
@@ -296,6 +372,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   };
 
   const handleIncrementCartItem = (cItem: any) => {
+    if (!checkCanEditCart()) return;
     const baseId = cItem.baseItemId || cItem.itemId;
     const masterItem = items.find(i => i.id === baseId);
     if (masterItem && masterItem.isAvailable === false) {
@@ -313,9 +390,14 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     updateQuantity(tableNo, cItem.itemId, cItem.qty + 1, cItem.variantId || cItem.variantName);
   };
 
-  const renderItemCard = ({ item }: { item: MenuItem }) => {
+  const renderLineCard = ({ item }: { item: MenuItem }) => {
     const hasVariants = item.variants && item.variants.length > 0;
-    const matchingCartItems = cartItems.filter(i => i.itemId === item.id || (i as any).baseItemId === item.id);
+    const itemNameNorm = (item.name || '').trim().toLowerCase();
+    const matchingCartItems = cartItems.filter(i =>
+      i.itemId === item.id ||
+      (i as any).baseItemId === item.id ||
+      (i.itemName && i.itemName.trim().toLowerCase() === itemNameNorm)
+    );
     const qty = matchingCartItems.reduce((sum, i) => sum + (i.qty || 0), 0);
     const availStock = getAvailableStock(item);
     const isExplicitlyOutOfStock = item.isAvailable === false;
@@ -378,7 +460,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
         {hasVariants ? (
           <TouchableOpacity
-            onPress={() => setSelectedItemForVariants(item)}
+            onPress={() => {
+              if (!checkCanEditCart()) return;
+              setSelectedItemForVariants(item);
+            }}
             disabled={isOutOfStock}
             className={`px-3.5 py-2 rounded-xl ${
               isOutOfStock
@@ -399,6 +484,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             <TouchableOpacity
               className="w-7 h-7 rounded-lg bg-slate-700 items-center justify-center"
               onPress={() => {
+                if (!checkCanEditCart()) return;
                 if (qty > 1) updateQuantity(tableNo, item.id, qty - 1);
                 else removeItem(tableNo, item.id);
               }}
@@ -425,6 +511,134 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     );
   };
 
+  const renderGridCard = ({ item }: { item: MenuItem }) => {
+    const hasVariants = item.variants && item.variants.length > 0;
+    const itemNameNorm = (item.name || '').trim().toLowerCase();
+    const matchingCartItems = cartItems.filter(i =>
+      i.itemId === item.id ||
+      (i as any).baseItemId === item.id ||
+      (i.itemName && i.itemName.trim().toLowerCase() === itemNameNorm)
+    );
+    const qty = matchingCartItems.reduce((sum, i) => sum + (i.qty || 0), 0);
+    const availStock = getAvailableStock(item);
+    const isExplicitlyOutOfStock = item.isAvailable === false;
+    const isOutOfStock = isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0);
+
+    return (
+      <View
+        style={{ flex: 1, margin: 4, minHeight: 110 }}
+        className={`bg-slate-900 border rounded-2xl p-3 justify-between shadow-md ${
+          isOutOfStock ? 'border-rose-900/40 opacity-70' : 'border-slate-800'
+        }`}
+      >
+        {/* Top: Name */}
+        <View className="flex-row items-start justify-between mb-2">
+          <View className="flex-1 mr-1">
+            <View className="flex-row items-center flex-wrap gap-1">
+              {item.isFavorite && (
+                <View className="mr-0.5 bg-amber-500/20 px-1 py-0.5 rounded">
+                  <Star size={9} color="#F59E0B" fill="#F59E0B" />
+                </View>
+              )}
+              <Text className="text-white font-bold text-xs sm:text-sm leading-snug" numberOfLines={2}>
+                {item.name}
+              </Text>
+            </View>
+            {isOutOfStock ? (
+              <Text className="text-rose-400 font-bold text-[9px] uppercase mt-1">Out of Stock</Text>
+            ) : item.trackInventory && availStock <= (item.lowStockThreshold || 2) ? (
+              <Text className="text-amber-400 font-bold text-[9px] mt-0.5">Low: {availStock.toFixed(0)} {item.stockUnit || 'kg'}</Text>
+            ) : null}
+          </View>
+        </View>
+
+        {/* Bottom Row: Price & Action Stepper / Add Button */}
+        <View className="flex-row items-end justify-between mt-auto pt-1">
+          <Text className="text-white font-extrabold text-sm sm:text-base">
+            ₹{item.price}
+          </Text>
+
+          {hasVariants ? (
+            <View className="items-end">
+              <Text className="text-indigo-300 text-[10px] font-medium leading-none mb-1">
+                Options
+              </Text>
+              {qty > 0 ? (
+                <View className="flex-row items-center bg-slate-800 rounded-xl p-0.5 border border-slate-700">
+                  <TouchableOpacity
+                    className="w-6 h-6 rounded-lg bg-slate-700 items-center justify-center"
+                    onPress={() => {
+                      if (!checkCanEditCart()) return;
+                      setSelectedItemForVariants(item);
+                    }}
+                  >
+                    <Text className="text-white font-bold text-xs">-</Text>
+                  </TouchableOpacity>
+                  <Text className="w-5 text-center text-white font-bold text-xs">{qty}</Text>
+                  <TouchableOpacity
+                    className="w-6 h-6 rounded-lg bg-[#5D3FD3] items-center justify-center"
+                    onPress={() => {
+                      if (!checkCanEditCart()) return;
+                      setSelectedItemForVariants(item);
+                    }}
+                  >
+                    <Text className="text-white font-bold text-xs">+</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!checkCanEditCart()) return;
+                    setSelectedItemForVariants(item);
+                  }}
+                  disabled={isOutOfStock}
+                  className={`px-3 py-1.5 rounded-xl ${
+                    isOutOfStock ? 'bg-slate-800 border border-slate-700 opacity-60' : 'bg-[#5D3FD3]'
+                  }`}
+                >
+                  <Text className={`font-bold text-xs ${isOutOfStock ? 'text-slate-400' : 'text-white'}`}>
+                    + Add
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : isOutOfStock ? (
+            <View className="bg-slate-800/80 border border-slate-700 px-2.5 py-1 rounded-xl">
+              <Text className="text-rose-400 font-bold text-[10px]">Out</Text>
+            </View>
+          ) : qty > 0 ? (
+            <View className="flex-row items-center bg-slate-800 rounded-xl p-0.5 border border-slate-700">
+              <TouchableOpacity
+                className="w-6 h-6 rounded-lg bg-slate-700 items-center justify-center"
+                onPress={() => {
+                  if (!checkCanEditCart()) return;
+                  if (qty > 1) updateQuantity(tableNo, item.id, qty - 1);
+                  else removeItem(tableNo, item.id);
+                }}
+              >
+                <Text className="text-white font-bold text-xs">-</Text>
+              </TouchableOpacity>
+              <Text className="w-5 text-center text-white font-bold text-xs">{qty}</Text>
+              <TouchableOpacity
+                className="w-6 h-6 rounded-lg bg-[#5D3FD3] items-center justify-center"
+                onPress={() => handleIncrementSimpleItem(item, qty)}
+              >
+                <Text className="text-white font-bold text-xs">+</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => handleAddSimpleItem(item)}
+              className="bg-[#5D3FD3] px-3.5 py-1.5 rounded-xl shadow-sm"
+            >
+              <Text className="text-white font-bold text-xs">+ Add</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  };
+
   // Persistent Right Panel for Tablets & POS
   const renderSplitCartPanel = () => (
     <View className="w-[360px] lg:w-[410px] bg-slate-900 border-l border-slate-800 p-4 flex-col justify-between shadow-2xl">
@@ -433,10 +647,40 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           <Text className="text-white font-black text-lg">
             {tableNo === 0 ? (orderType === 'PICKUP' ? 'Pick Up Cart' : (orderType === 'COUNTER' ? 'Counter Cart' : 'Takeaway Cart')) : `Table ${tableNo} Cart`}
           </Text>
-          <TouchableOpacity onPress={() => clearCart(tableNo)} className="px-2 py-1 bg-rose-500/10 rounded">
+          <TouchableOpacity
+            onPress={() => {
+              if (!checkCanEditCart()) return;
+              clearCart(tableNo);
+            }}
+            className="px-2 py-1 bg-rose-500/10 rounded"
+          >
             <Text className="text-rose-400 text-xs font-bold">Clear</Text>
           </TouchableOpacity>
         </View>
+
+        {isBillPrinted && (
+          <View className={`mt-2.5 p-2.5 rounded-xl border flex-row items-center ${
+            isManagerOrAdmin
+              ? 'bg-amber-500/15 border-amber-500/30'
+              : 'bg-rose-500/15 border-rose-500/30'
+          }`}>
+            {isManagerOrAdmin ? (
+              <ShieldCheck size={16} color="#F59E0B" />
+            ) : (
+              <Lock size={16} color="#F43F5E" />
+            )}
+            <View className="ml-2 flex-1">
+              <Text className={`text-xs font-black ${isManagerOrAdmin ? 'text-amber-300' : 'text-rose-300'}`}>
+                {isManagerOrAdmin ? `🧾 Bill #${activePrintedBillNo || ''} Printed (Manager Edit)` : `🔒 Bill #${activePrintedBillNo || ''} Printed • Locked`}
+              </Text>
+              <Text className="text-slate-400 text-[10px] mt-0.5">
+                {isManagerOrAdmin
+                  ? 'Authorized as Admin/Manager to edit this printed bill.'
+                  : 'Items locked. Hand over to billing counter or ask Manager.'}
+              </Text>
+            </View>
+          </View>
+        )}
 
         <ScrollView className="flex-1 my-3">
           {cartItems.length === 0 ? (
@@ -457,6 +701,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                   <TouchableOpacity
                     className="w-6 h-6 rounded bg-slate-700 items-center justify-center"
                     onPress={() => {
+                      if (!checkCanEditCart()) return;
                       if (item.qty > 1) updateQuantity(tableNo, item.itemId, item.qty - 1, item.variantId || item.variantName);
                       else removeItem(tableNo, item.itemId, item.variantId || item.variantName);
                     }}
@@ -550,9 +795,9 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       <View className="flex-1 flex-row">
         {/* Left Column (Menu & Categories) */}
         <View className="flex-1">
-          {/* Search Bar */}
-          <View className="px-4 py-2.5 bg-[#090D1A]">
-            <View className="flex-row items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
+          {/* Search Bar & View Mode Toggle (Grid vs Lines) */}
+          <View className="px-4 py-2.5 bg-[#090D1A] flex-row items-center gap-2">
+            <View className="flex-1 flex-row items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
               <Search size={16} color="#64748B" />
               <TextInput
                 placeholder="Search menu items..."
@@ -561,6 +806,35 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 onChangeText={setSearchQuery}
                 className="flex-1 ml-2 text-xs text-white"
               />
+            </View>
+
+            {/* View Mode Toggle */}
+            <View className="flex-row items-center bg-slate-900 border border-slate-800 rounded-xl p-0.5">
+              <TouchableOpacity
+                onPress={() => handleSetViewMode('grid')}
+                className={`px-2.5 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
+                  viewMode === 'grid' ? 'bg-[#5D3FD3]' : 'bg-transparent'
+                }`}
+                accessibilityLabel="Grid View"
+              >
+                <LayoutGrid size={13} color={viewMode === 'grid' ? '#FFFFFF' : '#94A3B8'} />
+                <Text className={`text-[11px] font-bold ${viewMode === 'grid' ? 'text-white' : 'text-slate-400'}`}>
+                  Grid
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleSetViewMode('lines')}
+                className={`px-2.5 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
+                  viewMode === 'lines' ? 'bg-[#5D3FD3]' : 'bg-transparent'
+                }`}
+                accessibilityLabel="Lines View"
+              >
+                <List size={13} color={viewMode === 'lines' ? '#FFFFFF' : '#94A3B8'} />
+                <Text className={`text-[11px] font-bold ${viewMode === 'lines' ? 'text-white' : 'text-slate-400'}`}>
+                  Lines
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -630,11 +904,13 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             </ScrollView>
           </View>
 
-          {/* Items List */}
+          {/* Items List (Grid or Lines) */}
           <FlatList
+            key={viewMode === 'grid' ? `grid-${numColumns}` : 'lines'}
             data={filteredItems}
+            numColumns={numColumns}
             keyExtractor={(item, index) => `${item.id || 'item'}-${index}`}
-            renderItem={renderItemCard}
+            renderItem={viewMode === 'grid' ? renderGridCard : renderLineCard}
             initialNumToRender={20}
             maxToRenderPerBatch={20}
             windowSize={5}
@@ -643,7 +919,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             style={{ flex: 1 }}
             className="flex-1"
             updateCellsBatchingPeriod={50}
-            contentContainerStyle={{ padding: 16, paddingBottom: isSplitView ? Math.max(insets.bottom + 24, 40) : Math.max(insets.bottom + 90, 110) }}
+            contentContainerStyle={{
+              padding: viewMode === 'grid' ? 10 : 16,
+              paddingBottom: isSplitView ? Math.max(insets.bottom + 24, 40) : Math.max(insets.bottom + 90, 110)
+            }}
             ListEmptyComponent={
               <View className="py-16 items-center">
                 {activeCategory === 'favorites' ? (
@@ -720,6 +999,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                               <TouchableOpacity
                                 className="w-8 h-8 rounded-lg bg-slate-800 items-center justify-center active:opacity-80"
                                 onPress={() => {
+                                  if (!checkCanEditCart()) return;
                                   if (vQty > 1) {
                                     updateQuantity(tableNo, variantItemId, vQty - 1);
                                   } else {
@@ -734,6 +1014,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                                 className="w-8 h-8 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-80"
                                 disabled={!canFulfill}
                                 onPress={() => {
+                                  if (!checkCanEditCart()) return;
                                   if (!canFulfill) {
                                     toast.warning('No additional stock available for this variant.', 'Out of Stock');
                                     return;
@@ -748,6 +1029,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                             <TouchableOpacity
                               disabled={!canFulfill}
                               onPress={() => {
+                                if (!checkCanEditCart()) return;
                                 addItem(tableNo, {
                                   itemId: variantItemId,
                                   baseItemId: selectedItemForVariants.id,
@@ -785,6 +1067,21 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           className="absolute bottom-0 left-0 right-0 bg-[#0F172A]/98 border-t border-slate-800 px-4 pt-3 shadow-2xl backdrop-blur-md"
           style={{ paddingBottom: Math.max(insets.bottom, 16) }}
         >
+          {isBillPrinted && (
+            <View className={`mb-2 py-1 px-2.5 rounded-xl border flex-row items-center ${
+              isManagerOrAdmin ? 'bg-amber-500/15 border-amber-500/30' : 'bg-rose-500/15 border-rose-500/30'
+            }`}>
+              {isManagerOrAdmin ? (
+                <ShieldCheck size={12} color="#F59E0B" />
+              ) : (
+                <Lock size={12} color="#F43F5E" />
+              )}
+              <Text className={`text-[10px] font-bold ml-1.5 flex-1 ${isManagerOrAdmin ? 'text-amber-300' : 'text-rose-300'}`}>
+                {isManagerOrAdmin ? `Bill #${activePrintedBillNo || ''} Printed • Manager Edit Active` : `Bill #${activePrintedBillNo || ''} Printed • Locked to Admin/Manager`}
+              </Text>
+            </View>
+          )}
+
           {/* Top Info Strip: Item count, order type badge & Total */}
           <View className="flex-row items-center justify-between mb-2.5">
             <View className="flex-row items-center gap-2">

@@ -58,6 +58,9 @@ export interface Order {
   customerPhone?: string;
   deliveryRiderName?: string;
   deliveryRiderPhone?: string;
+  billPrinted?: boolean;
+  billPrintedAt?: any;
+  billNo?: number;
   billRequested?: boolean;
   orderSource?: string;
   createdAt: any;

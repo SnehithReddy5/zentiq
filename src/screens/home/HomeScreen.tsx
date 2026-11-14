@@ -778,6 +778,7 @@ export const HomeScreen = () => {
                       <View className="flex-row flex-wrap gap-2.5">
                         {tables.slice(0, 18).map(item => {
                           const isOccupied = item.status === 'running' || item.status === 'OCCUPIED' || ((item as any).cartItems && (item as any).cartItems.length > 0);
+                          const isBillPrinted = (item as any).billPrinted === true;
                           const waiterName = (item as any).activeWaiterName;
                           const itemCount = (item as any).cartItems?.reduce((s: number, i: any) => s + (i.qty || 0), 0) || 0;
 
@@ -786,20 +787,22 @@ export const HomeScreen = () => {
                               key={item.id}
                               onPress={() => navigation.navigate(Routes.MENU, { tableId: item.id, tableNo: item.tableNo, orderType: 'DINE_IN' })}
                               className={'w-[78px] h-[78px] rounded-2xl border p-2 justify-between ' + (
-                                isOccupied
+                                isBillPrinted
+                                  ? 'bg-cyan-950/30 border-cyan-400/80 shadow-sm shadow-cyan-500/20'
+                                  : isOccupied
                                   ? 'bg-amber-950/30 border-amber-500/50'
                                   : 'bg-emerald-950/20 border-emerald-500/40'
                               )}
                             >
                               <View className="flex-row items-center justify-between">
-                                <View className={'w-2 h-2 rounded-full ' + (isOccupied ? 'bg-amber-500' : 'bg-emerald-500')} />
-                                <Text className={'text-[9px] font-bold ' + (isOccupied ? 'text-amber-400' : 'text-emerald-400')}>
-                                  {isOccupied ? 'RUN' : 'AVL'}
+                                <View className={'w-2 h-2 rounded-full ' + (isBillPrinted ? 'bg-cyan-400' : isOccupied ? 'bg-amber-500' : 'bg-emerald-500')} />
+                                <Text className={'text-[9px] font-bold ' + (isBillPrinted ? 'text-cyan-300 font-black' : isOccupied ? 'text-amber-400' : 'text-emerald-400')}>
+                                  {isBillPrinted ? 'PRINT' : isOccupied ? 'RUN' : 'AVL'}
                                 </Text>
                               </View>
                               <Text className="text-white font-black text-center text-lg">{item.tableNo}</Text>
                               <Text className="text-slate-400 text-[9px] text-center" numberOfLines={1}>
-                                {isOccupied && waiterName ? waiterName : (isOccupied && itemCount > 0 ? (itemCount + ' items') : 'Table')}
+                                {isBillPrinted ? '🧾 Printed' : (isOccupied && waiterName ? waiterName : (isOccupied && itemCount > 0 ? (itemCount + ' items') : 'Table'))}
                               </Text>
                             </TouchableOpacity>
                           );

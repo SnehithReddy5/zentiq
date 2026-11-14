@@ -11,5 +11,12 @@ export interface Table {
   currentOrderId?: string | null;
   active?: boolean;
   cartItems?: any[];
+  billPrinted?: boolean;
+  billPrintedAt?: any;
+  billNo?: number | null;
+  billRequested?: boolean;
+  billRequestedAt?: any;
+  activeWaiterName?: string | null;
+  activeWaiterId?: string | null;
   updatedAt?: any;
 }

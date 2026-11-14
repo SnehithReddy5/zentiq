@@ -258,6 +258,53 @@ app.post('/email-order', async (req: express.Request, res: express.Response) => 
   }
 });
 
+/**
+ * Server-side email dispatcher proxy for Resend (eliminates browser CORS restrictions)
+ */
+app.post('/send-email', async (req: express.Request, res: express.Response) => {
+  try {
+    const { from, to, bcc, replyTo, subject, text, html, apiKey } = req.body;
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Missing Resend API Key' });
+    }
+    const recipients = Array.isArray(to) ? to : (to ? [to] : []);
+    const bccRecipients = Array.isArray(bcc) ? bcc : (bcc ? [bcc] : []);
+
+    if (recipients.length === 0 && bccRecipients.length === 0) {
+      return res.status(400).json({ error: 'Missing recipient' });
+    }
+
+    const payload: any = {
+      from: from || 'Zentiq POS <onboarding@resend.dev>',
+      to: recipients.length > 0 ? recipients : [from || 'onboarding@resend.dev'],
+      subject: subject || 'Notification',
+      text: text || '',
+    };
+    if (bccRecipients.length > 0) payload.bcc = bccRecipients;
+    if (replyTo) payload.reply_to = replyTo;
+    if (html) payload.html = html;
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${String(apiKey).trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data: any = await response.json();
+    if (!response.ok) {
+      return res.status(response.status).json({ error: data?.message || data?.error || 'Resend API rejected request', details: data });
+    }
+
+    return res.status(200).json({ success: true, data });
+  } catch (err: any) {
+    console.error('Server-side send-email error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 export const aggregatorWebhook = functions.https.onRequest(app);
 
 // ============================================================================
