@@ -14,6 +14,10 @@
     ],
     "rewrites": [
       {
+        "source": "/api/send-email",
+        "function": "aggregatorWebhook"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

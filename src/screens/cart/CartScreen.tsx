@@ -7,7 +7,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
-import { useCartStore } from '../../store/cart.store';
+import { useCartStore, consolidateCartItems } from '../../store/cart.store';
 import { useTableStore } from '../../store/table.store';
 import { useOrderStore } from '../../store/order.store';
 import { useMenuStore } from '../../store/menu.store';
@@ -36,7 +36,7 @@ export const CartScreen = () => {
   const { user } = useAuthStore();
   const { isLargePOS } = useResponsiveLayout();
 
-  const cartItems = carts[tableNo] || [];
+  const cartItems = useMemo(() => consolidateCartItems(carts[tableNo] || []), [carts, tableNo]);
 
   // Keep CartScreen continuously synchronized with live running orders (including customer QR self-orders)
   useEffect(() => {

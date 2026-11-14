@@ -10,6 +10,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const app = express();
 app.use(cors({ origin: true }));
+app.options('*', cors({ origin: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -261,9 +262,9 @@ app.post('/email-order', async (req: express.Request, res: express.Response) => 
 /**
  * Server-side email dispatcher proxy for Resend (eliminates browser CORS restrictions)
  */
-app.post('/send-email', async (req: express.Request, res: express.Response) => {
+const handleSendEmail = async (req: express.Request, res: express.Response) => {
   try {
-    const { from, to, bcc, replyTo, subject, text, html, apiKey } = req.body;
+    const { from, to, bcc, replyTo, subject, text, html, apiKey } = req.body || {};
     if (!apiKey) {
       return res.status(400).json({ error: 'Missing Resend API Key' });
     }
@@ -303,9 +304,21 @@ app.post('/send-email', async (req: express.Request, res: express.Response) => {
     console.error('Server-side send-email error:', err);
     return res.status(500).json({ error: err.message || 'Internal server error' });
   }
-});
+};
+
+app.all(['/send-email', '/api/send-email', '/aggregatorWebhook/send-email'], handleSendEmail);
 
 export const aggregatorWebhook = functions.https.onRequest(app);
+
+export const sendEmail = functions.https.onRequest((req, res) => {
+  cors({ origin: true })(req, res, () => {
+    if (req.method === 'OPTIONS') {
+      res.status(204).send('');
+      return;
+    }
+    handleSendEmail(req, res);
+  });
+});
 
 // ============================================================================
 // AUTOMATED 12:00 AM WHATSAPP SALES REPORTS (DAILY & MONTHLY CRON)

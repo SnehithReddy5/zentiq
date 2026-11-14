@@ -9,11 +9,11 @@ export type CartItem = Omit<OrderItem, 'id' | 'orderId'> & { sentQty?: number };
 
 export const getCartItemKey = (item: { itemId?: string; variantId?: string | null; variantName?: string | null; itemName?: string; name?: string }): string => {
   const variant = (item.variantId || item.variantName || 'base').trim().toLowerCase();
-  const name = (item.itemName || (item as any).name || '').trim().toLowerCase();
+  const rawName = (item.itemName || (item as any).name || '').trim();
+  const cleanName = rawName.replace(new RegExp(`\\s*\\(${variant}\\)\\s*$`, 'i'), '').trim().toLowerCase();
   const id = (item.itemId || '').trim();
-  // Using normalized dish name + variant guarantees items with the same name & variant coalesce
-  if (name) {
-    return `${name}:::${variant}`;
+  if (cleanName) {
+    return `${cleanName}:::${variant}`;
   }
   return `${id}:::${variant}`;
 };
@@ -206,11 +206,12 @@ export const useCartStore = create<CartState>()(
         }
 
         // Only update if different
-        if (JSON.stringify(rawTableCart) !== JSON.stringify(merged)) {
+        const finalMerged = consolidateCartItems(merged);
+        if (JSON.stringify(rawTableCart) !== JSON.stringify(finalMerged)) {
           set({
             carts: {
               ...currentCarts,
-              [tableNo]: merged,
+              [tableNo]: finalMerged,
             }
           });
         }

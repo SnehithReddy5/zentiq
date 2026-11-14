@@ -6,7 +6,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List } from 'lucide-react-native';
 import { useMenuStore } from '../../store/menu.store';
-import { useCartStore } from '../../store/cart.store';
+import { useCartStore, consolidateCartItems } from '../../store/cart.store';
 import { useTableStore } from '../../store/table.store';
 import { useOrderStore } from '../../store/order.store';
 import { usePrinterStore } from '../../store/printer.store';
@@ -123,7 +123,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     return () => unsub();
   }, [tenant?.id, activeLocationId]);
 
-  const cartItems = carts[tableNo] || [];
+  const cartItems = useMemo(() => consolidateCartItems(carts[tableNo] || []), [carts, tableNo]);
 
   // Differential KOT filtering: Only items with qty > sentQty
   const unsentItems = cartItems

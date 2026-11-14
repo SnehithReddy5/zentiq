@@ -67,10 +67,12 @@ export const dispatchSystemEmail = async (
   if (settings.sendMethod === 'RESEND' && settings.resendApiKey) {
     try {
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      // In dev use Vite proxy; in production use Cloud Function server proxy with CORS headers
+      // In dev use Vite proxy; in production use hosting rewrite `/api/send-email` or direct Cloud Function
       const endpoint = isLocal
         ? '/api/resend/emails'
-        : 'https://us-central1-zentiq-b5d40.cloudfunctions.net/aggregatorWebhook/send-email';
+        : (window.location.hostname.endsWith('web.app') || window.location.hostname.endsWith('firebaseapp.com'))
+          ? '/api/send-email'
+          : 'https://us-central1-zentiq-b5d40.cloudfunctions.net/aggregatorWebhook/send-email';
 
       // Resend requires onboarding@resend.dev unless a custom domain is verified
       const isPublicProvider = settings.communicationEmail.includes('@gmail.com') ||

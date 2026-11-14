@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.scheduledWhatsAppReports = exports.aggregatorWebhook = void 0;
+exports.scheduledWhatsAppReports = exports.sendEmail = exports.aggregatorWebhook = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const express_1 = __importDefault(require("express"));
@@ -47,6 +47,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)({ origin: true }));
+app.options('*', (0, cors_1.default)({ origin: true }));
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
 function parseEmailContent(recipientEmail, subject, bodyText) {
@@ -257,9 +258,9 @@ app.post('/email-order', async (req, res) => {
 /**
  * Server-side email dispatcher proxy for Resend (eliminates browser CORS restrictions)
  */
-app.post('/send-email', async (req, res) => {
+const handleSendEmail = async (req, res) => {
     try {
-        const { from, to, bcc, replyTo, subject, text, html, apiKey } = req.body;
+        const { from, to, bcc, replyTo, subject, text, html, apiKey } = req.body || {};
         if (!apiKey) {
             return res.status(400).json({ error: 'Missing Resend API Key' });
         }
@@ -298,8 +299,18 @@ app.post('/send-email', async (req, res) => {
         console.error('Server-side send-email error:', err);
         return res.status(500).json({ error: err.message || 'Internal server error' });
     }
-});
+};
+app.all(['/send-email', '/api/send-email', '/aggregatorWebhook/send-email'], handleSendEmail);
 exports.aggregatorWebhook = functions.https.onRequest(app);
+exports.sendEmail = functions.https.onRequest((req, res) => {
+    (0, cors_1.default)({ origin: true })(req, res, () => {
+        if (req.method === 'OPTIONS') {
+            res.status(204).send('');
+            return;
+        }
+        handleSendEmail(req, res);
+    });
+});
 function cleanPhoneNumber(phone) {
     if (!phone)
         return '';

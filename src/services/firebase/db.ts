@@ -596,12 +596,19 @@ export const DBServices = {
     if (!snap.exists()) return;
     const existing: any[] = snap.data().items || [];
 
-    // Merge: accumulate qty for matching itemId+variantId
+    // Merge: accumulate qty for matching itemId+variantId OR matching itemName+variantId
     const merged = [...existing];
     for (const ni of newItems) {
-      const idx = merged.findIndex(
-        (e) => e.itemId === ni.itemId && (e.variantId || null) === (ni.variantId || null)
-      );
+      const niName = (ni.itemName || (ni as any).name || '').trim().toLowerCase();
+      const niVariant = (ni.variantId || ni.variantName || 'base').trim().toLowerCase();
+      const idx = merged.findIndex((e) => {
+        const eVariant = (e.variantId || e.variantName || 'base').trim().toLowerCase();
+        if (eVariant !== niVariant) return false;
+        if (e.itemId && ni.itemId && e.itemId === ni.itemId) return true;
+        const eName = (e.itemName || (e as any).name || '').trim().toLowerCase();
+        if (eName && niName && eName === niName) return true;
+        return false;
+      });
       if (idx >= 0) {
         merged[idx] = { ...merged[idx], qty: (merged[idx].qty || 0) + ni.qty };
       } else {
@@ -669,7 +676,13 @@ export const DBServices = {
       const snapshot = await getDocs(q);
       const isRunning = items.length > 0;
 
-      const cleanItems = cleanFirestoreData(items);
+      let processedItems = items;
+      try {
+        const { consolidateCartItems } = require('../../store/cart.store');
+        processedItems = consolidateCartItems(items);
+      } catch (_) { }
+
+      const cleanItems = cleanFirestoreData(processedItems);
       const updatePromises = snapshot.docs.map(d =>
         updateDoc(d.ref, {
           cartItems: cleanItems,
