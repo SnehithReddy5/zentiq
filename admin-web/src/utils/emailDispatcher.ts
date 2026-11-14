@@ -112,21 +112,35 @@ export const dispatchSystemEmail = async (
         body: JSON.stringify(payload),
       });
 
-      const responseData = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      let responseData: any = null;
+      if (contentType.includes('application/json')) {
+        responseData = await res.json();
+      } else {
+        const textResp = await res.text();
+        if (textResp.startsWith('<!doctype') || textResp.startsWith('<html')) {
+          throw new Error('Cloud Functions not active on Firebase Spark plan. Opening Gmail Compose to send directly.');
+        }
+        throw new Error(textResp.slice(0, 150) || 'Server returned non-JSON response');
+      }
 
       if (!res.ok) {
-        throw new Error(responseData.error || responseData.message || 'Email API rejected the request');
+        throw new Error(responseData?.error || responseData?.message || 'Email API rejected the request');
       }
 
       alert(`✓ Success! Email dispatched in the background to ${toStr} from ${settings.communicationEmail}`);
       return { success: true, method: 'RESEND', message: 'Email sent in background' };
     } catch (err: any) {
-      console.error('Direct background Resend failed:', err);
-      const shouldFallback = window.confirm(
-        `Background sending error: \n\n"${err.message}"\n\nWould you like to open Gmail Compose as a fallback to send it now?`
-      );
-      if (!shouldFallback) {
-        return { success: false, method: 'RESEND', message: err.message };
+      console.warn('Background Resend failed:', err.message);
+      // Automatically fall through to Gmail Compose so the user is never blocked
+      const isBlazeNotice = err.message.includes('Firebase Spark plan');
+      if (!isBlazeNotice) {
+        const shouldFallback = window.confirm(
+          `Background sending notice:\n\n"${err.message}"\n\nClick OK to open Gmail Compose to send this email now.`
+        );
+        if (!shouldFallback) {
+          return { success: false, method: 'RESEND', message: err.message };
+        }
       }
     }
   }
