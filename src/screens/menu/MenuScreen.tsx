@@ -1,11 +1,16 @@
 import { toast } from '../../utils/toast';
+import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List, Menu as MenuIcon, MapPin, Receipt, Bike, TrendingUp } from 'lucide-react-native';
+import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List, Menu as MenuIcon, MapPin, Receipt, Bike, TrendingUp, Sun, Moon } from 'lucide-react-native';
 import { HamburgerMenu } from '../../components/common/HamburgerMenu';
+import { ProductCard } from './components/ProductCard';
+import { VariantSelectionSheet } from './components/VariantSelectionSheet';
+import { ItemCustomizationSheet } from './components/ItemCustomizationSheet';
+import { useThemeStore } from '../../store/theme.store';
 import { useMenuStore } from '../../store/menu.store';
 import { useCartStore, consolidateCartItems } from '../../store/cart.store';
 import { useTableStore } from '../../store/table.store';
@@ -20,7 +25,8 @@ import { ESCPOSService } from '../../services/printer/escpos.service';
 import { DBServices } from '../../services/firebase/db';
 import { Button } from '../../components/common/Button';
 import { Routes } from '../../constants/routes';
-import { MenuItem } from '../../types/menu.types';
+import { MenuItem, MenuItemVariant, getItemInteractionType } from '../../types/menu.types';
+import { SelectedCustomizationOption } from '../../types/order.types';
 
 interface MenuScreenProps {
   isDirectHome?: boolean;
@@ -32,7 +38,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   try {
     const route = useRoute<any>();
     routeParams = route?.params || {};
-  } catch (e) {}
+  } catch (e) { }
 
   const navigation = useNavigation<any>();
   const { user } = useAuthStore();
@@ -59,10 +65,13 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const { orders } = useOrderStore();
   const { settings } = usePrinterStore();
   const { isSplitView, isLargePOS } = useResponsiveLayout();
+  const { themeMode, toggleTheme } = useThemeStore();
+  const isDark = themeMode === 'dark';
 
   // Role check: Only Admin and Manager are allowed to edit items once bill has been printed
   const isManagerOrAdmin = Boolean(
-    user?.role && [
+    !user?.role ||
+    [
       'ADMIN',
       'admin',
       'CLIENT_ADMIN',
@@ -70,6 +79,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       'PLATFORM_ADMIN',
       'MANAGER',
       'manager',
+      'BILLER',
+      'biller',
+      'CASHIER',
+      'cashier',
     ].includes(user.role)
   );
 
@@ -103,8 +116,8 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItemForVariants, setSelectedItemForVariants] = useState<MenuItem | null>(null);
+  const [selectedItemForCustomization, setSelectedItemForCustomization] = useState<MenuItem | null>(null);
   const [isSendingKOT, setIsSendingKOT] = useState(false);
-  const [kotToast, setKotToast] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'lines'>('grid');
 
   useEffect(() => {
@@ -114,12 +127,12 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           setViewMode(saved);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleSetViewMode = (mode: 'grid' | 'lines') => {
     setViewMode(mode);
-    AsyncStorage.setItem('@zentiq_pos_menu_view_mode', mode).catch(() => {});
+    AsyncStorage.setItem('@zentiq_pos_menu_view_mode', mode).catch(() => { });
   };
 
   const numColumns = useMemo(() => {
@@ -160,7 +173,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
               itemName: matchedMaster?.name || it.itemName || it.name,
               price: Number(it.price || matchedMaster?.price || 0),
               qty: Number(it.qty || 1),
-              sentQty: Number(it.sentQty ?? it.qty ?? 1),
+              sentQty: Number(it.sentQty ?? 0),
               variantId: it.variantId || null,
               variantName: it.variantName || null,
               note: it.note || '',
@@ -171,8 +184,8 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         }
 
         if (cartItems.length === 0) {
-          const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
-          if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
+          const currentTable = useTableStore.getState().tables.find((t: any) => Number(t.tableNo) === Number(tableNo));
+          if (currentTable && currentTable.status !== 'available' && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
             useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
           }
         }
@@ -193,6 +206,24 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     return { cartTotal: total, cartItemCount: count };
   }, [cartItems]);
 
+  const handleClearCart = () => {
+    if (!checkCanEditCart()) return;
+    confirmDialog({
+      title: 'Clear Cart',
+      message: tableNo !== 0
+        ? `Are you sure you want to clear Table ${tableNo}'s cart and reset the table to available?`
+        : 'Are you sure you want to clear all items from the cart?',
+      confirmText: 'Yes, Clear',
+      cancelText: 'Cancel',
+      destructive: true,
+      onConfirm: () => {
+        clearCart(tableNo);
+        setMobileCartOpen(false);
+        toast.info(tableNo !== 0 ? `✓ Table ${tableNo} cart cleared & table available` : '✓ Cart cleared');
+      },
+    });
+  };
+
   const handleSendToKitchen = () => {
     if (unsentItems.length === 0) return;
     if (!activeLocationId) {
@@ -203,8 +234,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     // 1. Instant Optimistic UI Response (0ms perceptible lag)
     const itemsToDispatch = [...unsentItems];
     markAsSent(tableNo);
-    setKotToast('✓ KOT sent to kitchen');
-    setTimeout(() => setKotToast(null), 3000);
+    toast.success(`Sending ${itemsToDispatch.reduce((s, i) => s + i.qty, 0)} item(s) to kitchen...`, 'KOT Dispatched');
 
     // 2. Background Dispatch: Firestore sequence, sync & Thermal Print (Non-blocking)
     (async () => {
@@ -212,7 +242,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         const kotNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
 
         if (tableNo !== 0) {
-          DBServices.updateTableStatusByNo(tableNo, 'running', tenant?.id, activeLocationId || undefined).catch(() => {});
+          DBServices.updateTableStatusByNo(tableNo, 'running', tenant?.id, activeLocationId || undefined).catch(() => { });
         }
 
         // Persist KOT items to Firestore running order
@@ -222,20 +252,23 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
           );
           if (existingRunning && existingRunning.id) {
-            await DBServices.appendKOTItemsToRunningOrder(
+            // Note: markAsSent(tableNo) has already updated all items with sentQty = qty in Firestore & orderStore.
+            // Update kotNo, confirm status is RUNNING, and clear any previous printed bill since new items were dispatched.
+            await DBServices.updateOrder(
               existingRunning.id,
-              itemsToDispatch.map(i => ({
-                itemId: i.itemId,
-                itemName: i.itemName,
-                qty: i.qty,
-                price: i.price,
-                variantId: i.variantId || null,
-                variantName: i.variantName || null,
-                note: i.note || '',
-              })),
+              {
+                kotNo,
+                status: 'RUNNING',
+                billPrinted: false,
+                billNo: null,
+                updatedAt: new Date(),
+              },
               tenant?.id,
               existingRunning.locationId || activeLocationId || undefined
             );
+            if (tableNo !== 0) {
+              DBServices.updateTableBillPrinted(tableNo, false, undefined, tenant?.id, activeLocationId || undefined).catch(() => { });
+            }
           } else if (tableNo !== 0) {
             await DBServices.createOrder({
               kotNo,
@@ -246,7 +279,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
               captainName: user?.name || 'Staff',
               status: 'RUNNING',
               paymentStatus: 'UNPAID',
-              items: cartItems.map(i => ({ ...i })),
+              items: cartItems.map(i => ({ ...i, sentQty: i.qty })),
               subtotal: cartItems.reduce((s, i) => s + i.price * i.qty, 0),
               tax: 0,
               totalAmount: cartItems.reduce((s, i) => s + i.price * i.qty, 0),
@@ -299,15 +332,12 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
         if (printSuccess) {
           toast.success(`✓ KOT #${kotNo} printed to kitchen!`, 'KOT Printed');
-          setKotToast(`✓ KOT #${kotNo} printed to kitchen`);
         } else {
           toast.warning(
             `KOT #${kotNo} saved, but kitchen printer failed: ${printErrorMsg}`,
             'Printer Offline'
           );
-          setKotToast(`KOT #${kotNo} saved (Printer offline)`);
         }
-        setTimeout(() => setKotToast(null), 3500);
       } catch (err: any) {
         console.warn('KOT dispatch background error:', err);
       }
@@ -406,8 +436,73 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     updateQuantity(tableNo, cItem.itemId, cItem.qty + 1, cItem.variantId || cItem.variantName);
   };
 
-  const renderLineCard = ({ item }: { item: MenuItem }) => {
-    const hasVariants = item.variants && item.variants.length > 0;
+  const handleCardPress = useCallback((item: MenuItem) => {
+    if (!checkCanEditCart()) return;
+    if (item.isAvailable === false) {
+      toast.warning(`"${item.name}" is marked out of stock.`, 'Out of Stock');
+      return;
+    }
+    const interaction = getItemInteractionType(item);
+    if (interaction === 'DIRECT_ADD') {
+      handleAddSimpleItem(item);
+    } else if (interaction === 'VARIANT_SELECTION') {
+      setSelectedItemForVariants(item);
+    } else if (interaction === 'CUSTOMIZABLE') {
+      setSelectedItemForCustomization(item);
+    }
+  }, [checkCanEditCart, handleAddSimpleItem]);
+
+  const handleDecrementCardItem = useCallback((item: MenuItem, currentQty: number) => {
+    if (!checkCanEditCart()) return;
+    if (currentQty > 1) {
+      updateQuantity(tableNo, item.id, currentQty - 1);
+    } else {
+      removeItem(tableNo, item.id);
+    }
+  }, [checkCanEditCart, tableNo, updateQuantity, removeItem]);
+
+  const handleVariantAddToCart = useCallback((variant: MenuItemVariant, qty: number) => {
+    if (!selectedItemForVariants || !checkCanEditCart()) return;
+    const variantItemId = `${selectedItemForVariants.id}_${variant.name}`;
+    const deduction = typeof variant.portionDeduction === 'number' ? variant.portionDeduction : 1;
+    addItem(tableNo, {
+      itemId: variantItemId,
+      baseItemId: selectedItemForVariants.id,
+      itemName: selectedItemForVariants.name,
+      price: variant.price,
+      qty,
+      variantId: variant.id,
+      variantName: variant.name,
+      portionDeduction: deduction,
+    });
+    toast.success(`Added ${qty}x ${selectedItemForVariants.name} (${variant.name})`, 'Added to Order');
+  }, [selectedItemForVariants, checkCanEditCart, tableNo, addItem]);
+
+  const handleCustomizationAddToCart = useCallback((
+    item: MenuItem,
+    qty: number,
+    selectedOptions: SelectedCustomizationOption[],
+    customizationKey: string,
+    unitPrice: number,
+    specialNote?: string
+  ) => {
+    if (!checkCanEditCart()) return;
+    const customItemId = customizationKey ? `${item.id}_${customizationKey}` : item.id;
+    addItem(tableNo, {
+      itemId: customItemId,
+      baseItemId: item.id,
+      itemName: item.name,
+      price: unitPrice,
+      qty,
+      selectedOptions,
+      customizationKey,
+      note: specialNote || '',
+      portionDeduction: 1,
+    });
+    toast.success(`Added ${qty}x ${item.name} (Customized)`, 'Added to Order');
+  }, [checkCanEditCart, tableNo, addItem]);
+
+  const renderGridCard = useCallback(({ item }: { item: MenuItem }) => {
     const itemNameNorm = (item.name || '').trim().toLowerCase();
     const matchingCartItems = cartItems.filter(i =>
       i.itemId === item.id ||
@@ -417,128 +512,29 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     const qty = matchingCartItems.reduce((sum, i) => sum + (i.qty || 0), 0);
     const availStock = getAvailableStock(item);
     const isExplicitlyOutOfStock = item.isAvailable === false;
-    const isOutOfStock = isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0);
-    const isLowStock = !isExplicitlyOutOfStock && item.trackInventory && !isOutOfStock && availStock <= (item.lowStockThreshold || 2);
+    const isOutOfStock = Boolean(isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0));
+    const lowStockText = !isExplicitlyOutOfStock && item.trackInventory && !isOutOfStock && availStock <= (item.lowStockThreshold || 2)
+      ? `Low: ${availStock.toFixed(availStock % 1 === 0 ? 0 : 2)} ${item.stockUnit || 'kg'}`
+      : null;
+
+    const colWidth = `${100 / numColumns}%`;
 
     return (
-      <View className={`p-4 rounded-2xl mb-3 flex-row items-center justify-between shadow-lg transition-all ${
-        isOutOfStock
-          ? 'bg-slate-900/60 border border-rose-950/40 opacity-70'
-          : qty > 0
-          ? 'bg-[#141B33] border-2 border-indigo-500 shadow-indigo-500/15'
-          : 'bg-[#10172A] border border-slate-800/90'
-      }`}>
-        <View className="flex-1 mr-3">
-          <View className="flex-row items-center flex-wrap gap-1.5">
-            {item.isFavorite && (
-              <View className="mr-0.5 bg-amber-500/20 px-1.5 py-0.5 rounded flex-row items-center">
-                <Star size={10} color="#FBBF24" fill="#FBBF24" />
-              </View>
-            )}
-            <Text className="text-white font-extrabold text-base" numberOfLines={1}>
-              {item.name}
-            </Text>
-
-            {/* Out of Stock / Inventory Status Badge */}
-            {isExplicitlyOutOfStock ? (
-              <View className="px-2 py-0.5 rounded-full border bg-rose-500/20 border-rose-500/40">
-                <Text className="text-[10px] font-black text-rose-400 tracking-wider uppercase">
-                  OUT OF STOCK
-                </Text>
-              </View>
-            ) : item.trackInventory ? (
-              <View className={`px-2 py-0.5 rounded-full border ${
-                isOutOfStock
-                  ? 'bg-rose-500/15 border-rose-500/30'
-                  : isLowStock
-                  ? 'bg-amber-500/15 border-amber-500/30'
-                  : 'bg-emerald-500/15 border-emerald-500/30'
-              }`}>
-                <Text className={`text-[10px] font-black ${
-                  isOutOfStock
-                    ? 'text-rose-400'
-                    : isLowStock
-                    ? 'text-amber-400'
-                    : 'text-emerald-400'
-                }`}>
-                  {isOutOfStock
-                    ? 'Out of Stock'
-                    : isLowStock
-                    ? `Low: ${availStock.toFixed(availStock % 1 === 0 ? 0 : 2)} ${item.stockUnit || 'kg'}`
-                    : `Stock: ${availStock.toFixed(availStock % 1 === 0 ? 0 : 2)} ${item.stockUnit || 'kg'}`}
-                </Text>
-              </View>
-            ) : null}
-
-            {qty > 0 && (
-              <View className="bg-indigo-500/30 border border-indigo-400/50 px-2 py-0.5 rounded-full">
-                <Text className="text-indigo-300 text-[10px] font-black">{qty} in cart</Text>
-              </View>
-            )}
-          </View>
-          <Text className="text-emerald-400 font-black text-sm mt-1">₹{item.price}</Text>
-          {hasVariants && (
-            <Text className="text-indigo-300 text-[11px] mt-0.5 font-semibold">
-              {item.variants?.length} Options available
-            </Text>
-          )}
-        </View>
-
-        {hasVariants ? (
-          <TouchableOpacity
-            onPress={() => {
-              if (!checkCanEditCart()) return;
-              setSelectedItemForVariants(item);
-            }}
-            disabled={isOutOfStock}
-            className={`px-3.5 py-2 rounded-xl active:opacity-80 ${
-              isOutOfStock
-                ? 'bg-slate-800 border border-slate-700 opacity-60'
-                : 'bg-[#5D3FD3] shadow-md shadow-purple-500/30'
-            }`}
-          >
-            <Text className={`font-bold text-xs ${isOutOfStock ? 'text-slate-400' : 'text-white'}`}>
-              {isOutOfStock ? 'Out of Stock' : '+ Options'}
-            </Text>
-          </TouchableOpacity>
-        ) : isOutOfStock ? (
-          <View className="bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl">
-            <Text className="text-rose-400 font-bold text-xs">Out of Stock</Text>
-          </View>
-        ) : qty > 0 ? (
-          <View className="flex-row items-center bg-slate-800/90 rounded-xl p-1 border border-slate-700">
-            <TouchableOpacity
-              className="w-7 h-7 rounded-lg bg-slate-700 items-center justify-center active:opacity-75"
-              onPress={() => {
-                if (!checkCanEditCart()) return;
-                if (qty > 1) updateQuantity(tableNo, item.id, qty - 1);
-                else removeItem(tableNo, item.id);
-              }}
-            >
-              <Text className="text-white font-black text-sm">-</Text>
-            </TouchableOpacity>
-            <Text className="w-7 text-center text-white font-black text-xs">{qty}</Text>
-            <TouchableOpacity
-              className="w-7 h-7 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
-              onPress={() => handleIncrementSimpleItem(item, qty)}
-            >
-              <Text className="text-white font-black text-sm">+</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={() => handleAddSimpleItem(item)}
-            className="bg-[#5D3FD3] px-4 py-2 rounded-xl shadow-md shadow-purple-500/30 active:opacity-80"
-          >
-            <Text className="text-white font-black text-xs">+ Add</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      <ProductCard
+        item={item}
+        cartQty={qty}
+        isOutOfStock={isOutOfStock}
+        lowStockText={lowStockText}
+        onPress={handleCardPress}
+        onIncrement={handleIncrementSimpleItem}
+        onDecrement={handleDecrementCardItem}
+        viewMode="grid"
+        cardWidth={colWidth}
+      />
     );
-  };
+  }, [cartItems, numColumns, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, items]);
 
-  const renderGridCard = ({ item }: { item: MenuItem }) => {
-    const hasVariants = item.variants && item.variants.length > 0;
+  const renderLineCard = useCallback(({ item }: { item: MenuItem }) => {
     const itemNameNorm = (item.name || '').trim().toLowerCase();
     const matchingCartItems = cartItems.filter(i =>
       i.itemId === item.id ||
@@ -548,157 +544,78 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     const qty = matchingCartItems.reduce((sum, i) => sum + (i.qty || 0), 0);
     const availStock = getAvailableStock(item);
     const isExplicitlyOutOfStock = item.isAvailable === false;
-    const isOutOfStock = isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0);
+    const isOutOfStock = Boolean(isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0));
+    const lowStockText = !isExplicitlyOutOfStock && item.trackInventory && !isOutOfStock && availStock <= (item.lowStockThreshold || 2)
+      ? `Low: ${availStock.toFixed(availStock % 1 === 0 ? 0 : 2)} ${item.stockUnit || 'kg'}`
+      : null;
 
     return (
-      <View
-        style={{ flex: 1, margin: 4, minHeight: 115 }}
-        className={`rounded-2xl p-3.5 justify-between shadow-lg transition-all ${
-          isOutOfStock
-            ? 'bg-slate-900/60 border border-rose-950/40 opacity-70'
-            : qty > 0
-            ? 'bg-[#141B33] border-2 border-indigo-500 shadow-indigo-500/20'
-            : 'bg-[#10172A] border border-slate-800/90'
-        }`}
-      >
-        {/* Top: Name & Badges */}
-        <View className="flex-row items-start justify-between mb-2">
-          <View className="flex-1 mr-1">
-            <View className="flex-row items-center flex-wrap gap-1">
-              {item.isFavorite && (
-                <View className="mr-0.5 bg-amber-500/20 px-1 py-0.5 rounded">
-                  <Star size={9} color="#FBBF24" fill="#FBBF24" />
-                </View>
-              )}
-              <Text className="text-white font-extrabold text-xs sm:text-sm leading-snug" numberOfLines={2}>
-                {item.name}
-              </Text>
-            </View>
-            {isOutOfStock ? (
-              <Text className="text-rose-400 font-bold text-[9px] uppercase mt-1">Out of Stock</Text>
-            ) : item.trackInventory && availStock <= (item.lowStockThreshold || 2) ? (
-              <Text className="text-amber-400 font-bold text-[9px] mt-0.5">Low: {availStock.toFixed(0)} {item.stockUnit || 'kg'}</Text>
-            ) : null}
-          </View>
-          {qty > 0 && (
-            <View className="bg-indigo-500/30 border border-indigo-400/50 px-1.5 py-0.5 rounded-md shrink-0">
-              <Text className="text-indigo-300 text-[9px] font-black">{qty}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Bottom Row: Price & Action Stepper / Add Button */}
-        <View className="flex-row items-end justify-between mt-auto pt-1">
-          <Text className="text-emerald-400 font-black text-base sm:text-lg tracking-tight">
-            ₹{item.price}
-          </Text>
-
-          {hasVariants ? (
-            <View className="items-end">
-              <Text className="text-indigo-300 text-[10px] font-bold leading-none mb-1">
-                Options
-              </Text>
-              {qty > 0 ? (
-                <View className="flex-row items-center bg-slate-800/90 rounded-xl p-0.5 border border-slate-700">
-                  <TouchableOpacity
-                    className="w-6 h-6 rounded-lg bg-slate-700 items-center justify-center active:opacity-75"
-                    onPress={() => {
-                      if (!checkCanEditCart()) return;
-                      setSelectedItemForVariants(item);
-                    }}
-                  >
-                    <Text className="text-white font-bold text-xs">-</Text>
-                  </TouchableOpacity>
-                  <Text className="w-5 text-center text-white font-black text-xs">{qty}</Text>
-                  <TouchableOpacity
-                    className="w-6 h-6 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
-                    onPress={() => {
-                      if (!checkCanEditCart()) return;
-                      setSelectedItemForVariants(item);
-                    }}
-                  >
-                    <Text className="text-white font-bold text-xs">+</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => {
-                    if (!checkCanEditCart()) return;
-                    setSelectedItemForVariants(item);
-                  }}
-                  disabled={isOutOfStock}
-                  className={`px-3 py-1.5 rounded-xl active:opacity-80 ${
-                    isOutOfStock ? 'bg-slate-800 border border-slate-700 opacity-60' : 'bg-[#5D3FD3] shadow-md shadow-purple-500/30'
-                  }`}
-                >
-                  <Text className={`font-bold text-xs ${isOutOfStock ? 'text-slate-400' : 'text-white'}`}>
-                    + Add
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : isOutOfStock ? (
-            <View className="bg-slate-800/80 border border-slate-700 px-2.5 py-1 rounded-xl">
-              <Text className="text-rose-400 font-bold text-[10px]">Out</Text>
-            </View>
-          ) : qty > 0 ? (
-            <View className="flex-row items-center bg-slate-800/90 rounded-xl p-0.5 border border-slate-700">
-              <TouchableOpacity
-                className="w-6 h-6 rounded-lg bg-slate-700 items-center justify-center active:opacity-75"
-                onPress={() => {
-                  if (!checkCanEditCart()) return;
-                  if (qty > 1) updateQuantity(tableNo, item.id, qty - 1);
-                  else removeItem(tableNo, item.id);
-                }}
-              >
-                <Text className="text-white font-bold text-xs">-</Text>
-              </TouchableOpacity>
-              <Text className="w-5 text-center text-white font-black text-xs">{qty}</Text>
-              <TouchableOpacity
-                className="w-6 h-6 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
-                onPress={() => handleIncrementSimpleItem(item, qty)}
-              >
-                <Text className="text-white font-bold text-xs">+</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              onPress={() => handleAddSimpleItem(item)}
-              className="bg-[#5D3FD3] px-3.5 py-1.5 rounded-xl shadow-md shadow-purple-500/30 active:opacity-80"
-            >
-              <Text className="text-white font-black text-xs">+ Add</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      <ProductCard
+        item={item}
+        cartQty={qty}
+        isOutOfStock={isOutOfStock}
+        lowStockText={lowStockText}
+        onPress={handleCardPress}
+        onIncrement={handleIncrementSimpleItem}
+        onDecrement={handleDecrementCardItem}
+        viewMode="lines"
+      />
     );
-  };
+  }, [cartItems, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, items]);
 
-  // Persistent Right Panel for Tablets & POS
+  // Persistent Right Panel for Tablets & iPad POS (Responsive ~32% Width)
   const renderSplitCartPanel = () => (
-    <View className="w-[360px] lg:w-[410px] bg-slate-900 border-l border-slate-800 p-4 flex-col justify-between shadow-2xl">
+    <View
+      className={`h-full w-full border-l p-4 flex-col justify-between shadow-2xl ${
+        isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'
+      }`}
+    >
       <View className="flex-1">
-        <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
-          <Text className="text-white font-black text-lg">
-            {tableNo === 0 ? (orderType === 'PICKUP' ? 'Pick Up Cart' : (orderType === 'COUNTER' ? 'Counter Cart' : 'Takeaway Cart')) : `Table ${tableNo} Cart`}
-          </Text>
-          <TouchableOpacity
-            onPress={() => {
-              if (!checkCanEditCart()) return;
-              clearCart(tableNo);
-            }}
-            className="px-2 py-1 bg-rose-500/10 rounded"
-          >
-            <Text className="text-rose-400 text-xs font-bold">Clear</Text>
-          </TouchableOpacity>
+        {/* Cart Header */}
+        <View
+          className={`flex-row items-center justify-between pb-3 border-b ${
+            isDark ? 'border-slate-800' : 'border-slate-200'
+          }`}
+        >
+          <View className="flex-row items-center gap-2">
+            <View className="p-1.5 rounded-lg bg-[#5D3FD3]/20">
+              <ShoppingBag size={18} color="#A855F7" />
+            </View>
+            <View>
+              <Text className={`font-black text-base sm:text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                {tableNo === 0
+                  ? orderType === 'PICKUP'
+                    ? 'Pick Up Cart'
+                    : orderType === 'COUNTER'
+                    ? 'Counter Cart'
+                    : 'Takeaway Cart'
+                  : `Table ${tableNo} Cart`}
+              </Text>
+              <Text className="text-slate-400 text-xs">
+                {cartItemCount} item{cartItemCount === 1 ? '' : 's'}
+              </Text>
+            </View>
+          </View>
+
+          {cartItems.length > 0 && (
+            <TouchableOpacity
+              onPress={handleClearCart}
+              className="px-3 py-1.5 bg-rose-500/15 border border-rose-500/30 rounded-xl active:opacity-75"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text className="text-rose-400 text-xs font-bold">Clear</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {isBillPrinted && (
-          <View className={`mt-2.5 p-2.5 rounded-xl border flex-row items-center ${
-            isManagerOrAdmin
-              ? 'bg-amber-500/15 border-amber-500/30'
-              : 'bg-rose-500/15 border-rose-500/30'
-          }`}>
+          <View
+            className={`mt-2.5 p-2.5 rounded-xl border flex-row items-center ${
+              isManagerOrAdmin
+                ? 'bg-amber-500/15 border-amber-500/30'
+                : 'bg-rose-500/15 border-rose-500/30'
+            }`}
+          >
             {isManagerOrAdmin ? (
               <ShieldCheck size={16} color="#F59E0B" />
             ) : (
@@ -706,7 +623,9 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             )}
             <View className="ml-2 flex-1">
               <Text className={`text-xs font-black ${isManagerOrAdmin ? 'text-amber-300' : 'text-rose-300'}`}>
-                {isManagerOrAdmin ? `🧾 Bill #${activePrintedBillNo || ''} Printed (Manager Edit)` : `🔒 Bill #${activePrintedBillNo || ''} Printed • Locked`}
+                {isManagerOrAdmin
+                  ? `🧾 Bill #${activePrintedBillNo || ''} Printed (Manager Edit)`
+                  : `🔒 Bill #${activePrintedBillNo || ''} Printed • Locked`}
               </Text>
               <Text className="text-slate-400 text-[10px] mt-0.5">
                 {isManagerOrAdmin
@@ -717,56 +636,172 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           </View>
         )}
 
-        <ScrollView className="flex-1 my-3">
+        {/* Cart Items List */}
+        <ScrollView className="flex-1 my-3" showsVerticalScrollIndicator={true}>
           {cartItems.length === 0 ? (
-            <View className="py-12 items-center">
-              <ShoppingBag size={32} color="#475569" />
-              <Text className="text-slate-500 text-xs mt-2">Cart is empty</Text>
+            <View className="py-16 items-center justify-center">
+              <View
+                className={`w-14 h-14 rounded-full items-center justify-center mb-2.5 ${
+                  isDark ? 'bg-slate-800/80' : 'bg-slate-100'
+                }`}
+              >
+                <ShoppingBag size={26} color={isDark ? '#64748B' : '#94A3B8'} />
+              </View>
+              <Text className={`font-bold text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                Cart is empty
+              </Text>
+              <Text className="text-slate-500 text-xs mt-1 text-center max-w-[200px]">
+                Tap products on the menu to add them to this order
+              </Text>
             </View>
           ) : (
-            cartItems.map((item, index) => (
-              <View key={`${item.itemId}_${item.variantId || item.variantName || index}`} className="flex-row items-center justify-between py-2 border-b border-slate-800/50">
-                <View className="flex-1 mr-2">
-                  <Text className="text-white text-xs font-semibold" numberOfLines={1}>
-                    {item.itemName} {item.variantName ? `(${item.variantName})` : ''}
-                  </Text>
-                  <Text className="text-slate-400 text-[10px]">₹{item.price} each</Text>
+            cartItems.map((item, index) => {
+              const itemTotal = item.price * item.qty;
+              return (
+                <View
+                  key={`${item.itemId}_${item.variantId || item.variantName || ''}_${item.customizationKey || ''}_${index}`}
+                  className={`py-3 border-b ${
+                    isDark ? 'border-slate-800/60' : 'border-slate-200'
+                  }`}
+                >
+                  <View className="flex-row items-start justify-between">
+                    <View className="flex-1 mr-2">
+                      <Text
+                        className={`text-sm font-bold leading-snug ${
+                          isDark ? 'text-white' : 'text-slate-900'
+                        }`}
+                        numberOfLines={2}
+                      >
+                        {item.itemName}
+                      </Text>
+
+                      {/* Variant Badge */}
+                      {item.variantName && (
+                        <View className="self-start bg-indigo-500/20 px-2 py-0.5 rounded-md border border-indigo-500/30 mt-1">
+                          <Text className="text-indigo-400 text-[11px] font-bold">
+                            {item.variantName}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Customization Options Badges */}
+                      {item.selectedOptions && item.selectedOptions.length > 0 && (
+                        <View className="flex-row flex-wrap gap-1 mt-1">
+                          {item.selectedOptions.map((opt, oIdx) => (
+                            <View
+                              key={oIdx}
+                              className={`px-1.5 py-0.5 rounded border ${
+                                isDark
+                                  ? 'bg-purple-950/60 border-purple-500/30'
+                                  : 'bg-purple-50 border-purple-200'
+                              }`}
+                            >
+                              <Text
+                                className={`text-[10px] font-semibold ${
+                                  isDark ? 'text-purple-300' : 'text-purple-700'
+                                }`}
+                              >
+                                +{opt.optionName}
+                                {opt.price > 0 ? ` (₹${opt.price})` : ''}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {item.note ? (
+                        <Text className="text-amber-400 text-[11px] italic mt-1">
+                          Note: {item.note}
+                        </Text>
+                      ) : null}
+
+                      <Text className="text-slate-400 text-xs mt-1">
+                        ₹{item.price} × {item.qty} ={' '}
+                        <Text className={`font-black ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                          ₹{itemTotal.toFixed(2)}
+                        </Text>
+                      </Text>
+                    </View>
+
+                    {/* Quantity Stepper with Large Touch Targets (Min 44-48pt) */}
+                    <View
+                      className={`flex-row items-center rounded-xl p-0.5 border ${
+                        isDark ? 'bg-slate-800/90 border-slate-700' : 'bg-slate-100 border-slate-300'
+                      }`}
+                    >
+                      <TouchableOpacity
+                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg items-center justify-center active:opacity-75 ${
+                          isDark ? 'bg-slate-700' : 'bg-white border border-slate-200'
+                        }`}
+                        onPress={() => {
+                          if (!checkCanEditCart()) return;
+                          if (item.qty > 1) {
+                            updateQuantity(
+                              tableNo,
+                              item.itemId,
+                              item.qty - 1,
+                              item.variantId || item.variantName,
+                              item.customizationKey
+                            );
+                          } else {
+                            removeItem(
+                              tableNo,
+                              item.itemId,
+                              item.variantId || item.variantName,
+                              item.customizationKey
+                            );
+                          }
+                        }}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                          -
+                        </Text>
+                      </TouchableOpacity>
+
+                      <Text
+                        className={`w-7 text-center font-black text-sm ${
+                          isDark ? 'text-white' : 'text-slate-900'
+                        }`}
+                      >
+                        {item.qty}
+                      </Text>
+
+                      <TouchableOpacity
+                        className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
+                        onPress={() => handleIncrementCartItem(item)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text className="text-white font-black text-sm">+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
-                <View className="flex-row items-center bg-slate-800 rounded p-0.5">
-                  <TouchableOpacity
-                    className="w-6 h-6 rounded bg-slate-700 items-center justify-center"
-                    onPress={() => {
-                      if (!checkCanEditCart()) return;
-                      if (item.qty > 1) updateQuantity(tableNo, item.itemId, item.qty - 1, item.variantId || item.variantName);
-                      else removeItem(tableNo, item.itemId, item.variantId || item.variantName);
-                    }}
-                  >
-                    <Text className="text-white font-bold">-</Text>
-                  </TouchableOpacity>
-                  <Text className="w-6 text-center text-white font-bold text-xs">{item.qty}</Text>
-                  <TouchableOpacity
-                    className="w-6 h-6 rounded bg-[#5D3FD3] items-center justify-center"
-                    onPress={() => handleIncrementCartItem(item)}
-                  >
-                    <Text className="text-white font-bold">+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))
+              );
+            })
           )}
         </ScrollView>
       </View>
 
-      <View className="pt-3 border-t border-slate-800" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-        <View className="flex-row justify-between mb-3">
-          <Text className="text-slate-400 font-semibold text-xs">Total Amount</Text>
-          <Text className="text-white font-black text-lg">₹{cartTotal.toFixed(2)}</Text>
+      {/* Cart Footer */}
+      <View
+        className={`pt-3 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
+        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      >
+        <View className="flex-row justify-between items-baseline mb-3">
+          <View>
+            <Text className="text-slate-400 font-bold text-xs uppercase tracking-wider">Order Total</Text>
+            <Text className="text-slate-500 text-[11px]">{cartItemCount} item{cartItemCount === 1 ? '' : 's'}</Text>
+          </View>
+          <Text className={`font-black text-2xl ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+            ₹{cartTotal.toFixed(2)}
+          </Text>
         </View>
 
         <View className="flex-row gap-2">
           {isDualPrinterMode && unsentItems.length > 0 && (
             <Button
-              title={`Send KOT (${unsentItems.reduce((s, i) => s + i.qty, 0)} items)`}
+              title={`Send KOT (${unsentItems.reduce((s, i) => s + i.qty, 0)})`}
               variant="secondary"
               onPress={handleSendToKitchen}
               isLoading={isSendingKOT}
@@ -785,19 +820,25 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-slate-50'}`}>
       <HamburgerMenu isVisible={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 bg-[#111827] border-b border-slate-800">
+      <View
+        className={`flex-row items-center justify-between px-4 py-3 border-b ${
+          isDark ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-200'
+        }`}
+      >
         <View className="flex-row items-center flex-1 mr-2">
           {isDirect ? (
             <TouchableOpacity
               onPress={() => setSidebarOpen(true)}
-              className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 mr-3 active:opacity-80"
+              className={`p-2.5 rounded-xl border mr-3 active:opacity-80 ${
+                isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-300'
+              }`}
               accessibilityLabel="Open Navigation Menu"
             >
-              <MenuIcon size={20} color="#CBD5E1" />
+              <MenuIcon size={20} color={isDark ? '#CBD5E1' : '#475569'} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -808,15 +849,20 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                   navigation.navigate(Routes.HOME);
                 }
               }}
-              className="p-2 rounded-xl bg-slate-800 border border-slate-700 mr-3 active:opacity-80"
+              className={`p-2 rounded-xl border mr-3 active:opacity-80 ${
+                isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-300'
+              }`}
             >
-              <ArrowLeft size={20} color="#CBD5E1" />
+              <ArrowLeft size={20} color={isDark ? '#CBD5E1' : '#475569'} />
             </TouchableOpacity>
           )}
 
           <View className="flex-1">
             <View className="flex-row items-center gap-2">
-              <Text className="text-white font-black text-base" numberOfLines={1}>
+              <Text
+                className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}
+                numberOfLines={1}
+              >
                 {isDirect
                   ? (branding?.displayName || branding?.businessName || tenant?.businessName || 'Zentiq POS')
                   : (tableNo === 0 ? (orderType === 'PICKUP' ? 'Pick Up Order' : (orderType === 'COUNTER' ? 'Quick Counter Sale' : 'Takeaway Order')) : `Table ${tableNo} (Dine In)`)}
@@ -835,7 +881,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                   className="flex-row items-center"
                 >
                   <MapPin size={11} color="#A855F7" />
-                  <Text className="text-purple-300 text-xs font-semibold ml-1">
+                  <Text className="text-purple-400 text-xs font-semibold ml-1">
                     {activeLocation?.name || 'Tap to select branch'} ▾
                   </Text>
                 </TouchableOpacity>
@@ -851,14 +897,33 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         </View>
 
         <View className="flex-row items-center gap-2">
+          {/* Theme Toggle Button (Dark / Light) */}
+          <TouchableOpacity
+            onPress={toggleTheme}
+            className={`p-2 rounded-xl border active:opacity-80 ${
+              isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-300'
+            }`}
+            accessibilityLabel="Toggle Theme Mode"
+          >
+            {isDark ? (
+              <Sun size={17} color="#FBBF24" />
+            ) : (
+              <Moon size={17} color="#6366F1" />
+            )}
+          </TouchableOpacity>
+
           {/* Quick Orders History shortcut for Quick Sale Mode */}
           {isDirect && (
             <TouchableOpacity
               onPress={() => navigation.navigate(Routes.ORDERS)}
-              className="hidden sm:flex flex-row items-center bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl active:opacity-80"
+              className={`hidden sm:flex flex-row items-center border px-3 py-1.5 rounded-xl active:opacity-80 ${
+                isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-100 border-slate-300'
+              }`}
             >
-              <Receipt size={14} color="#CBD5E1" />
-              <Text className="text-slate-200 text-xs font-bold ml-1.5">Bill History</Text>
+              <Receipt size={14} color={isDark ? '#CBD5E1' : '#475569'} />
+              <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                Bill History
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -869,11 +934,17 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
               className={`px-3 py-1.5 rounded-xl flex-row items-center border shadow-sm active:opacity-80 ${
                 cartItemCount > 0
                   ? 'bg-[#5D3FD3] border-purple-400 shadow-purple-500/30'
-                  : 'bg-slate-800 border-slate-700'
+                  : isDark
+                  ? 'bg-slate-800 border-slate-700'
+                  : 'bg-slate-100 border-slate-300'
               }`}
             >
-              <ShoppingBag size={16} color={cartItemCount > 0 ? '#FFFFFF' : '#94A3B8'} />
-              <Text className={`font-black text-xs ml-1.5 ${cartItemCount > 0 ? 'text-white' : 'text-slate-300'}`}>
+              <ShoppingBag size={16} color={cartItemCount > 0 ? '#FFFFFF' : (isDark ? '#94A3B8' : '#64748B')} />
+              <Text
+                className={`font-black text-xs ml-1.5 ${
+                  cartItemCount > 0 ? 'text-white' : (isDark ? 'text-slate-300' : 'text-slate-700')
+                }`}
+              >
                 {cartItemCount > 0 ? `${cartItemCount} (₹${cartTotal.toFixed(0)})` : 'Cart'}
               </Text>
             </TouchableOpacity>
@@ -881,36 +952,37 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         </View>
       </View>
 
-      {/* Main Body */}
-      {kotToast && (
-        <View className="bg-emerald-500/20 border-b border-emerald-500/40 px-4 py-2.5 flex-row items-center justify-between">
-          <View className="flex-row items-center">
-            <CheckCircle2 size={16} color="#34D399" />
-            <Text className="text-emerald-300 font-bold text-xs ml-2">{kotToast}</Text>
-          </View>
-          <TouchableOpacity onPress={() => setKotToast(null)}>
-            <Text className="text-emerald-400 text-xs font-bold">Dismiss</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Main Body: iPad Golden Ratio (Left ~68%, Right ~32%) */}
       <View className="flex-1 flex-row">
-        {/* Left Column (Menu & Categories) */}
-        <View className="flex-1">
+        {/* Left Section (Menu & Categories ~68% on landscape POS) */}
+        <View style={{ flex: isSplitView ? 68 : 100 }}>
           {/* Search Bar & View Mode Toggle (Grid vs Lines) */}
-          <View className="px-4 py-2.5 bg-[#090D1A] flex-row items-center gap-2">
-            <View className="flex-1 flex-row items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
-              <Search size={16} color="#64748B" />
+          <View
+            className={`px-4 py-2.5 flex-row items-center gap-2 ${
+              isDark ? 'bg-[#090D1A]' : 'bg-slate-50'
+            }`}
+          >
+            <View
+              className={`flex-1 flex-row items-center border rounded-xl px-3 py-1.5 ${
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'
+              }`}
+            >
+              <Search size={16} color={isDark ? '#64748B' : '#94A3B8'} />
               <TextInput
                 placeholder="Search menu items..."
-                placeholderTextColor="#64748B"
+                placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                className="flex-1 ml-2 text-xs text-white"
+                className={`flex-1 ml-2 text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}
               />
             </View>
 
             {/* View Mode Toggle */}
-            <View className="flex-row items-center bg-slate-900 border border-slate-800 rounded-xl p-0.5">
+            <View
+              className={`flex-row items-center border rounded-xl p-0.5 ${
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'
+              }`}
+            >
               <TouchableOpacity
                 onPress={() => handleSetViewMode('grid')}
                 className={`px-2.5 py-1.5 rounded-lg flex-row items-center gap-1.5 ${
@@ -918,8 +990,12 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 }`}
                 accessibilityLabel="Grid View"
               >
-                <LayoutGrid size={13} color={viewMode === 'grid' ? '#FFFFFF' : '#94A3B8'} />
-                <Text className={`text-[11px] font-bold ${viewMode === 'grid' ? 'text-white' : 'text-slate-400'}`}>
+                <LayoutGrid size={13} color={viewMode === 'grid' ? '#FFFFFF' : (isDark ? '#94A3B8' : '#64748B')} />
+                <Text
+                  className={`text-[11px] font-bold ${
+                    viewMode === 'grid' ? 'text-white' : (isDark ? 'text-slate-400' : 'text-slate-600')
+                  }`}
+                >
                   Grid
                 </Text>
               </TouchableOpacity>
@@ -931,8 +1007,12 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 }`}
                 accessibilityLabel="Lines View"
               >
-                <List size={13} color={viewMode === 'lines' ? '#FFFFFF' : '#94A3B8'} />
-                <Text className={`text-[11px] font-bold ${viewMode === 'lines' ? 'text-white' : 'text-slate-400'}`}>
+                <List size={13} color={viewMode === 'lines' ? '#FFFFFF' : (isDark ? '#94A3B8' : '#64748B')} />
+                <Text
+                  className={`text-[11px] font-bold ${
+                    viewMode === 'lines' ? 'text-white' : (isDark ? 'text-slate-400' : 'text-slate-600')
+                  }`}
+                >
                   Lines
                 </Text>
               </TouchableOpacity>
@@ -940,7 +1020,11 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           </View>
 
           {/* Sub-menu Horizontal Category Bar with Favorites */}
-          <View className="py-2.5 bg-[#0B101E] border-b border-slate-800/80 shadow-sm">
+          <View
+            className={`py-2.5 border-b shadow-sm ${
+              isDark ? 'bg-[#0B101E] border-slate-800/80' : 'bg-white border-slate-200'
+            }`}
+          >
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -953,13 +1037,23 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 className={`mr-2 px-3.5 py-1.5 rounded-full flex-row items-center border shadow-sm ${
                   activeCategory === 'favorites'
                     ? 'bg-amber-500/25 border-amber-400 shadow-amber-500/20'
-                    : 'bg-slate-900 border-slate-800'
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800'
+                    : 'bg-slate-100 border-slate-200'
                 }`}
               >
-                <Star size={13} color={activeCategory === 'favorites' ? '#FBBF24' : '#94A3B8'} fill={activeCategory === 'favorites' ? '#FBBF24' : 'transparent'} />
+                <Star
+                  size={13}
+                  color={activeCategory === 'favorites' ? '#FBBF24' : (isDark ? '#94A3B8' : '#64748B')}
+                  fill={activeCategory === 'favorites' ? '#FBBF24' : 'transparent'}
+                />
                 <Text
                   className={`text-xs ml-1.5 font-black ${
-                    activeCategory === 'favorites' ? 'text-amber-300' : 'text-slate-400'
+                    activeCategory === 'favorites'
+                      ? 'text-amber-400'
+                      : isDark
+                      ? 'text-slate-400'
+                      : 'text-slate-600'
                   }`}
                 >
                   ★ Favorites ({favoriteCount})
@@ -973,12 +1067,18 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 className={`mr-2 px-4 py-1.5 rounded-full border shadow-sm ${
                   activeCategory === 'all'
                     ? 'bg-[#5D3FD3] border-purple-400 shadow-purple-500/30'
-                    : 'bg-slate-900 border-slate-800'
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800'
+                    : 'bg-slate-100 border-slate-200'
                 }`}
               >
                 <Text
                   className={`text-xs font-black ${
-                    activeCategory === 'all' ? 'text-white' : 'text-slate-400'
+                    activeCategory === 'all'
+                      ? 'text-white'
+                      : isDark
+                      ? 'text-slate-400'
+                      : 'text-slate-600'
                   }`}
                 >
                   All ({items.length})
@@ -986,8 +1086,8 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
               </TouchableOpacity>
 
               {/* Category Tabs */}
-              {categories.map(cat => {
-                const count = items.filter(i => i.categoryId === cat.id).length;
+              {categories.map((cat) => {
+                const count = items.filter((i) => i.categoryId === cat.id).length;
                 const isSelected = activeCategory === cat.id;
                 return (
                   <TouchableOpacity
@@ -997,12 +1097,18 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                     className={`mr-2 px-3.5 py-1.5 rounded-full border shadow-sm ${
                       isSelected
                         ? 'bg-[#5D3FD3] border-purple-400 shadow-purple-500/30'
-                        : 'bg-slate-900 border-slate-800'
+                        : isDark
+                        ? 'bg-slate-900 border-slate-800'
+                        : 'bg-slate-100 border-slate-200'
                     }`}
                   >
                     <Text
                       className={`text-xs ${
-                        isSelected ? 'text-white font-black' : 'text-slate-400 font-semibold'
+                        isSelected
+                          ? 'text-white font-black'
+                          : isDark
+                          ? 'text-slate-400 font-semibold'
+                          : 'text-slate-600 font-semibold'
                       }`}
                     >
                       {cat.name} ({count})
@@ -1029,22 +1135,24 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             className="flex-1"
             updateCellsBatchingPeriod={50}
             contentContainerStyle={{
-              padding: viewMode === 'grid' ? 10 : 16,
-              paddingBottom: isSplitView ? Math.max(insets.bottom + 24, 40) : Math.max(insets.bottom + 170, 200)
+              padding: viewMode === 'grid' ? 8 : 16,
+              paddingBottom: isSplitView ? Math.max(insets.bottom + 24, 40) : Math.max(insets.bottom + 170, 200),
             }}
             ListEmptyComponent={
               <View className="py-16 items-center">
                 {activeCategory === 'favorites' ? (
                   <View className="items-center">
                     <Star size={36} color="#F59E0B" />
-                    <Text className="text-white font-bold text-sm mt-3">No Favorite Items Starred</Text>
+                    <Text className={`font-bold text-sm mt-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      No Favorite Items Starred
+                    </Text>
                     <Text className="text-slate-400 text-xs mt-1 text-center px-6">
                       Star your most popular favorite items in Menu Management for rapid 1-touch ordering!
                     </Text>
                   </View>
                 ) : (
                   <View className="items-center">
-                    <ShoppingBag size={36} color="#475569" />
+                    <ShoppingBag size={36} color={isDark ? '#475569' : '#94A3B8'} />
                     <Text className="text-slate-400 text-xs mt-3">No menu items found in this section</Text>
                   </View>
                 )}
@@ -1053,133 +1161,43 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           />
         </View>
 
-        {/* Right Split Panel for POS */}
-        {isSplitView && renderSplitCartPanel()}
+        {/* Right Section (Approx 32% Persistent Cart on iPad POS) */}
+        {isSplitView && (
+          <View style={{ flex: 32, minWidth: 320, maxWidth: 440 }}>
+            {renderSplitCartPanel()}
+          </View>
+        )}
       </View>
 
-      {/* Variant Selection Modal */}
-        {selectedItemForVariants && (
-          <Modal visible={true} transparent animationType="slide">
-            <View className="flex-1 justify-center items-center bg-black/75 p-4">
-              <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-sm shadow-2xl">
-                <View className="flex-row justify-between items-center pb-3 mb-3 border-b border-slate-800">
-                  <View className="flex-1 mr-2">
-                    <Text className="text-white font-black text-lg">{selectedItemForVariants.name}</Text>
-                    <Text className="text-slate-400 text-xs">Select portion size & quantity:</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => setSelectedItemForVariants(null)} className="p-1.5 bg-slate-800 rounded-full">
-                    <X size={18} color="#94A3B8" />
-                  </TouchableOpacity>
-                </View>
+      {/* Portions / Variant Selection Sheet */}
+      <VariantSelectionSheet
+        isVisible={Boolean(selectedItemForVariants)}
+        item={selectedItemForVariants}
+        onClose={() => setSelectedItemForVariants(null)}
+        onAddToCart={handleVariantAddToCart}
+        getAvailableStock={getAvailableStock}
+      />
 
-                <View className="mb-4">
-                  {(() => {
-                    const avail = getAvailableStock(selectedItemForVariants);
-                    return selectedItemForVariants.variants?.map(v => {
-                      const deduction = typeof v.portionDeduction === 'number' ? v.portionDeduction : 1;
-                      const canFulfill = selectedItemForVariants.isAvailable !== false && (!selectedItemForVariants.trackInventory || (avail >= deduction));
-                      const variantItemId = `${selectedItemForVariants.id}_${v.name}`;
-                      const inCart = cartItems.find(i => i.itemId === variantItemId || (i.itemId === selectedItemForVariants.id && (i.variantId === v.id || i.variantName === v.name)));
-                      const vQty = inCart ? inCart.qty : 0;
+      {/* Item Customization Sheet (Mandatory & Optional Add-ons, Dynamic Price) */}
+      <ItemCustomizationSheet
+        isVisible={Boolean(selectedItemForCustomization)}
+        item={selectedItemForCustomization}
+        onClose={() => setSelectedItemForCustomization(null)}
+        onAddToCart={handleCustomizationAddToCart}
+        getAvailableStock={getAvailableStock}
+      />
 
-                      return (
-                        <View
-                          key={v.id}
-                          className={`flex-row justify-between items-center p-3 rounded-2xl border mb-2.5 ${
-                            vQty > 0
-                              ? 'bg-purple-950/20 border-purple-500/40'
-                              : canFulfill
-                              ? 'bg-slate-800/80 border-slate-700'
-                              : 'bg-slate-900 border-slate-800 opacity-40'
-                          }`}
-                        >
-                          <View className="flex-1 mr-2">
-                            <Text className="text-white font-bold text-sm">{v.name}</Text>
-                            <Text className="text-indigo-400 font-bold text-xs mt-0.5">₹{v.price}</Text>
-                            {selectedItemForVariants.trackInventory && (
-                              <Text className="text-slate-400 text-[10px] mt-0.5">
-                                Deducts: {deduction} {selectedItemForVariants.stockUnit || 'kg'}
-                              </Text>
-                            )}
-                          </View>
 
-                          {vQty > 0 ? (
-                            <View className="flex-row items-center bg-slate-900 rounded-xl p-1 border border-purple-500/40">
-                              <TouchableOpacity
-                                className="w-8 h-8 rounded-lg bg-slate-800 items-center justify-center active:opacity-80"
-                                onPress={() => {
-                                  if (!checkCanEditCart()) return;
-                                  if (vQty > 1) {
-                                    updateQuantity(tableNo, variantItemId, vQty - 1);
-                                  } else {
-                                    removeItem(tableNo, variantItemId);
-                                  }
-                                }}
-                              >
-                                <Text className="text-white font-bold text-base">-</Text>
-                              </TouchableOpacity>
-                              <Text className="w-8 text-center text-white font-black text-sm">{vQty}</Text>
-                              <TouchableOpacity
-                                className="w-8 h-8 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-80"
-                                disabled={!canFulfill}
-                                onPress={() => {
-                                  if (!checkCanEditCart()) return;
-                                  if (!canFulfill) {
-                                    toast.warning('No additional stock available for this variant.', 'Out of Stock');
-                                    return;
-                                  }
-                                  updateQuantity(tableNo, variantItemId, vQty + 1);
-                                }}
-                              >
-                                <Text className="text-white font-bold text-base">+</Text>
-                              </TouchableOpacity>
-                            </View>
-                          ) : (
-                            <TouchableOpacity
-                              disabled={!canFulfill}
-                              onPress={() => {
-                                if (!checkCanEditCart()) return;
-                                addItem(tableNo, {
-                                  itemId: variantItemId,
-                                  baseItemId: selectedItemForVariants.id,
-                                  itemName: selectedItemForVariants.name,
-                                  price: v.price,
-                                  qty: 1,
-                                  variantName: v.name,
-                                  portionDeduction: deduction,
-                                });
-                              }}
-                              className={`px-3.5 py-2 rounded-xl ${
-                                canFulfill ? 'bg-[#5D3FD3]' : 'bg-slate-800'
-                              }`}
-                            >
-                              <Text className={`font-bold text-xs ${canFulfill ? 'text-white' : 'text-slate-400'}`}>
-                                {canFulfill ? '+ Add' : 'Out of Stock'}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      );
-                    });
-                  })()}
-                </View>
 
-                <Button title="Done" onPress={() => setSelectedItemForVariants(null)} />
-              </View>
-            </View>
-          </Modal>
-        )}
-      
-        {/* Mobile Floating Bottom Cart Bar (Fixed clean layout) */}
+      {/* Mobile Floating Bottom Cart Bar (Fixed clean layout) */}
       {!isSplitView && cartItemCount > 0 && (
         <View
           className="absolute bottom-0 left-0 right-0 bg-[#0F172A] border-t border-slate-800 px-4 pt-3 shadow-2xl"
           style={{ paddingBottom: Math.max(insets.bottom + 8, 20) }}
         >
           {isBillPrinted && (
-            <View className={`mb-2 py-1 px-2.5 rounded-xl border flex-row items-center ${
-              isManagerOrAdmin ? 'bg-amber-500/15 border-amber-500/30' : 'bg-rose-500/15 border-rose-500/30'
-            }`}>
+            <View className={`mb-2 py-1 px-2.5 rounded-xl border flex-row items-center ${isManagerOrAdmin ? 'bg-amber-500/15 border-amber-500/30' : 'bg-rose-500/15 border-rose-500/30'
+              }`}>
               {isManagerOrAdmin ? (
                 <ShieldCheck size={12} color="#F59E0B" />
               ) : (
@@ -1302,10 +1320,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 <View className="flex-row items-center gap-2">
                   {cartItems.length > 0 && (
                     <TouchableOpacity
-                      onPress={() => {
-                        if (!checkCanEditCart()) return;
-                        clearCart(tableNo);
-                      }}
+                      onPress={handleClearCart}
                       className="px-2.5 py-1.5 bg-rose-500/15 border border-rose-500/30 rounded-xl active:opacity-80"
                     >
                       <Text className="text-rose-300 text-xs font-bold">Clear</Text>
@@ -1322,9 +1337,8 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
               {/* Printed Bill Alert Banner */}
               {isBillPrinted && (
-                <View className={`mx-4 mt-3 p-2.5 rounded-xl border flex-row items-center ${
-                  isManagerOrAdmin ? 'bg-amber-500/15 border-amber-500/30' : 'bg-rose-500/15 border-rose-500/30'
-                }`}>
+                <View className={`mx-4 mt-3 p-2.5 rounded-xl border flex-row items-center ${isManagerOrAdmin ? 'bg-amber-500/15 border-amber-500/30' : 'bg-rose-500/15 border-rose-500/30'
+                  }`}>
                   {isManagerOrAdmin ? <ShieldCheck size={16} color="#F59E0B" /> : <Lock size={16} color="#F43F5E" />}
                   <View className="ml-2 flex-1">
                     <Text className={`text-xs font-black ${isManagerOrAdmin ? 'text-amber-300' : 'text-rose-300'}`}>
@@ -1352,7 +1366,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 ) : (
                   cartItems.map((item, index) => (
                     <View
-                      key={`${item.itemId}_${item.variantId || item.variantName || index}`}
+                      key={`${item.itemId}_${item.variantId || item.variantName || ''}_${item.customizationKey || ''}_${index}`}
                       className="flex-row items-center justify-between py-3 border-b border-slate-800/60"
                     >
                       <View className="flex-1 mr-3">
@@ -1368,24 +1382,46 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                           <Text className="text-slate-400 text-xs">₹{item.price} each</Text>
                           <Text className="text-emerald-400 text-xs font-bold">• ₹{(item.price * item.qty).toFixed(2)}</Text>
                         </View>
+
+                        {/* Customization Options Badges */}
+                        {item.selectedOptions && item.selectedOptions.length > 0 && (
+                          <View className="flex-row flex-wrap gap-1 mt-1">
+                            {item.selectedOptions.map((opt, oIdx) => (
+                              <View key={oIdx} className="bg-purple-950/60 border border-purple-500/30 px-1.5 py-0.5 rounded">
+                                <Text className="text-purple-300 text-[10px] font-semibold">
+                                  +{opt.optionName}{opt.price > 0 ? ` (₹${opt.price})` : ''}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+
+                        {item.note ? (
+                          <Text className="text-amber-400 text-[11px] italic mt-0.5">Note: {item.note}</Text>
+                        ) : null}
                       </View>
 
-                      {/* Stepper */}
-                      <View className="flex-row items-center bg-slate-800 rounded-xl p-1 border border-slate-700">
+                      {/* Stepper (Min 44pt touch target with hitSlop) */}
+                      <View className="flex-row items-center bg-slate-800 rounded-xl p-0.5 border border-slate-700">
                         <TouchableOpacity
-                          className="w-7 h-7 rounded-lg bg-slate-700 items-center justify-center active:opacity-80"
+                          className="w-9 h-9 rounded-lg bg-slate-700 items-center justify-center active:opacity-80"
                           onPress={() => {
                             if (!checkCanEditCart()) return;
-                            if (item.qty > 1) updateQuantity(tableNo, item.itemId, item.qty - 1, item.variantId || item.variantName);
-                            else removeItem(tableNo, item.itemId, item.variantId || item.variantName);
+                            if (item.qty > 1) {
+                              updateQuantity(tableNo, item.itemId, item.qty - 1, item.variantId || item.variantName, item.customizationKey);
+                            } else {
+                              removeItem(tableNo, item.itemId, item.variantId || item.variantName, item.customizationKey);
+                            }
                           }}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
                           <Text className="text-white font-bold text-sm">-</Text>
                         </TouchableOpacity>
                         <Text className="w-7 text-center text-white font-black text-xs">{item.qty}</Text>
                         <TouchableOpacity
-                          className="w-7 h-7 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-80 shadow-sm shadow-purple-500/30"
+                          className="w-9 h-9 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-80 shadow-sm shadow-purple-500/30"
                           onPress={() => handleIncrementCartItem(item)}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
                           <Text className="text-white font-bold text-sm">+</Text>
                         </TouchableOpacity>
@@ -1432,11 +1468,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                       navigation.navigate(Routes.CART, { tableNo, orderType });
                     }}
                     disabled={cartItems.length === 0}
-                    className={`w-full py-3.5 rounded-2xl flex-row items-center justify-center shadow-lg active:opacity-90 ${
-                      cartItems.length > 0
+                    className={`w-full py-3.5 rounded-2xl flex-row items-center justify-center shadow-lg active:opacity-90 ${cartItems.length > 0
                         ? 'bg-[#5D3FD3] shadow-purple-500/30'
                         : 'bg-slate-800 border border-slate-700 opacity-50'
-                    }`}
+                      }`}
                   >
                     <CreditCard size={18} color="white" />
                     <Text className="text-white font-black text-sm sm:text-base ml-2">
@@ -1485,8 +1520,8 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                         isSelected
                           ? 'bg-purple-950/40 border-[#5D3FD3]'
                           : isDisabled
-                          ? 'bg-slate-950/40 border-slate-850 opacity-40'
-                          : 'bg-slate-800/80 border-slate-700/70'
+                            ? 'bg-slate-950/40 border-slate-850 opacity-40'
+                            : 'bg-slate-800/80 border-slate-700/70'
                       )}
                     >
                       <View className="flex-1 mr-2">

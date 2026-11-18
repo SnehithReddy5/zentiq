@@ -29,7 +29,7 @@ export const CartScreen = () => {
   const tableNo = route.params?.tableNo ?? 0;
   const orderType = route.params?.orderType || (tableNo === 0 ? 'PICKUP' : 'DINE_IN');
 
-  const { carts, clearCart } = useCartStore();
+  const { carts, clearCart, markAsSent } = useCartStore();
   const { orders } = useOrderStore();
   const { tenant, branding, features, locations, activeLocationId } = useTenantStore();
   const { settings } = usePrinterStore();
@@ -59,7 +59,7 @@ export const CartScreen = () => {
               itemName: matchedMaster?.name || it.itemName || it.name,
               price: Number(it.price || matchedMaster?.price || 0),
               qty: Number(it.qty || 1),
-              sentQty: Number(it.sentQty ?? it.qty ?? 1),
+              sentQty: Number(it.sentQty ?? 0),
               variantId: it.variantId || null,
               variantName: it.variantName || null,
               note: it.note || '',
@@ -70,8 +70,8 @@ export const CartScreen = () => {
         }
 
         if ((carts[tableNo] || []).length === 0) {
-          const currentTable = useTableStore.getState().tables.find((t: any) => t.tableNo === tableNo);
-          if (currentTable && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
+          const currentTable = useTableStore.getState().tables.find((t: any) => Number(t.tableNo) === Number(tableNo));
+          if (currentTable && currentTable.status !== 'available' && (currentTable as any).cartItems && (currentTable as any).cartItems.length > 0) {
             useCartStore.getState().syncRemoteCarts({ [tableNo]: (currentTable as any).cartItems });
           }
         }
@@ -231,8 +231,8 @@ export const CartScreen = () => {
         }
       }
 
-      // 4. Clear cart and return
-      clearCart(tableNo);
+      // 4. Mark cart items as sent and return to Home
+      markAsSent(tableNo);
       toast.success(`KOT #${kotNo} printed and sent to kitchen!`, 'KOT Dispatched');
       navigation.reset({
         index: 0,
@@ -623,6 +623,16 @@ export const CartScreen = () => {
                       {item.variantName && (
                         <Text className="text-slate-400 text-[11px]">{item.variantName}</Text>
                       )}
+                      {item.selectedOptions && item.selectedOptions.length > 0 && (
+                        <Text className="text-purple-300 text-[11px] mt-0.5">
+                          + {item.selectedOptions.map(o => o.optionName).join(', ')}
+                        </Text>
+                      )}
+                      {item.note ? (
+                        <Text className="text-amber-400/90 text-[11px] italic mt-0.5">
+                          Note: {item.note}
+                        </Text>
+                      ) : null}
                     </View>
                     <Text className="text-purple-300 font-bold text-xs">
                       ₹{(item.price * item.qty).toFixed(2)}
@@ -742,8 +752,8 @@ export const CartScreen = () => {
                     onPress={handlePrintKOTOnly}
                     disabled={isSettling || cartItems.length === 0}
                     className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
-                        ? 'bg-amber-500 shadow-amber-500/30 active:opacity-90'
-                        : 'bg-slate-800 opacity-60'
+                      ? 'bg-amber-500 shadow-amber-500/30 active:opacity-90'
+                      : 'bg-slate-800 opacity-60'
                       }`}
                   >
                     {isSettling ? (
@@ -891,8 +901,8 @@ export const CartScreen = () => {
                             onPress={handlePrintBillOnly}
                             disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
                             className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
-                                ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
-                                : 'bg-slate-850 border-slate-800 opacity-50'
+                              ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
+                              : 'bg-slate-850 border-slate-800 opacity-50'
                               }`}
                           >
                             {isPrintingBillOnly ? (
@@ -912,8 +922,8 @@ export const CartScreen = () => {
                             onPress={() => handleSaveAndSettle(false)}
                             disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
                             className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
-                                ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
-                                : 'bg-slate-800 opacity-60'
+                              ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                              : 'bg-slate-800 opacity-60'
                               }`}
                           >
                             {isSettling ? (
@@ -935,8 +945,8 @@ export const CartScreen = () => {
                             onPress={handlePrintBillOnly}
                             disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
                             className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
-                                ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
-                                : 'bg-slate-850 border-slate-800 opacity-50'
+                              ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
+                              : 'bg-slate-850 border-slate-800 opacity-50'
                               }`}
                           >
                             {isPrintingBillOnly ? (
@@ -956,8 +966,8 @@ export const CartScreen = () => {
                             onPress={() => handleSaveAndSettle(true)}
                             disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
                             className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
-                                ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
-                                : 'bg-slate-800 opacity-60'
+                              ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                              : 'bg-slate-800 opacity-60'
                               }`}
                           >
                             {isSettling ? (
@@ -1076,8 +1086,8 @@ export const CartScreen = () => {
                             onPress={handlePrintBillOnly}
                             disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
                             className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
-                                ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
-                                : 'bg-slate-850 border-slate-800 opacity-50'
+                              ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
+                              : 'bg-slate-850 border-slate-800 opacity-50'
                               }`}
                           >
                             {isPrintingBillOnly ? (
@@ -1097,8 +1107,8 @@ export const CartScreen = () => {
                             onPress={() => handleSaveAndSettle(false)}
                             disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
                             className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${remaining === 0 && cartItems.length > 0
-                                ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
-                                : 'bg-slate-800 opacity-60'
+                              ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                              : 'bg-slate-800 opacity-60'
                               }`}
                           >
                             {isSettling ? (
@@ -1120,8 +1130,8 @@ export const CartScreen = () => {
                             onPress={handlePrintBillOnly}
                             disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
                             className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
-                                ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
-                                : 'bg-slate-850 border-slate-800 opacity-50'
+                              ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
+                              : 'bg-slate-850 border-slate-800 opacity-50'
                               }`}
                           >
                             {isPrintingBillOnly ? (
@@ -1141,8 +1151,8 @@ export const CartScreen = () => {
                             onPress={() => handleSaveAndSettle(true)}
                             disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
                             className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${remaining === 0 && cartItems.length > 0
-                                ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
-                                : 'bg-slate-800 opacity-60'
+                              ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                              : 'bg-slate-800 opacity-60'
                               }`}
                           >
                             {isSettling ? (

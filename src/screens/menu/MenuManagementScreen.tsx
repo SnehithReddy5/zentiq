@@ -10,7 +10,7 @@ import { useMenuStore } from '../../store/menu.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { DBServices } from '../../services/firebase/db';
 import { MenuExcelImportModal } from './MenuExcelImportModal';
-import { MenuItem, MenuItemVariant } from '../../types/menu.types';
+import { MenuItem, MenuItemVariant, ItemInteractionType, CustomizationGroup, getItemInteractionType } from '../../types/menu.types';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
 export const MenuManagementScreen = () => {
@@ -44,6 +44,8 @@ export const MenuManagementScreen = () => {
   const [itemIsFavorite, setItemIsFavorite] = useState(false);
   const [hasVariants, setHasVariants] = useState(false);
   const [variants, setVariants] = useState<{ id?: string; name: string; price: string; portionDeduction?: string }[]>([]);
+  const [interactionType, setInteractionType] = useState<ItemInteractionType>('DIRECT_ADD');
+  const [customizationGroups, setCustomizationGroups] = useState<CustomizationGroup[]>([]);
 
   // Inventory Management State
   const [itemTrackInventory, setItemTrackInventory] = useState(false);
@@ -116,8 +118,10 @@ export const MenuManagementScreen = () => {
       : (categories[0]?.id || '');
     setItemCategoryId(defaultCat);
     setItemIsFavorite(false);
+    setInteractionType('DIRECT_ADD');
     setHasVariants(false);
     setVariants([]);
+    setCustomizationGroups([]);
     setItemTrackInventory(false);
     setItemStockQuantity('10');
     setItemStockUnit('kg');
@@ -136,6 +140,11 @@ export const MenuManagementScreen = () => {
     setItemStockQuantity(item.stockQuantity !== undefined ? item.stockQuantity.toString() : '10');
     setItemStockUnit(item.stockUnit || 'kg');
     setItemLowStockThreshold(item.lowStockThreshold !== undefined ? item.lowStockThreshold.toString() : '2');
+    
+    const derivedType = getItemInteractionType(item);
+    setInteractionType(derivedType);
+    setCustomizationGroups(item.customizationGroups ? JSON.parse(JSON.stringify(item.customizationGroups)) : []);
+
     if (item.variants && item.variants.length > 0) {
       setHasVariants(true);
       setVariants(item.variants.map(v => ({
@@ -145,7 +154,7 @@ export const MenuManagementScreen = () => {
         portionDeduction: v.portionDeduction !== undefined ? v.portionDeduction.toString() : '1'
       })));
     } else {
-      setHasVariants(false);
+      setHasVariants(derivedType === 'VARIANT_SELECTION');
       setVariants([]);
     }
     setItemModalOpen(true);
@@ -258,7 +267,8 @@ export const MenuManagementScreen = () => {
     let parsedPrice = parseFloat(itemPrice) || 0;
     let cleanVariants: MenuItemVariant[] | undefined = undefined;
 
-    if (hasVariants) {
+    const isVariantMode = interactionType === 'VARIANT_SELECTION' || hasVariants;
+    if (isVariantMode) {
       const validVariants = variants.filter(v => v.name.trim().length > 0);
       if (validVariants.length === 0) {
         toast.warning('Please add at least one named variant.', 'Variants Required');
@@ -279,6 +289,7 @@ export const MenuManagementScreen = () => {
         price: parsedPrice,
         categoryId: itemCategoryId,
         isFavorite: itemIsFavorite,
+        interactionType: interactionType,
         trackInventory: itemTrackInventory,
       };
 
@@ -288,8 +299,32 @@ export const MenuManagementScreen = () => {
         payload.lowStockThreshold = parseFloat(itemLowStockThreshold) || 2;
       }
 
-      if (cleanVariants && cleanVariants.length > 0) {
+      if (isVariantMode && cleanVariants && cleanVariants.length > 0) {
         payload.variants = cleanVariants;
+      } else {
+        payload.variants = [];
+      }
+
+      if (interactionType === 'CUSTOMIZABLE') {
+        const cleanGroups = customizationGroups
+          .filter(g => g.name.trim().length > 0)
+          .map((g, gIdx) => ({
+            id: g.id || `grp_${Date.now()}_${gIdx}`,
+            name: g.name.trim(),
+            minSelect: typeof g.minSelect === 'number' ? g.minSelect : 0,
+            maxSelect: typeof g.maxSelect === 'number' ? g.maxSelect : 1,
+            options: (g.options || [])
+              .filter(o => o.name.trim().length > 0)
+              .map((o, oIdx) => ({
+                id: o.id || `opt_${Date.now()}_${gIdx}_${oIdx}`,
+                name: o.name.trim(),
+                price: parseFloat(String(o.price)) || 0,
+                isDefault: !!o.isDefault,
+              })),
+          }));
+        payload.customizationGroups = cleanGroups;
+      } else {
+        payload.customizationGroups = [];
       }
 
       if (editingItemId) {
@@ -854,18 +889,75 @@ export const MenuManagementScreen = () => {
                   </TouchableOpacity>
                 )}
 
-                {/* Has Variants Toggle */}
-                <TouchableOpacity
-                  onPress={() => setHasVariants(!hasVariants)}
-                  className="flex-row items-center justify-between bg-slate-800/80 border border-slate-700 p-3 rounded-xl mb-3"
-                >
-                  <Text className="text-white font-bold text-xs">Multiple Sizes / Variants (Half, Full)?</Text>
-                  <Text className={`text-xs font-bold ${hasVariants ? 'text-indigo-400' : 'text-slate-500'}`}>
-                    {hasVariants ? 'YES' : 'NO'}
-                  </Text>
-                </TouchableOpacity>
+                {/* Ordering Interaction Type Selector */}
+                <View className="mb-3">
+                  <Text className="text-slate-300 font-bold text-xs mb-1.5">Ordering Interaction Type *</Text>
+                  <View className="flex-row gap-1 bg-slate-900 p-1 rounded-2xl border border-slate-800">
+                    <TouchableOpacity
+                      onPress={() => {
+                        setInteractionType('DIRECT_ADD');
+                        setHasVariants(false);
+                      }}
+                      className={`flex-1 py-2 rounded-xl items-center ${interactionType === 'DIRECT_ADD' ? 'bg-[#5D3FD3]' : 'bg-transparent'}`}
+                    >
+                      <Text className={`font-bold text-xs ${interactionType === 'DIRECT_ADD' ? 'text-white' : 'text-slate-400'}`}>
+                        1-Tap Add
+                      </Text>
+                    </TouchableOpacity>
 
-                {hasVariants ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setInteractionType('VARIANT_SELECTION');
+                        setHasVariants(true);
+                        if (variants.length === 0) {
+                          setVariants([
+                            { name: 'Half', price: itemPrice || '100', portionDeduction: '0.5' },
+                            { name: 'Full', price: itemPrice ? String(Number(itemPrice) * 1.8) : '180', portionDeduction: '1' }
+                          ]);
+                        }
+                      }}
+                      className={`flex-1 py-2 rounded-xl items-center ${interactionType === 'VARIANT_SELECTION' ? 'bg-[#5D3FD3]' : 'bg-transparent'}`}
+                    >
+                      <Text className={`font-bold text-xs ${interactionType === 'VARIANT_SELECTION' ? 'text-white' : 'text-slate-400'}`}>
+                        Sizes / Variants
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        setInteractionType('CUSTOMIZABLE');
+                        setHasVariants(false);
+                        if (customizationGroups.length === 0) {
+                          setCustomizationGroups([{
+                            id: `grp_${Date.now()}`,
+                            name: 'Add-ons & Toppings',
+                            minSelect: 0,
+                            maxSelect: 3,
+                            options: [
+                              { id: `opt_${Date.now()}_1`, name: 'Extra Cheese', price: 30 },
+                              { id: `opt_${Date.now()}_2`, name: 'Extra Sauce', price: 15 },
+                            ]
+                          }]);
+                        }
+                      }}
+                      className={`flex-1 py-2 rounded-xl items-center ${interactionType === 'CUSTOMIZABLE' ? 'bg-[#5D3FD3]' : 'bg-transparent'}`}
+                    >
+                      <Text className={`font-bold text-xs ${interactionType === 'CUSTOMIZABLE' ? 'text-white' : 'text-slate-400'}`}>
+                        Customizable
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text className="text-slate-400 text-[10px] mt-1 ml-1">
+                    {interactionType === 'DIRECT_ADD'
+                      ? '⚡ 1-Tap: Tapping card adds 1 quantity immediately with an inline stepper.'
+                      : interactionType === 'VARIANT_SELECTION'
+                      ? '📦 Sizes: Tapping card opens a selection sheet with sizes (Single, Half, Full, Large).'
+                      : '✨ Customizable: Tapping card opens a sheet with add-on options & extra charges.'}
+                  </Text>
+                </View>
+
+                {/* Variants Configuration (if VARIANT_SELECTION) */}
+                {interactionType === 'VARIANT_SELECTION' ? (
                   <View className="bg-slate-800/50 p-3 rounded-2xl mb-3 border border-slate-750">
                     <View className="flex-row justify-between items-center mb-2">
                       <Text className="text-slate-300 font-bold text-xs">Variants & Prices</Text>
@@ -925,7 +1017,147 @@ export const MenuManagementScreen = () => {
                       </View>
                     ))}
                   </View>
-                ) : (
+                ) : null}
+
+                {/* Customization Groups Configuration (if CUSTOMIZABLE) */}
+                {interactionType === 'CUSTOMIZABLE' ? (
+                  <View className="bg-slate-800/50 p-3 rounded-2xl mb-3 border border-slate-750">
+                    <View className="flex-row justify-between items-center mb-2">
+                      <Text className="text-slate-300 font-bold text-xs">Add-on & Customization Groups</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setCustomizationGroups([
+                            ...customizationGroups,
+                            {
+                              id: `grp_${Date.now()}`,
+                              name: '',
+                              minSelect: 0,
+                              maxSelect: 1,
+                              options: [{ id: `opt_${Date.now()}_0`, name: '', price: 0 }]
+                            }
+                          ]);
+                        }}
+                        className="bg-[#5D3FD3] px-2 py-1 rounded"
+                      >
+                        <Text className="text-white text-[11px] font-bold">+ Add Group</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {customizationGroups.map((group, gIdx) => (
+                      <View key={group.id || gIdx} className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 mb-2.5">
+                        <View className="flex-row items-center gap-2 mb-2">
+                          <TextInput
+                            placeholder="Group Name (e.g. Choose Crust, Toppings)"
+                            placeholderTextColor="#64748B"
+                            value={group.name}
+                            onChangeText={txt => {
+                              const updated = [...customizationGroups];
+                              updated[gIdx].name = txt;
+                              setCustomizationGroups(updated);
+                            }}
+                            className="flex-1 bg-slate-800 border border-slate-700 text-white text-xs p-2 rounded-lg font-bold"
+                          />
+                          <TouchableOpacity
+                            onPress={() => setCustomizationGroups(customizationGroups.filter((_, idx) => idx !== gIdx))}
+                            className="p-2 bg-rose-500/10 rounded-lg"
+                          >
+                            <Trash2 size={14} color="#F43F5E" />
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Single vs Multi-select & Mandatory */}
+                        <View className="flex-row gap-2 mb-2">
+                          <TouchableOpacity
+                            onPress={() => {
+                              const updated = [...customizationGroups];
+                              updated[gIdx].maxSelect = updated[gIdx].maxSelect === 1 ? 5 : 1;
+                              setCustomizationGroups(updated);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg border ${group.maxSelect === 1 ? 'bg-indigo-600/30 border-indigo-500' : 'bg-slate-800 border-slate-700'}`}
+                          >
+                            <Text className={`text-[10px] font-bold ${group.maxSelect === 1 ? 'text-indigo-300' : 'text-slate-400'}`}>
+                              {group.maxSelect === 1 ? '◉ Single-select (Radio)' : '☑ Multi-select (Checkbox)'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => {
+                              const updated = [...customizationGroups];
+                              updated[gIdx].minSelect = (updated[gIdx].minSelect || 0) > 0 ? 0 : 1;
+                              setCustomizationGroups(updated);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg border ${(group.minSelect || 0) > 0 ? 'bg-amber-600/30 border-amber-500' : 'bg-slate-800 border-slate-700'}`}
+                          >
+                            <Text className={`text-[10px] font-bold ${(group.minSelect || 0) > 0 ? 'text-amber-300' : 'text-slate-400'}`}>
+                              {(group.minSelect || 0) > 0 ? '★ Mandatory' : '○ Optional'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Options in this group */}
+                        <View className="pl-1 border-l-2 border-indigo-500/30">
+                          <View className="flex-row justify-between items-center mb-1">
+                            <Text className="text-slate-400 text-[10px] font-bold">Options & Extra Charges</Text>
+                            <TouchableOpacity
+                              onPress={() => {
+                                const updated = [...customizationGroups];
+                                updated[gIdx].options = [
+                                  ...(updated[gIdx].options || []),
+                                  { id: `opt_${Date.now()}_${(updated[gIdx].options || []).length}`, name: '', price: 0 }
+                                ];
+                                setCustomizationGroups(updated);
+                              }}
+                              className="px-1.5 py-0.5 bg-slate-800 rounded"
+                            >
+                              <Text className="text-indigo-300 text-[10px] font-bold">+ Option</Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {(group.options || []).map((opt, oIdx) => (
+                            <View key={opt.id || oIdx} className="flex-row items-center gap-1.5 mb-1.5">
+                              <TextInput
+                                placeholder="Option (e.g. Extra Cheese)"
+                                placeholderTextColor="#64748B"
+                                value={opt.name}
+                                onChangeText={txt => {
+                                  const updated = [...customizationGroups];
+                                  updated[gIdx].options[oIdx].name = txt;
+                                  setCustomizationGroups(updated);
+                                }}
+                                className="flex-1 bg-slate-800 border border-slate-700 text-white text-[11px] p-1.5 rounded-lg"
+                              />
+                              <TextInput
+                                placeholder="+₹ Price"
+                                placeholderTextColor="#64748B"
+                                keyboardType="numeric"
+                                value={opt.price ? String(opt.price) : ''}
+                                onChangeText={txt => {
+                                  const updated = [...customizationGroups];
+                                  updated[gIdx].options[oIdx].price = parseFloat(txt) || 0;
+                                  setCustomizationGroups(updated);
+                                }}
+                                className="w-20 bg-slate-800 border border-slate-700 text-white text-[11px] p-1.5 rounded-lg text-right"
+                              />
+                              <TouchableOpacity
+                                onPress={() => {
+                                  const updated = [...customizationGroups];
+                                  updated[gIdx].options = updated[gIdx].options.filter((_, idx) => idx !== oIdx);
+                                  setCustomizationGroups(updated);
+                                }}
+                                className="p-1.5 bg-rose-500/10 rounded"
+                              >
+                                <Trash2 size={12} color="#F43F5E" />
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* Base Price (shown for Direct Add and Customizable) */}
+                {interactionType !== 'VARIANT_SELECTION' ? (
                   <Input
                     label="Price (₹) *"
                     placeholder="e.g. 199"
@@ -933,7 +1165,7 @@ export const MenuManagementScreen = () => {
                     value={itemPrice}
                     onChangeText={setItemPrice}
                   />
-                )}
+                ) : null}
 
                 <View className="flex-row gap-2 mt-4">
                   <Button

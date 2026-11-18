@@ -123,7 +123,7 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
           itemName: it.itemName || it.name,
           price: Number(it.price || 0),
           qty: Number(it.qty || 1),
-          sentQty: Number(it.sentQty ?? it.qty ?? 1),
+          sentQty: Number(it.sentQty ?? 0),
           variantId: it.variantId || null,
           variantName: it.variantName || null,
           note: it.note || '',

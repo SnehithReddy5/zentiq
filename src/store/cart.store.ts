@@ -7,15 +7,30 @@ import { useTenantStore } from './tenant.store';
 
 export type CartItem = Omit<OrderItem, 'id' | 'orderId'> & { sentQty?: number };
 
-export const getCartItemKey = (item: { itemId?: string; variantId?: string | null; variantName?: string | null; itemName?: string; name?: string }): string => {
+export const getCartItemKey = (item: {
+  itemId?: string;
+  variantId?: string | null;
+  variantName?: string | null;
+  itemName?: string;
+  name?: string;
+  selectedOptions?: { optionId: string }[];
+  customizationKey?: string;
+}): string => {
   const variant = (item.variantId || item.variantName || 'base').trim().toLowerCase();
   const rawName = (item.itemName || (item as any).name || '').trim();
   const cleanName = rawName.replace(new RegExp(`\\s*\\(${variant}\\)\\s*$`, 'i'), '').trim().toLowerCase();
   const id = (item.itemId || '').trim();
-  if (cleanName) {
-    return `${cleanName}:::${variant}`;
+
+  let optKey = item.customizationKey || '';
+  if (!optKey && item.selectedOptions && item.selectedOptions.length > 0) {
+    optKey = item.selectedOptions.map(o => o.optionId).sort().join('_');
   }
-  return `${id}:::${variant}`;
+  const customSuffix = optKey ? `:::${optKey}` : '';
+
+  if (cleanName) {
+    return `${cleanName}:::${variant}${customSuffix}`;
+  }
+  return `${id}:::${variant}${customSuffix}`;
 };
 
 export const consolidateCartItems = (items: CartItem[]): CartItem[] => {
@@ -91,8 +106,10 @@ const syncRunningOrderToFirestore = (tableNo: number, cartItems: CartItem[]) => 
         qty: i.qty,
         variantId: i.variantId || null,
         variantName: i.variantName || null,
+        selectedOptions: i.selectedOptions || null,
+        customizationKey: i.customizationKey || null,
         note: i.note || '',
-        sentQty: Math.min(i.sentQty ?? i.qty, i.qty),
+        sentQty: Math.min(Number(i.sentQty ?? 0), i.qty),
       }));
       const newTotal = firestoreItems.reduce((s, i) => s + (i.price * i.qty), 0);
 
@@ -126,9 +143,9 @@ interface CartState {
   syncRemoteCarts: (remoteCarts: Record<number, CartItem[]>) => void;
   syncRunningOrderItems: (tableNo: number, confirmedItems: CartItem[]) => void;
   addItem: (tableNo: number, item: Omit<OrderItem, 'id' | 'orderId'>) => void;
-  removeItem: (tableNo: number, itemId: string, variantId?: string | null) => void;
-  updateQuantity: (tableNo: number, itemId: string, qty: number, variantId?: string | null) => void;
-  updateNote: (tableNo: number, itemId: string, note: string, variantId?: string | null) => void;
+  removeItem: (tableNo: number, itemId: string, variantId?: string | null, customizationKey?: string | null) => void;
+  updateQuantity: (tableNo: number, itemId: string, qty: number, variantId?: string | null, customizationKey?: string | null) => void;
+  updateNote: (tableNo: number, itemId: string, note: string, variantId?: string | null, customizationKey?: string | null) => void;
   markAsSent: (tableNo: number) => void;
   clearCart: (tableNo: number) => void;
   getCart: (tableNo: number) => CartItem[];
@@ -201,7 +218,7 @@ export const useCartStore = create<CartState>()(
           if (!item || !item.itemId) continue;
           const key = getCartItemKey(item);
           const confQty = item.qty || 1;
-          const confSentQty = item.sentQty ?? confQty;
+          const confSentQty = typeof item.sentQty === 'number' ? item.sentQty : 0;
 
           if (!confirmedMap.has(key)) {
             confirmedMap.set(key, {
@@ -223,19 +240,19 @@ export const useCartStore = create<CartState>()(
         for (const [key, confItem] of confirmedMap.entries()) {
           const localItem = localMap.get(key);
           if (localItem) {
-            // Respect the local user's edited quantity; do not overwrite with stale Firestore qty
+            // Respect the local user's edited quantity; preserve local sentQty strictly
             merged.push({
               ...confItem,
               ...localItem,
               qty: localItem.qty,
-              sentQty: Math.min(localItem.qty, confItem.qty),
+              sentQty: Math.min(Number(localItem.sentQty ?? confItem.sentQty ?? 0), localItem.qty),
               note: localItem.note || confItem.note || '',
             });
-          } else if (rawTableCart.length === 0) {
-            // Only populate missing items if this is an initial table load (empty cart)
+          } else {
+            // Confirmed item from running order (e.g. initial load, QR order, or other device)
             merged.push({
               ...confItem,
-              sentQty: confItem.qty,
+              sentQty: Number(confItem.sentQty ?? 0),
             });
           }
         }
@@ -245,7 +262,7 @@ export const useCartStore = create<CartState>()(
           if (!confirmedMap.has(key)) {
             merged.push({
               ...localItem,
-              sentQty: 0,
+              sentQty: Number(localItem.sentQty ?? 0),
             });
           }
         }
@@ -267,13 +284,14 @@ export const useCartStore = create<CartState>()(
         const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
         const itemKey = getCartItemKey(item);
         const existingIndex = tableCart.findIndex(i => getCartItemKey(i) === itemKey);
+        const addQty = Math.max(1, Number(item.qty || 1));
         let newItems: CartItem[];
         if (existingIndex >= 0) {
           newItems = tableCart.map((i, idx) => 
-            idx === existingIndex ? { ...i, qty: (i.qty || 0) + 1 } : i
+            idx === existingIndex ? { ...i, qty: (i.qty || 0) + addQty } : i
           );
         } else {
-          newItems = [...tableCart, { ...item, qty: 1 }];
+          newItems = [...tableCart, { ...item, qty: addQty, sentQty: 0 }];
         }
         set({
           carts: {
@@ -285,7 +303,7 @@ export const useCartStore = create<CartState>()(
         // Also update the running order in Firestore so added items persist
         syncRunningOrderToFirestore(tableNo, newItems);
       },
-      removeItem: (tableNo, itemId, variantId) => {
+      removeItem: (tableNo, itemId, variantId, customizationKey) => {
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
         const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
@@ -294,6 +312,10 @@ export const useCartStore = create<CartState>()(
             ? (i.variantId === variantId || i.variantName === variantId)
             : true;
           if (!vMatch) return false;
+          const cMatch = (customizationKey !== undefined && customizationKey !== null)
+            ? (i.customizationKey === customizationKey)
+            : true;
+          if (!cMatch) return false;
           if (i.itemId === itemId) return true;
           if ((i as any).baseItemId === itemId) return true;
           if (i.itemName && itemId && i.itemName.trim().toLowerCase() === itemId.trim().toLowerCase()) return true;
@@ -310,7 +332,7 @@ export const useCartStore = create<CartState>()(
         // Also update the running order in Firestore so the removal persists
         syncRunningOrderToFirestore(tableNo, newItems);
       },
-      updateQuantity: (tableNo, itemId, qty, variantId) => {
+      updateQuantity: (tableNo, itemId, qty, variantId, customizationKey) => {
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
         const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
@@ -320,6 +342,10 @@ export const useCartStore = create<CartState>()(
             ? (i.variantId === variantId || i.variantName === variantId)
             : true;
           if (!vMatch) return false;
+          const cMatch = (customizationKey !== undefined && customizationKey !== null)
+            ? (i.customizationKey === customizationKey)
+            : true;
+          if (!cMatch) return false;
           if (i.itemId === itemId) return true;
           if ((i as any).baseItemId === itemId) return true;
           if (i.itemName && itemId && i.itemName.trim().toLowerCase() === itemId.trim().toLowerCase()) return true;
@@ -334,7 +360,8 @@ export const useCartStore = create<CartState>()(
           newItems = tableCart.map(i => {
             if (checkItemMatches(i) && !updated) {
               updated = true;
-              return { ...i, qty };
+              const currentSent = typeof i.sentQty === 'number' ? i.sentQty : 0;
+              return { ...i, qty, sentQty: Math.min(currentSent, qty) };
             }
             return i;
           });
@@ -350,16 +377,20 @@ export const useCartStore = create<CartState>()(
         // Also update the running order in Firestore so the quantity change persists
         syncRunningOrderToFirestore(tableNo, newItems);
       },
-      updateNote: (tableNo, itemId, note, variantId) => {
+      updateNote: (tableNo, itemId, note, variantId, customizationKey) => {
         recordLocalWrite(tableNo);
         const currentCarts = get().carts;
         const tableCart = consolidateCartItems(currentCarts[tableNo] || []);
         let updated = false;
         const newItems = tableCart.map(i => {
-          const matches = (variantId !== undefined && variantId !== null)
-            ? (i.itemId === itemId && (i.variantId === variantId || i.variantName === variantId))
-            : (i.itemId === itemId);
-          if (matches && !updated) {
+          const vMatch = (variantId !== undefined && variantId !== null)
+            ? (i.variantId === variantId || i.variantName === variantId)
+            : true;
+          const cMatch = (customizationKey !== undefined && customizationKey !== null)
+            ? (i.customizationKey === customizationKey)
+            : true;
+          const idMatch = i.itemId === itemId || (i as any).baseItemId === itemId;
+          if (idMatch && vMatch && cMatch && !updated) {
             updated = true;
             return { ...i, note };
           }
@@ -395,6 +426,8 @@ export const useCartStore = create<CartState>()(
         DBServices.updateCart(tableNo, newItems, tenantId, locationId || undefined).catch(err => 
           console.error("Failed to sync markAsSent to Firestore:", err)
         );
+        // Persist all items with sentQty = qty to Firestore running order & local orderStore
+        syncRunningOrderToFirestore(tableNo, newItems);
       },
       clearCart: (tableNo) => {
         recordLocalWrite(tableNo);
@@ -411,9 +444,59 @@ export const useCartStore = create<CartState>()(
         }
         const tenantId = useTenantStore.getState().tenant?.id;
         const locationId = useTenantStore.getState().activeLocationId;
+
+        // 1. Clear remote draft cart in Firestore
         DBServices.updateCart(tableNo, [], tenantId, locationId || undefined).catch(err => 
           console.error("Failed to sync clearCart to Firestore:", err)
         );
+
+        // 2. If tableNo !== 0, cancel all running orders for this table and reset table to available
+        if (tableNo !== 0) {
+          try {
+            const { useOrderStore } = require('./order.store');
+            const { useTableStore } = require('./table.store');
+
+            // Cancel all running orders for this table
+            const currentOrders = useOrderStore.getState().orders;
+            const runningOrders = currentOrders.filter(
+              (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
+            );
+
+            for (const ro of runningOrders) {
+              if (ro && ro.id) {
+                DBServices.updateOrderStatus(ro.id, 'CANCELLED', tenantId, ro.locationId || locationId || undefined).catch((err: any) =>
+                  console.warn('Failed to cancel running order on clearCart:', err)
+                );
+              }
+            }
+
+            if (runningOrders.length > 0) {
+              useOrderStore.setState({
+                orders: currentOrders.filter((o: any) => !runningOrders.some((ro: any) => ro.id === o.id))
+              });
+            }
+
+            // Reset table to available in local store & Firestore
+            const currentTables = useTableStore.getState().tables;
+            const targetTable = currentTables.find((t: any) => Number(t.tableNo) === Number(tableNo));
+            useTableStore.setState({
+              tables: currentTables.map((t: any) =>
+                Number(t.tableNo) === Number(tableNo)
+                  ? { ...t, status: 'available', billPrinted: false, billNo: null, cartItems: [] }
+                  : t
+              )
+            });
+
+            if (targetTable && targetTable.id) {
+              DBServices.updateTableStatus(targetTable.id, 'available', tenantId, locationId || undefined).catch(() => {});
+            }
+            DBServices.updateTableStatusByNo(tableNo, 'available', tenantId, locationId || undefined).catch((err: any) =>
+              console.warn('Failed to reset table status to available on clearCart:', err)
+            );
+          } catch (tableErr) {
+            console.warn('Error resetting table on clearCart:', tableErr);
+          }
+        }
       },
     }),
     {

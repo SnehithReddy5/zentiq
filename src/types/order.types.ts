@@ -14,6 +14,14 @@ export interface OrderPayment {
   reference?: string;
 }
 
+export interface SelectedCustomizationOption {
+  groupId: string;
+  groupName: string;
+  optionId: string;
+  optionName: string;
+  price: number;
+}
+
 export interface OrderItem {
   id?: string;
   orderId?: string;
@@ -21,6 +29,8 @@ export interface OrderItem {
   variantId?: string;
   itemName: string;
   variantName?: string;
+  selectedOptions?: SelectedCustomizationOption[];
+  customizationKey?: string;
   qty: number;
   sentQty?: number;
   price: number;

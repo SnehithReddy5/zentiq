@@ -126,13 +126,25 @@ export class ESCPOSService {
       const nameStr = getItemDisplayName(item.itemName || item.name || '', item.variantName);
       const wrappedNameLines = this.wrapText(nameStr, 26);
       const line1Name = wrappedNameLines[0] || '';
-      const note = (item.note || '--').substring(0, 14);
+      let note = (item.note || '--').substring(0, 14);
+      if (item.selectedOptions && item.selectedOptions.length > 0) {
+        const optSummary = item.selectedOptions.map((o: any) => o.optionName).join(',');
+        note = optSummary.substring(0, 14);
+      }
       const qty = (item.qty || 1).toString();
 
       buffer.push(...this.stringToBytes(this.formatKOTRow48(line1Name, note, qty)));
 
       for (let i = 1; i < wrappedNameLines.length; i++) {
         buffer.push(...this.stringToBytes(wrappedNameLines[i].padEnd(48, ' ') + '\n'));
+      }
+
+      if (item.selectedOptions && item.selectedOptions.length > 0) {
+        const fullOpts = '  [+] ' + item.selectedOptions.map((o: any) => o.optionName).join(', ');
+        buffer.push(...this.stringToBytes(fullOpts.slice(0, 48) + '\n'));
+      }
+      if (item.note && item.selectedOptions && item.selectedOptions.length > 0) {
+        buffer.push(...this.stringToBytes(('  *Note: ' + item.note).slice(0, 48) + '\n'));
       }
     });
 
