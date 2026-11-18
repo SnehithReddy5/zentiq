@@ -233,7 +233,15 @@ export const HomeScreen = () => {
     }
   };
 
-// Direct counter billing handled gracefully within dashboard (no deadlock)
+// When both Dine-In floor and Pickup are turned off, enter Quick Sale direct counter mode immediately (no intermediate button required)
+  const isQuickSaleOnly = features.dineInEnabled === false && features.pickupEnabled === false;
+  if (isQuickSaleOnly) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#090D1A' }}>
+        <MenuScreen isDirectHome={true} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-[#090D1A]">
