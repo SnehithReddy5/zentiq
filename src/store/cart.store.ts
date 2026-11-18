@@ -55,8 +55,8 @@ const recordLocalWrite = (tableNo: number) => {
 
 const shouldIgnoreFirestoreUpdate = (tableNo: number): boolean => {
   const lastWrite = lastLocalWriteTime[tableNo] || 0;
-  // Ignore Firestore echo if we modified locally in the last 2500ms
-  return Date.now() - lastWrite < 800;
+  // Ignore Firestore echo if we modified locally in the last 3000ms
+  return Date.now() - lastWrite < 3000;
 };
 
 const debounceSyncCart = (tableNo: number, items: CartItem[]) => {
@@ -72,6 +72,52 @@ const debounceSyncCart = (tableNo: number, items: CartItem[]) => {
     );
     delete syncTimeouts[tableNo];
   }, 250);
+};
+
+const syncRunningOrderToFirestore = (tableNo: number, cartItems: CartItem[]) => {
+  if (tableNo === 0) return;
+  try {
+    const { useOrderStore } = require('./order.store');
+    const tenantId = useTenantStore.getState().tenant?.id;
+    const locationId = useTenantStore.getState().activeLocationId;
+    const runningOrder = useOrderStore.getState().orders.find(
+      (o: any) => (o.status === 'RUNNING' || o.status === 'running') && Number(o.tableNo) === Number(tableNo)
+    );
+    if (runningOrder && runningOrder.id) {
+      const firestoreItems = cartItems.map(i => ({
+        itemId: i.itemId,
+        itemName: i.itemName,
+        price: i.price,
+        qty: i.qty,
+        variantId: i.variantId || null,
+        variantName: i.variantName || null,
+        note: i.note || '',
+        sentQty: Math.min(i.sentQty ?? i.qty, i.qty),
+      }));
+      const newTotal = firestoreItems.reduce((s, i) => s + (i.price * i.qty), 0);
+
+      // 1. Immediately update local order store optimistically so memory has fresh items
+      const currentOrders = useOrderStore.getState().orders;
+      const updatedOrders = currentOrders.map((o: any) =>
+        o.id === runningOrder.id
+          ? { ...o, items: firestoreItems, totalAmount: newTotal, subtotal: newTotal }
+          : o
+      );
+      useOrderStore.setState({ orders: updatedOrders });
+
+      // 2. Persist to Firestore
+      const { DBServices } = require('../services/firebase/db');
+      DBServices.updateOrder(runningOrder.id, {
+        items: firestoreItems,
+        totalAmount: newTotal,
+        subtotal: newTotal,
+      }, tenantId, runningOrder.locationId || locationId || undefined).catch((err: any) => {
+        console.warn('Failed to sync cart changes to running order:', err);
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to sync cart changes to running order:', err);
+  }
 };
 
 interface CartState {
@@ -136,6 +182,7 @@ export const useCartStore = create<CartState>()(
       },
       syncRunningOrderItems: (tableNo, confirmedItems) => {
         if (tableNo === 0) return;
+        if (shouldIgnoreFirestoreUpdate(tableNo)) return;
         const currentCarts = get().carts;
         const rawTableCart = currentCarts[tableNo] || [];
 
@@ -176,18 +223,16 @@ export const useCartStore = create<CartState>()(
         for (const [key, confItem] of confirmedMap.entries()) {
           const localItem = localMap.get(key);
           if (localItem) {
-            // Unsent additions the waiter added locally beyond what was sent
-            const localDraftQty = Math.max(0, (localItem.qty || 0) - (localItem.sentQty || 0));
-            // Final total quantity is confirmed quantity + draft additions (at least confItem.qty)
-            const finalQty = Math.max(confItem.qty, confItem.qty + localDraftQty);
+            // Respect the local user's edited quantity; do not overwrite with stale Firestore qty
             merged.push({
-              ...localItem,
               ...confItem,
-              qty: finalQty,
-              sentQty: confItem.qty,
+              ...localItem,
+              qty: localItem.qty,
+              sentQty: Math.min(localItem.qty, confItem.qty),
               note: localItem.note || confItem.note || '',
             });
-          } else {
+          } else if (rawTableCart.length === 0) {
+            // Only populate missing items if this is an initial table load (empty cart)
             merged.push({
               ...confItem,
               sentQty: confItem.qty,
@@ -237,6 +282,8 @@ export const useCartStore = create<CartState>()(
           }
         });
         debounceSyncCart(tableNo, newItems);
+        // Also update the running order in Firestore so added items persist
+        syncRunningOrderToFirestore(tableNo, newItems);
       },
       removeItem: (tableNo, itemId, variantId) => {
         recordLocalWrite(tableNo);
@@ -260,6 +307,8 @@ export const useCartStore = create<CartState>()(
           }
         });
         debounceSyncCart(tableNo, newItems);
+        // Also update the running order in Firestore so the removal persists
+        syncRunningOrderToFirestore(tableNo, newItems);
       },
       updateQuantity: (tableNo, itemId, qty, variantId) => {
         recordLocalWrite(tableNo);
@@ -298,6 +347,8 @@ export const useCartStore = create<CartState>()(
           }
         });
         debounceSyncCart(tableNo, newItems);
+        // Also update the running order in Firestore so the quantity change persists
+        syncRunningOrderToFirestore(tableNo, newItems);
       },
       updateNote: (tableNo, itemId, note, variantId) => {
         recordLocalWrite(tableNo);
@@ -321,6 +372,8 @@ export const useCartStore = create<CartState>()(
           }
         });
         debounceSyncCart(tableNo, newItems);
+        // Also update the running order in Firestore so added items persist
+        syncRunningOrderToFirestore(tableNo, newItems);
       },
       markAsSent: (tableNo) => {
         recordLocalWrite(tableNo);

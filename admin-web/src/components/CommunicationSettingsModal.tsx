@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { Mail, ShieldCheck, X, Check, Save, Sparkles, Key } from 'lucide-react';
+import { Mail, ShieldCheck, X, Check, Save, Sparkles, Key, Eye, EyeOff } from 'lucide-react';
 
 interface CommunicationSettingsModalProps {
   isOpen: boolean;
@@ -18,6 +18,7 @@ export const CommunicationSettingsModal: React.FC<CommunicationSettingsModalProp
   const [senderName, setSenderName] = useState('Zentiq POS Platform');
   const [sendMethod, setSendMethod] = useState<'GMAIL' | 'MAILTO' | 'RESEND'>('GMAIL');
   const [resendApiKey, setResendApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -178,13 +179,22 @@ export const CommunicationSettingsModal: React.FC<CommunicationSettingsModalProp
                 {sendMethod === 'RESEND' ? 'Active' : 'Enable'}
               </button>
             </div>
-            <input
-              type="password"
-              placeholder="re_123456789... (optional)"
-              value={resendApiKey}
-              onChange={(e) => setResendApiKey(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 text-[11px] text-white p-2 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
-            />
+            <div className="relative">
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                placeholder="re_123456789... (optional)"
+                value={resendApiKey}
+                onChange={(e) => setResendApiKey(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 text-[11px] text-white p-2 pr-8 rounded-xl focus:outline-none focus:border-indigo-500 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+              >
+                {showApiKey ? <Eye size={14} /> : <EyeOff size={14} />}
+              </button>
+            </div>
             <p className="text-[10px] text-slate-500">
               Leave blank to use 1-click Gmail Web. If provided, emails will dispatch 100% silently in background.
             </p>

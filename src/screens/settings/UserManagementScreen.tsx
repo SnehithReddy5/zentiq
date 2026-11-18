@@ -3,7 +3,7 @@ import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, ScrollView, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, Trash2, Pencil, Users, MapPin, X, Check, Building } from 'lucide-react-native';
+import { Plus, Trash2, Pencil, Users, MapPin, X, Check, Building, Eye, EyeOff } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
@@ -26,6 +26,7 @@ export const UserManagementScreen = () => {
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [role, setRole] = useState<UserRole>('WAITER');
   const [selectedLocId, setSelectedLocId] = useState<string>(locations[0]?.id || '*');
 
@@ -39,6 +40,7 @@ export const UserManagementScreen = () => {
     setName('');
     setMobile('');
     setPassword('');
+    setShowStaffPassword(false);
     setRole('WAITER');
     setSelectedLocId(locations[0]?.id || '*');
     setModalOpen(true);
@@ -49,6 +51,7 @@ export const UserManagementScreen = () => {
     setName(item.name || '');
     setMobile(item.mobile || item.id || '');
     setPassword(''); // leave blank to keep existing
+    setShowStaffPassword(false);
     setRole(item.role || 'WAITER');
     const assignedLoc = item.assignedLocationId || (item.locationIds && item.locationIds[0] ? item.locationIds[0] : (locations[0]?.id || '*'));
     setSelectedLocId(assignedLoc);
@@ -276,7 +279,12 @@ export const UserManagementScreen = () => {
                   placeholder={editingUserId ? "Enter new password or leave blank" : "Enter login password"}
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showStaffPassword}
+                  rightIcon={
+                    <TouchableOpacity onPress={() => setShowStaffPassword(!showStaffPassword)}>
+                      {showStaffPassword ? <Eye size={18} color="#64748B" /> : <EyeOff size={18} color="#64748B" />}
+                    </TouchableOpacity>
+                  }
                 />
 
                 {/* Role Picker */}

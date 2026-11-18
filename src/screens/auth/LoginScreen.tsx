@@ -44,9 +44,20 @@ export const LoginScreen = () => {
       return String(stored).trim() === cleanPassword;
     };
 
+    const normalizeDigits = (val: any): string => String(val || '').replace(/\D/g, '');
+    const cleanDigits = normalizeDigits(cleanId);
+
     const identifierMatches = (val: any): boolean => {
-      if (!val || typeof val !== 'string') return false;
-      return val.trim().toLowerCase() === lowerId;
+      if (val === undefined || val === null) return false;
+      const s = String(val).trim().toLowerCase();
+      if (s === lowerId || s === cleanId.toLowerCase()) return true;
+      if (cleanDigits.length >= 10) {
+        const valDigits = normalizeDigits(val);
+        if (valDigits.length >= 10 && valDigits.slice(-10) === cleanDigits.slice(-10)) {
+          return true;
+        }
+      }
+      return false;
     };
 
     setLoading(true);
@@ -106,14 +117,20 @@ export const LoginScreen = () => {
           }
         }
 
-        // 2. Fallback: Query root `users` by mobile or email
+        // 2. Fallback: Query root `users` by mobile, email, id, or username
         if (!matchedUser) {
           const rootQueries = [
             query(collection(db, 'users'), where('email', '==', lowerId)),
             query(collection(db, 'users'), where('mobile', '==', cleanId)),
+            query(collection(db, 'users'), where('id', '==', cleanId)),
+            query(collection(db, 'users'), where('username', '==', cleanId)),
           ];
           if (lowerId !== cleanId) {
             rootQueries.push(query(collection(db, 'users'), where('mobile', '==', lowerId)));
+          }
+          if (cleanDigits.length >= 10 && cleanDigits !== cleanId) {
+            rootQueries.push(query(collection(db, 'users'), where('mobile', '==', cleanDigits)));
+            rootQueries.push(query(collection(db, 'users'), where('mobile', '==', cleanDigits.slice(-10))));
           }
           for (const qRef of rootQueries) {
             if (matchedUser) break;
@@ -131,9 +148,14 @@ export const LoginScreen = () => {
           const cgQueries = [
             query(collectionGroup(db, 'users'), where('mobile', '==', cleanId)),
             query(collectionGroup(db, 'users'), where('email', '==', lowerId)),
+            query(collectionGroup(db, 'users'), where('id', '==', cleanId)),
+            query(collectionGroup(db, 'users'), where('username', '==', cleanId)),
           ];
           if (lowerId !== cleanId) {
             cgQueries.push(query(collectionGroup(db, 'users'), where('mobile', '==', lowerId)));
+          }
+          if (cleanDigits.length >= 10 && cleanDigits !== cleanId) {
+            cgQueries.push(query(collectionGroup(db, 'users'), where('mobile', '==', cleanDigits.slice(-10))));
           }
           for (const cgQ of cgQueries) {
             if (matchedUser) break;
@@ -161,9 +183,13 @@ export const LoginScreen = () => {
             if (matchedUser) break;
             const tData = tDoc.data();
             const matchesAdminId =
+              identifierMatches(tDoc.id) ||
               identifierMatches(tData.adminUsername) ||
               identifierMatches(tData.adminEmail) ||
-              identifierMatches(tData.email);
+              identifierMatches(tData.adminMobile) ||
+              identifierMatches(tData.email) ||
+              identifierMatches(tData.phone) ||
+              identifierMatches(tData.mobile);
             if (matchesAdminId) {
               if (passwordMatches(tData.adminPassword)) {
                 const adminId = (tData.adminUsername || cleanId).trim();
@@ -383,6 +409,7 @@ export const LoginScreen = () => {
               value={userId}
               onChangeText={setUserId}
               autoCapitalize="none"
+              returnKeyType="next"
               leftIcon={<User size={18} color="#64748B" />}
             />
 
@@ -398,6 +425,8 @@ export const LoginScreen = () => {
                   {showPassword ? <Eye size={18} color="#64748B" /> : <EyeOff size={18} color="#64748B" />}
                 </TouchableOpacity>
               }
+              onSubmitEditing={handleLogin}
+              returnKeyType="go"
             />
 
             <Button

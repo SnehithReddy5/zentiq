@@ -766,15 +766,17 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         </View>
 
         <View className="flex-row items-center gap-2">
-          
-
-          {!isSplitView && cartItemCount > 0 && (
+          {!isSplitView && (
             <TouchableOpacity
               onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}
-              className="bg-[#5D3FD3] px-3.5 py-1.5 rounded-xl flex-row items-center"
+              className={`px-3 py-1.5 rounded-xl flex-row items-center border ${
+                cartItemCount > 0 ? 'bg-[#5D3FD3] border-purple-500' : 'bg-slate-800 border-slate-700'
+              }`}
             >
-              <ShoppingBag size={15} color="white" />
-              <Text className="text-white font-bold text-xs ml-1.5">{cartItemCount} (₹{cartTotal})</Text>
+              <ShoppingBag size={15} color={cartItemCount > 0 ? '#FFFFFF' : '#94A3B8'} />
+              <Text className={`font-bold text-xs ml-1.5 ${cartItemCount > 0 ? 'text-white' : 'text-slate-300'}`}>
+                {cartItemCount > 0 ? `${cartItemCount} (₹${cartTotal.toFixed(0)})` : 'Cart'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -840,9 +842,14 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
           {/* Sub-menu Horizontal Category Bar with Favorites */}
           <View className="py-2 bg-[#0A0F1D] border-b border-slate-800">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 }}
+            >
               {/* Starred Favorites Tab */}
               <TouchableOpacity
+                style={{ flexShrink: 0 }}
                 onPress={() => setActiveCategory('favorites')}
                 className={`mr-2 px-3.5 py-1.5 rounded-full flex-row items-center border ${
                   activeCategory === 'favorites'
@@ -862,6 +869,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
               {/* All Items Tab */}
               <TouchableOpacity
+                style={{ flexShrink: 0 }}
                 onPress={() => setActiveCategory('all')}
                 className={`mr-2 px-3.5 py-1.5 rounded-full border ${
                   activeCategory === 'all'
@@ -884,6 +892,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 return (
                   <TouchableOpacity
                     key={cat.id}
+                    style={{ flexShrink: 0 }}
                     onPress={() => setActiveCategory(cat.id)}
                     className={`mr-2 px-3.5 py-1.5 rounded-full border ${
                       activeCategory === cat.id
@@ -921,7 +930,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             updateCellsBatchingPeriod={50}
             contentContainerStyle={{
               padding: viewMode === 'grid' ? 10 : 16,
-              paddingBottom: isSplitView ? Math.max(insets.bottom + 24, 40) : Math.max(insets.bottom + 90, 110)
+              paddingBottom: isSplitView ? Math.max(insets.bottom + 24, 40) : Math.max(insets.bottom + 170, 200)
             }}
             ListEmptyComponent={
               <View className="py-16 items-center">
@@ -1064,8 +1073,8 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         {/* Mobile Floating Bottom Cart Bar (Fixed clean layout) */}
       {!isSplitView && cartItemCount > 0 && (
         <View
-          className="absolute bottom-0 left-0 right-0 bg-[#0F172A]/98 border-t border-slate-800 px-4 pt-3 shadow-2xl backdrop-blur-md"
-          style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+          className="absolute bottom-0 left-0 right-0 bg-[#0F172A] border-t border-slate-800 px-4 pt-3 shadow-2xl"
+          style={{ paddingBottom: Math.max(insets.bottom + 8, 20) }}
         >
           {isBillPrinted && (
             <View className={`mb-2 py-1 px-2.5 rounded-xl border flex-row items-center ${
@@ -1076,28 +1085,28 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
               ) : (
                 <Lock size={12} color="#F43F5E" />
               )}
-              <Text className={`text-[10px] font-bold ml-1.5 flex-1 ${isManagerOrAdmin ? 'text-amber-300' : 'text-rose-300'}`}>
+              <Text className={`text-[10px] font-bold ml-1.5 flex-1 ${isManagerOrAdmin ? 'text-amber-300' : 'text-rose-300'}`} numberOfLines={1}>
                 {isManagerOrAdmin ? `Bill #${activePrintedBillNo || ''} Printed • Manager Edit Active` : `Bill #${activePrintedBillNo || ''} Printed • Locked to Admin/Manager`}
               </Text>
             </View>
           )}
 
-          {/* Top Info Strip: Item count, order type badge & Total */}
+          {/* Top Info Strip: Item count, order type badge & Total - clean non-colliding layout */}
           <View className="flex-row items-center justify-between mb-2.5">
-            <View className="flex-row items-center gap-2">
+            <View className="flex-row items-center gap-1.5 flex-1 mr-2">
               <View className="bg-indigo-500/20 px-2 py-0.5 rounded-md border border-indigo-500/30">
-                <Text className="text-indigo-300 text-xs font-black">
-                  {tableNo ? `Table ${tableNo}` : (orderType === 'PICKUP' ? 'Pick Up' : (orderType === 'COUNTER' ? 'Counter Sale' : 'Takeaway'))}
+                <Text className="text-indigo-300 text-xs font-black" numberOfLines={1}>
+                  {tableNo ? `Table ${tableNo}` : (orderType === 'PICKUP' ? 'Pick Up' : (orderType === 'COUNTER' ? 'Counter' : 'Takeaway'))}
                 </Text>
               </View>
-              <Text className="text-slate-400 text-xs font-semibold">
-                {cartItemCount} item{cartItemCount > 1 ? 's' : ''} in cart
+              <Text className="text-slate-300 text-xs font-semibold" numberOfLines={1}>
+                • {cartItemCount} item{cartItemCount > 1 ? 's' : ''} in cart
               </Text>
             </View>
 
-            <View className="flex-row items-baseline gap-1">
+            <View className="flex-row items-baseline gap-1 bg-slate-800/90 px-2.5 py-1 rounded-xl border border-slate-700/60">
               <Text className="text-slate-400 text-[10px] uppercase font-bold">Total:</Text>
-              <Text className="text-white font-black text-xl">₹{cartTotal.toFixed(2)}</Text>
+              <Text className="text-emerald-400 font-black text-lg">₹{cartTotal.toFixed(2)}</Text>
             </View>
           </View>
 
