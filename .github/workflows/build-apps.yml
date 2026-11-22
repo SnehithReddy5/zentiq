@@ -79,9 +79,12 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android SDK Environment & Accept Licenses
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Install dependencies
         run: npm ci
@@ -91,6 +94,9 @@ jobs:
 
       - name: Build Android APK
         working-directory: android
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=1024m"
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon -x lint || ./gradlew assembleDebug --no-daemon -x lint
@@ -98,8 +104,16 @@ jobs:
       - name: Collect Android APK
         run: |
           mkdir -p dist-android
-          find android/app/build/outputs/apk -name "*.apk" -exec cp {} dist-android/Zentiq-POS.apk \;
-          ls -la dist-android/
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk dist-android/Zentiq-POS.apk
+          elif [ -f android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release-unsigned.apk dist-android/Zentiq-POS.apk
+          elif [ -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp android/app/build/outputs/apk/debug/app-debug.apk dist-android/Zentiq-POS.apk
+          else
+            find android/app/build/outputs/apk -name "*.apk" -exec cp {} dist-android/Zentiq-POS.apk \;
+          fi
+          ls -lh dist-android/
 
       - name: Upload Android APK (Workflow Artifact)
         uses: actions/upload-artifact@v4

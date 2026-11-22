@@ -390,10 +390,10 @@ export const HomeScreen = () => {
             {/* 1. HERO ORDER LAUNCH HUB (Immediately accessible, zero scrolling) */}
             <View>
               <View className="flex-row items-center justify-between mb-2.5">
-                <Text className="text-white font-black text-base tracking-tight">New Order</Text>
+                <Text className={`font-black text-base tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>New Order</Text>
                 <View className="flex-row items-center bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                   <View className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5" />
-                  <Text className="text-emerald-400 text-[10px] font-bold">POS Ready</Text>
+                  <Text className="text-emerald-500 text-[10px] font-bold">POS Ready</Text>
                 </View>
               </View>
 
@@ -402,7 +402,7 @@ export const HomeScreen = () => {
                 <View className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl px-4 py-3 mb-3 flex-row items-center justify-between">
                   <View className="flex-row items-center flex-1 mr-3">
                     <Sliders size={16} color="#A78BFA" />
-                    <Text className="text-indigo-200 text-xs ml-2 flex-1">
+                    <Text className={`text-xs ml-2 flex-1 ${isDark ? 'text-indigo-200' : 'text-indigo-700'}`}>
                       Dine-in floor and pickup are turned off. Running in Direct Counter Billing mode.
                     </Text>
                   </View>
@@ -485,21 +485,58 @@ export const HomeScreen = () => {
 
                 {features.pickupEnabled !== false && (
                   <TouchableOpacity
-                    className="flex-1 bg-slate-900 border border-slate-700/90 p-3.5 sm:p-4 rounded-3xl shadow-xl shadow-black/40 justify-between min-h-[135px]"
+                    className={`flex-1 border p-3.5 sm:p-4 rounded-3xl justify-between min-h-[135px] ${
+                      isDark
+                        ? 'bg-slate-900 border-slate-700/90 shadow-xl shadow-black/40'
+                        : 'bg-white border-slate-200 shadow-md'
+                    }`}
                     activeOpacity={0.85}
                     onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'PICKUP' })}
                   >
                     <View className="flex-row items-center justify-between">
-                      <View className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-slate-800 border border-slate-700 items-center justify-center">
-                        <ShoppingBag size={20} color="#818CF8" />
+                      <View
+                        className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl items-center justify-center border ${
+                          isDark
+                            ? 'bg-slate-800 border-slate-700'
+                            : 'bg-indigo-50 border-indigo-100'
+                        }`}
+                      >
+                        <ShoppingBag size={20} color={isDark ? '#818CF8' : '#6366F1'} />
                       </View>
-                      <View className="bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shrink-0">
-                        <Text className="text-indigo-300 text-[10px] font-bold" numberOfLines={1}>Parcel</Text>
+                      <View
+                        className={`px-2 py-0.5 rounded-lg border shrink-0 ${
+                          isDark
+                            ? 'bg-slate-800/80 border-slate-700'
+                            : 'bg-indigo-50 border-indigo-100'
+                        }`}
+                      >
+                        <Text
+                          className={`text-[10px] font-bold ${
+                            isDark ? 'text-indigo-300' : 'text-indigo-600'
+                          }`}
+                          numberOfLines={1}
+                        >
+                          Parcel
+                        </Text>
                       </View>
                     </View>
                     <View>
-                      <Text className="text-white font-black text-lg sm:text-xl" numberOfLines={1}>Pick Up</Text>
-                      <Text className="text-slate-400 text-xs font-medium mt-0.5" numberOfLines={1}>Takeaway Counter</Text>
+                      <Text
+                        className={`font-black text-lg sm:text-xl ${
+                          isDark ? 'text-white' : 'text-slate-900'
+                        }`}
+                        numberOfLines={1}
+                      >
+                        Pick Up
+                      </Text>
+                      <Text
+                        className={`text-xs font-medium mt-0.5 ${
+                          isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}
+                        numberOfLines={1}
+                      >
+                        Takeaway Counter
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -511,16 +548,22 @@ export const HomeScreen = () => {
               <View className="flex-row items-center justify-between mb-2.5">
                 <View className="flex-row items-center">
                   <Bike size={16} color="#F59E0B" />
-                  <Text className="text-white font-black text-base tracking-tight ml-1.5">Online Deliveries</Text>
+                  <Text className={`font-black text-base tracking-tight ml-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>Online Deliveries</Text>
                 </View>
                 <View className="bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                  <Text className="text-amber-400 text-[10px] font-bold">{totalOnlineCount} Active</Text>
+                  <Text className="text-amber-500 text-[10px] font-bold">{totalOnlineCount} Active</Text>
                 </View>
               </View>
 
               <View className="flex-row gap-3">
                 {/* Zomato Card */}
-                <View className="flex-1 bg-[#161219] border border-red-950/60 p-3.5 rounded-3xl justify-between">
+                <View
+                  className={`flex-1 border p-3.5 rounded-3xl justify-between ${
+                    isDark
+                      ? 'bg-[#161219] border-red-950/60'
+                      : 'bg-white border-red-200 shadow-sm'
+                  }`}
+                >
                   <View>
                     <View className="flex-row items-center justify-between mb-2">
                       <View className="bg-[#E23744] px-2.5 py-0.5 rounded-md shadow-sm">
@@ -529,29 +572,53 @@ export const HomeScreen = () => {
                       <Switch
                         value={isZomatoOnline}
                         onValueChange={setZomatoOnline}
-                        trackColor={{ false: '#334155', true: '#E23744' }}
-                        thumbColor={isZomatoOnline ? '#FFFFFF' : '#94A3B8'}
+                        trackColor={{ false: isDark ? '#334155' : '#CBD5E1', true: '#E23744' }}
+                        thumbColor={isZomatoOnline ? '#FFFFFF' : (isDark ? '#94A3B8' : '#F1F5F9')}
                       />
                     </View>
-                    <Text className="text-white font-bold text-xs mt-0.5">
+                    <Text
+                      className={`font-bold text-xs mt-0.5 ${
+                        isDark ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
                       {isZomatoOnline ? 'Live Store' : 'Paused'}
                     </Text>
-                    <Text className="text-slate-400 text-[10px]">
+                    <Text
+                      className={`text-[10px] ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}
+                    >
                       {isZomatoOnline ? `${ zomatoOrdersCount } Incoming` : 'Offline'}
                     </Text>
                   </View>
 
                   <TouchableOpacity
                     onPress={() => setSelectedAggregator('zomato')}
-                    className="mt-3 bg-slate-900 border border-slate-800 py-1.5 px-2.5 rounded-xl flex-row items-center justify-between"
+                    className={`mt-3 py-1.5 px-2.5 rounded-xl flex-row items-center justify-between border ${
+                      isDark
+                        ? 'bg-slate-900 border-slate-800'
+                        : 'bg-red-50/70 border-red-100'
+                    }`}
                   >
-                    <Text className="text-slate-200 text-[11px] font-bold">Orders ({zomatoOrdersCount})</Text>
-                    <ChevronRight size={13} color="#94A3B8" />
+                    <Text
+                      className={`text-[11px] font-bold ${
+                        isDark ? 'text-slate-200' : 'text-red-700'
+                      }`}
+                    >
+                      Orders ({zomatoOrdersCount})
+                    </Text>
+                    <ChevronRight size={13} color={isDark ? '#94A3B8' : '#EF4444'} />
                   </TouchableOpacity>
                 </View>
 
                 {/* Swiggy Card */}
-                <View className="flex-1 bg-[#191512] border border-amber-950/60 p-3.5 rounded-3xl justify-between">
+                <View
+                  className={`flex-1 border p-3.5 rounded-3xl justify-between ${
+                    isDark
+                      ? 'bg-[#191512] border-amber-950/60'
+                      : 'bg-white border-amber-200 shadow-sm'
+                  }`}
+                >
                   <View>
                     <View className="flex-row items-center justify-between mb-2">
                       <View className="bg-[#FC8019] px-2.5 py-0.5 rounded-md shadow-sm">
@@ -560,50 +627,124 @@ export const HomeScreen = () => {
                       <Switch
                         value={isSwiggyOnline}
                         onValueChange={setSwiggyOnline}
-                        trackColor={{ false: '#334155', true: '#FC8019' }}
-                        thumbColor={isSwiggyOnline ? '#FFFFFF' : '#94A3B8'}
+                        trackColor={{ false: isDark ? '#334155' : '#CBD5E1', true: '#FC8019' }}
+                        thumbColor={isSwiggyOnline ? '#FFFFFF' : (isDark ? '#94A3B8' : '#F1F5F9')}
                       />
                     </View>
-                    <Text className="text-white font-bold text-xs mt-0.5">
+                    <Text
+                      className={`font-bold text-xs mt-0.5 ${
+                        isDark ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
                       {isSwiggyOnline ? 'Live Store' : 'Paused'}
                     </Text>
-                    <Text className="text-slate-400 text-[10px]">
+                    <Text
+                      className={`text-[10px] ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}
+                    >
                       {isSwiggyOnline ? `${ swiggyOrdersCount } Incoming` : 'Offline'}
                     </Text>
                   </View>
 
                   <TouchableOpacity
                     onPress={() => setSelectedAggregator('swiggy')}
-                    className="mt-3 bg-slate-900 border border-slate-800 py-1.5 px-2.5 rounded-xl flex-row items-center justify-between"
+                    className={`mt-3 py-1.5 px-2.5 rounded-xl flex-row items-center justify-between border ${
+                      isDark
+                        ? 'bg-slate-900 border-slate-800'
+                        : 'bg-amber-50/70 border-amber-100'
+                    }`}
                   >
-                    <Text className="text-slate-200 text-[11px] font-bold">Orders ({swiggyOrdersCount})</Text>
-                    <ChevronRight size={13} color="#94A3B8" />
+                    <Text
+                      className={`text-[11px] font-bold ${
+                        isDark ? 'text-slate-200' : 'text-amber-700'
+                      }`}
+                    >
+                      Orders ({swiggyOrdersCount})
+                    </Text>
+                    <ChevronRight size={13} color={isDark ? '#94A3B8' : '#F59E0B'} />
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
 
             {/* 3. SLEEK COMPACT OPERATIONS GLANCE */}
-            <View className="bg-slate-900/90 border border-slate-800 rounded-3xl p-3.5 mt-2">
-              <View className="flex-row items-center justify-between pb-2 mb-2 border-b border-slate-800/80">
-                <Text className="text-slate-400 text-[11px] font-bold uppercase tracking-wider">Today's Operations Glance</Text>
+            <View
+              className={`border rounded-3xl p-3.5 mt-2 ${
+                isDark
+                  ? 'bg-slate-900/90 border-slate-800'
+                  : 'bg-white border-slate-200 shadow-sm'
+              }`}
+            >
+              <View
+                className={`flex-row items-center justify-between pb-2 mb-2 border-b ${
+                  isDark ? 'border-slate-800/80' : 'border-slate-100'
+                }`}
+              >
+                <Text
+                  className={`text-[11px] font-bold uppercase tracking-wider ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}
+                >
+                  Today's Operations Glance
+                </Text>
                 <TouchableOpacity onPress={() => navigation.navigate(Routes.ORDERS)}>
-                  <Text className="text-indigo-400 text-[11px] font-bold">View History →</Text>
+                  <Text className="text-indigo-500 text-[11px] font-bold">View History →</Text>
                 </TouchableOpacity>
               </View>
 
-              <View className="flex-row items-center justify-between divide-x divide-slate-800">
+              <View
+                className={`flex-row items-center justify-between divide-x ${
+                  isDark ? 'divide-slate-800' : 'divide-slate-200'
+                }`}
+              >
                 <View className="flex-1 pr-2">
-                  <Text className="text-slate-400 text-[10px] uppercase font-semibold">Sales</Text>
-                  <Text className="text-white font-black text-base mt-0.5">₹{todaySales.toFixed(0)}</Text>
+                  <Text
+                    className={`text-[10px] uppercase font-semibold ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Sales
+                  </Text>
+                  <Text
+                    className={`font-black text-base mt-0.5 ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}
+                  >
+                    ₹{todaySales.toFixed(0)}
+                  </Text>
                 </View>
                 <View className="flex-1 px-2">
-                  <Text className="text-slate-400 text-[10px] uppercase font-semibold">Orders</Text>
-                  <Text className="text-white font-black text-base mt-0.5">{todayOrders.length}</Text>
+                  <Text
+                    className={`text-[10px] uppercase font-semibold ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Orders
+                  </Text>
+                  <Text
+                    className={`font-black text-base mt-0.5 ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}
+                  >
+                    {todayOrders.length}
+                  </Text>
                 </View>
                 <View className="flex-1 pl-2">
-                  <Text className="text-slate-400 text-[10px] uppercase font-semibold">Tables</Text>
-                  <Text className="text-amber-400 font-black text-base mt-0.5">{occupiedTablesCount}/{tables.length}</Text>
+                  <Text
+                    className={`text-[10px] uppercase font-semibold ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Tables
+                  </Text>
+                  <Text
+                    className={`font-black text-base mt-0.5 ${
+                      isDark ? 'text-amber-400' : 'text-amber-600'
+                    }`}
+                  >
+                    {occupiedTablesCount}/{tables.length}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -612,18 +753,40 @@ export const HomeScreen = () => {
             {isManagerOrAbove && (
               <TouchableOpacity
                 onPress={() => navigation.navigate(Routes.INVENTORY)}
-                className="bg-slate-900 border border-slate-800 rounded-3xl p-3.5 mt-2 flex-row items-center justify-between active:bg-slate-850"
+                className={`border rounded-3xl p-3.5 mt-2 flex-row items-center justify-between ${
+                  isDark
+                    ? 'bg-slate-900 border-slate-800 active:bg-slate-850'
+                    : 'bg-white border-slate-200 active:bg-slate-50 shadow-sm'
+                }`}
               >
                 <View className="flex-row items-center flex-1 mr-2">
-                  <View className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 items-center justify-center mr-3">
-                    <Boxes size={20} color="#34D399" />
+                  <View
+                    className={`w-10 h-10 rounded-2xl items-center justify-center mr-3 border ${
+                      isDark
+                        ? 'bg-emerald-500/15 border-emerald-500/30'
+                        : 'bg-emerald-50 border-emerald-200'
+                    }`}
+                  >
+                    <Boxes size={20} color="#10B981" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-white font-bold text-sm">Kitchen Inventory & Stock</Text>
-                    <Text className="text-slate-400 text-[11px] mt-0.5">Track raw bulk loads, kitchen issues & balance</Text>
+                    <Text
+                      className={`font-bold text-sm ${
+                        isDark ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
+                      Kitchen Inventory & Stock
+                    </Text>
+                    <Text
+                      className={`text-[11px] mt-0.5 ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}
+                    >
+                      Track raw bulk loads, kitchen issues & balance
+                    </Text>
                   </View>
                 </View>
-                <ChevronRight size={18} color="#94A3B8" />
+                <ChevronRight size={18} color={isDark ? '#94A3B8' : '#64748B'} />
               </TouchableOpacity>
             )}
 
@@ -632,27 +795,73 @@ export const HomeScreen = () => {
               <View className="flex-row gap-2 mt-2">
                 <TouchableOpacity
                   onPress={() => navigation.navigate(Routes.CENTRAL_KITCHEN_ORDERING)}
-                  className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-3 flex-row items-center active:bg-slate-850"
+                  className={`flex-1 border rounded-2xl p-3 flex-row items-center ${
+                    isDark
+                      ? 'bg-slate-900 border-slate-800 active:bg-slate-850'
+                      : 'bg-white border-slate-200 active:bg-slate-50 shadow-sm'
+                  }`}
                 >
-                  <View className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 items-center justify-center mr-2.5">
-                    <Store size={18} color="#38BDF8" />
+                  <View
+                    className={`w-9 h-9 rounded-xl items-center justify-center mr-2.5 border ${
+                      isDark
+                        ? 'bg-sky-500/15 border-sky-500/30'
+                        : 'bg-sky-50 border-sky-200'
+                    }`}
+                  >
+                    <Store size={18} color="#0284C7" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-white font-bold text-xs">Order Bulk Food</Text>
-                    <Text className="text-slate-400 text-[10px]" numberOfLines={1}>From Central Kitchen</Text>
+                    <Text
+                      className={`font-bold text-xs ${
+                        isDark ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
+                      Order Bulk Food
+                    </Text>
+                    <Text
+                      className={`text-[10px] ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}
+                      numberOfLines={1}
+                    >
+                      From Central Kitchen
+                    </Text>
                   </View>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => navigation.navigate(Routes.CENTRAL_KITCHEN)}
-                  className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-3 flex-row items-center active:bg-slate-850"
+                  className={`flex-1 border rounded-2xl p-3 flex-row items-center ${
+                    isDark
+                      ? 'bg-slate-900 border-slate-800 active:bg-slate-850'
+                      : 'bg-white border-slate-200 active:bg-slate-50 shadow-sm'
+                  }`}
                 >
-                  <View className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 items-center justify-center mr-2.5">
-                    <ChefHat size={18} color="#818CF8" />
+                  <View
+                    className={`w-9 h-9 rounded-xl items-center justify-center mr-2.5 border ${
+                      isDark
+                        ? 'bg-indigo-500/15 border-indigo-500/30'
+                        : 'bg-indigo-50 border-indigo-200'
+                    }`}
+                  >
+                    <ChefHat size={18} color="#6366F1" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-white font-bold text-xs">CK Hub</Text>
-                    <Text className="text-slate-400 text-[10px]" numberOfLines={1}>Manage B2B Orders</Text>
+                    <Text
+                      className={`font-bold text-xs ${
+                        isDark ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
+                      CK Hub
+                    </Text>
+                    <Text
+                      className={`text-[10px] ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}
+                      numberOfLines={1}
+                    >
+                      Manage B2B Orders
+                    </Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -663,43 +872,139 @@ export const HomeScreen = () => {
           <View className="w-full">
             {/* Top 4 KPI Dashboard Cards */}
             <View className="flex-row flex-wrap gap-3 mb-6">
-              <View className="flex-1 min-w-[160px] bg-slate-900 border border-slate-800 p-4 rounded-3xl shadow-md">
+              <View
+                className={`flex-1 min-w-[160px] border p-4 rounded-3xl ${
+                  isDark
+                    ? 'bg-slate-900 border-slate-800 shadow-md'
+                    : 'bg-white border-slate-200 shadow-sm'
+                }`}
+              >
                 <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-wider">Today's Sales</Text>
+                  <Text
+                    className={`text-xs font-bold uppercase tracking-wider ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Today's Sales
+                  </Text>
                   <TrendingUp size={16} color="#10B981" />
                 </View>
-                <Text className="text-white font-black text-2xl">₹{todaySales.toFixed(2)}</Text>
-                <Text className="text-slate-500 text-[11px] mt-1">{todayOrders.length} order{todayOrders.length === 1 ? '' : 's'} recorded</Text>
+                <Text
+                  className={`font-black text-2xl ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
+                  ₹{todaySales.toFixed(2)}
+                </Text>
+                <Text
+                  className={`text-[11px] mt-1 ${
+                    isDark ? 'text-slate-500' : 'text-slate-400'
+                  }`}
+                >
+                  {todayOrders.length} order{todayOrders.length === 1 ? '' : 's'} recorded
+                </Text>
               </View>
 
-              <View className="flex-1 min-w-[160px] bg-slate-900 border border-slate-800 p-4 rounded-3xl shadow-md">
+              <View
+                className={`flex-1 min-w-[160px] border p-4 rounded-3xl ${
+                  isDark
+                    ? 'bg-slate-900 border-slate-800 shadow-md'
+                    : 'bg-white border-slate-200 shadow-sm'
+                }`}
+              >
                 <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-wider">Today's Orders</Text>
-                  <ShoppingBag size={16} color="#818CF8" />
+                  <Text
+                    className={`text-xs font-bold uppercase tracking-wider ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Today's Orders
+                  </Text>
+                  <ShoppingBag size={16} color={isDark ? '#818CF8' : '#6366F1'} />
                 </View>
-                <Text className="text-white font-black text-2xl">{todayOrders.length}</Text>
-                <Text className="text-slate-500 text-[11px] mt-1">Settled at this branch</Text>
+                <Text
+                  className={`font-black text-2xl ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
+                  {todayOrders.length}
+                </Text>
+                <Text
+                  className={`text-[11px] mt-1 ${
+                    isDark ? 'text-slate-500' : 'text-slate-400'
+                  }`}
+                >
+                  Settled at this branch
+                </Text>
               </View>
 
-              <View className="flex-1 min-w-[160px] bg-slate-900 border border-slate-800 p-4 rounded-3xl shadow-md">
+              <View
+                className={`flex-1 min-w-[160px] border p-4 rounded-3xl ${
+                  isDark
+                    ? 'bg-slate-900 border-slate-800 shadow-md'
+                    : 'bg-white border-slate-200 shadow-sm'
+                }`}
+              >
                 <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-wider">Table Occupancy</Text>
+                  <Text
+                    className={`text-xs font-bold uppercase tracking-wider ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Table Occupancy
+                  </Text>
                   <LayoutGrid size={16} color="#F59E0B" />
                 </View>
                 <View className="flex-row items-baseline gap-2">
-                  <Text className="text-amber-400 font-black text-2xl">{occupiedTablesCount}</Text>
-                  <Text className="text-slate-400 text-xs font-medium">/ {tables.length} Total</Text>
+                  <Text
+                    className={`font-black text-2xl ${
+                      isDark ? 'text-amber-400' : 'text-amber-600'
+                    }`}
+                  >
+                    {occupiedTablesCount}
+                  </Text>
+                  <Text
+                    className={`text-xs font-medium ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    / {tables.length} Total
+                  </Text>
                 </View>
-                <Text className="text-emerald-400 text-[11px] mt-1">{availableTablesCount} available for guests</Text>
+                <Text className="text-emerald-500 text-[11px] mt-1 font-semibold">{availableTablesCount} available for guests</Text>
               </View>
 
-              <View className="flex-1 min-w-[160px] bg-slate-900 border border-slate-800 p-4 rounded-3xl shadow-md">
+              <View
+                className={`flex-1 min-w-[160px] border p-4 rounded-3xl ${
+                  isDark
+                    ? 'bg-slate-900 border-slate-800 shadow-md'
+                    : 'bg-white border-slate-200 shadow-sm'
+                }`}
+              >
                 <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-wider">Online Deliveries</Text>
+                  <Text
+                    className={`text-xs font-bold uppercase tracking-wider ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Online Deliveries
+                  </Text>
                   <Bike size={16} color="#E23744" />
                 </View>
-                <Text className="text-white font-black text-2xl">{totalOnlineCount}</Text>
-                <Text className="text-slate-400 text-[11px] mt-1">Zomato & Swiggy active</Text>
+                <Text
+                  className={`font-black text-2xl ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
+                  {totalOnlineCount}
+                </Text>
+                <Text
+                  className={`text-[11px] mt-1 ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}
+                >
+                  Zomato & Swiggy active
+                </Text>
               </View>
             </View>
 
@@ -709,15 +1014,15 @@ export const HomeScreen = () => {
               <View className="flex-1">
                 {/* Launch New Order Actions */}
                 <View className="flex-row items-center justify-between mb-3">
-                  <Text className="text-white font-black text-lg">Launch New Order</Text>
-                  <Text className="text-slate-500 text-xs">Equal Sized Launch Hub</Text>
+                  <Text className={`font-black text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>Launch New Order</Text>
+                  <Text className="text-slate-400 text-xs">Equal Sized Launch Hub</Text>
                 </View>
 
                 {features.dineInEnabled === false && features.pickupEnabled === false && (
                   <View className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl px-4 py-3 mb-4 flex-row items-center justify-between">
                     <View className="flex-row items-center flex-1 mr-3">
                       <Sliders size={16} color="#A78BFA" />
-                      <Text className="text-indigo-200 text-xs ml-2 flex-1">
+                      <Text className={`text-xs ml-2 flex-1 ${isDark ? 'text-indigo-200' : 'text-indigo-700'}`}>
                         Dine-in floor and pickup are turned off. Running in Direct Counter Billing mode.
                       </Text>
                     </View>
@@ -775,113 +1080,181 @@ export const HomeScreen = () => {
 
                   {features.pickupEnabled !== false && (
                     <TouchableOpacity
-                      className="flex-1 bg-slate-900 border border-slate-700/80 p-4 rounded-3xl shadow-lg shadow-black/40 items-center justify-center min-h-[148px]"
+                      className={`flex-1 border p-4 rounded-3xl items-center justify-center min-h-[148px] ${
+                        isDark
+                          ? 'bg-slate-900 border-slate-700/80 shadow-lg shadow-black/40'
+                          : 'bg-white border-slate-200 shadow-md'
+                      }`}
                       activeOpacity={0.85}
                       onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'PICKUP' })}
                     >
-                      <View className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 items-center justify-center mb-1">
-                        <ShoppingBag size={26} color="#818CF8" />
+                      <View
+                        className={`w-12 h-12 rounded-2xl items-center justify-center mb-1 border ${
+                          isDark
+                            ? 'bg-slate-800 border-slate-700'
+                            : 'bg-indigo-50 border-indigo-100'
+                        }`}
+                      >
+                        <ShoppingBag size={26} color={isDark ? '#818CF8' : '#6366F1'} />
                       </View>
-                      <Text className="text-white font-black text-base mt-1">Pick Up</Text>
-                      <Text className="text-slate-400 text-xs font-medium">Takeaway Parcel</Text>
+                      <Text
+                        className={`font-black text-base mt-1 ${
+                          isDark ? 'text-white' : 'text-slate-900'
+                        }`}
+                      >
+                        Pick Up
+                      </Text>
+                      <Text
+                        className={`text-xs font-medium ${
+                          isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}
+                      >
+                        Takeaway Parcel
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
                 {/* Live Interactive Floor & Table Quick Hub (Only shown when dining tables are enabled) */}
-                  {features.tablesEnabled !== false && features.dineInEnabled !== false && (
-                  <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-6 shadow-md">
-                  <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
-                    <View className="flex-row items-center">
-                      <LayoutGrid size={18} color="#818CF8" />
-                      <Text className="text-white font-black text-base ml-2">Floor Tables Quick Access</Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate(Routes.TABLES)}
-                      className="bg-purple-500/15 border border-purple-500/30 px-3 py-1 rounded-xl flex-row items-center shrink-0"
+                {features.tablesEnabled !== false && features.dineInEnabled !== false && (
+                  <View
+                    className={`border rounded-3xl p-5 mb-6 ${
+                      isDark
+                        ? 'bg-slate-900 border-slate-800 shadow-md'
+                        : 'bg-white border-slate-200 shadow-sm'
+                    }`}
+                  >
+                    <View
+                      className={`flex-row items-center justify-between pb-3 border-b ${
+                        isDark ? 'border-slate-800' : 'border-slate-100'
+                      }`}
                     >
-                      <Text className="text-purple-300 font-bold text-xs">Full Floor Plan →</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Table Quick Matrix */}
-                  {tables.length === 0 ? (
-                    <View className="py-8 items-center justify-center">
-                      <Text className="text-slate-500 text-xs">No dining tables configured yet.</Text>
+                      <View className="flex-row items-center">
+                        <LayoutGrid size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                        <Text
+                          className={`font-black text-base ml-2 ${
+                            isDark ? 'text-white' : 'text-slate-900'
+                          }`}
+                        >
+                          Floor Tables Quick Access
+                        </Text>
+                      </View>
                       <TouchableOpacity
                         onPress={() => navigation.navigate(Routes.TABLES)}
-                        className="mt-2 bg-[#5D3FD3] px-3 py-1 rounded-lg shrink-0"
+                        className={`px-3 py-1 rounded-xl flex-row items-center shrink-0 border ${
+                          isDark
+                            ? 'bg-purple-500/15 border-purple-500/30'
+                            : 'bg-purple-50 border-purple-200'
+                        }`}
                       >
-                        <Text className="text-white font-bold text-xs">+ Setup Tables</Text>
+                        <Text className="text-purple-600 font-bold text-xs">Full Floor Plan →</Text>
                       </TouchableOpacity>
                     </View>
-                  ) : (
-                    <View className="mt-4">
-                      <View className="flex-row flex-wrap gap-2.5">
-                        {tables.slice(0, 18).map(item => {
-                          const isOccupied = item.status === 'running' || item.status === 'OCCUPIED' || ((item as any).cartItems && (item as any).cartItems.length > 0);
-                          const isBillPrinted = (item as any).billPrinted === true;
-                          const waiterName = (item as any).activeWaiterName;
-                          const itemCount = (item as any).cartItems?.reduce((s: number, i: any) => s + (i.qty || 0), 0) || 0;
 
-                          return (
-                            <TouchableOpacity
-                              key={item.id}
-                              onPress={() => navigation.navigate(Routes.MENU, { tableId: item.id, tableNo: item.tableNo, orderType: 'DINE_IN' })}
-                              className={'w-[78px] h-[78px] rounded-2xl border p-2 justify-between ' + (
-                                isBillPrinted
-                                  ? 'bg-cyan-950/30 border-cyan-400/80 shadow-sm shadow-cyan-500/20'
-                                  : isOccupied
-                                  ? 'bg-amber-950/30 border-amber-500/50'
-                                  : 'bg-emerald-950/20 border-emerald-500/40'
-                              )}
-                            >
-                              <View className="flex-row items-center justify-between">
-                                <View className={'w-2 h-2 rounded-full ' + (isBillPrinted ? 'bg-cyan-400' : isOccupied ? 'bg-amber-500' : 'bg-emerald-500')} />
-                                <Text className={'text-[9px] font-bold ' + (isBillPrinted ? 'text-cyan-300 font-black' : isOccupied ? 'text-amber-400' : 'text-emerald-400')}>
-                                  {isBillPrinted ? 'PRINT' : isOccupied ? 'RUN' : 'AVL'}
-                                </Text>
-                              </View>
-                              <Text className="text-white font-black text-center text-lg">{item.tableNo}</Text>
-                              <Text className="text-slate-400 text-[9px] text-center" numberOfLines={1}>
-                                {isBillPrinted ? '🧾 Printed' : (isOccupied && waiterName ? waiterName : (isOccupied && itemCount > 0 ? (itemCount + ' items') : 'Table'))}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-
-                      {tables.length > 18 && (
+                    {/* Table Quick Matrix */}
+                    {tables.length === 0 ? (
+                      <View className="py-8 items-center justify-center">
+                        <Text
+                          className={`text-xs ${
+                            isDark ? 'text-slate-500' : 'text-slate-400'
+                          }`}
+                        >
+                          No dining tables configured yet.
+                        </Text>
                         <TouchableOpacity
                           onPress={() => navigation.navigate(Routes.TABLES)}
-                          className="mt-3 py-1.5 bg-slate-800/80 rounded-xl items-center"
+                          className="mt-2 bg-[#5D3FD3] px-3 py-1 rounded-lg shrink-0"
                         >
-                          <Text className="text-slate-400 text-xs font-semibold">
-                            + {tables.length - 18} more tables in Floor Plan
-                          </Text>
+                          <Text className="text-white font-bold text-xs">+ Setup Tables</Text>
                         </TouchableOpacity>
-                      )}
-                    </View>
-                  )}
-                </View>
-                  )}
-                </View>
+                      </View>
+                    ) : (
+                      <View className="mt-4">
+                        <View className="flex-row flex-wrap gap-2.5">
+                          {tables.slice(0, 18).map(item => {
+                            const isOccupied = item.status === 'running' || item.status === 'OCCUPIED' || ((item as any).cartItems && (item as any).cartItems.length > 0);
+                            const isBillPrinted = (item as any).billPrinted === true;
+                            const waiterName = (item as any).activeWaiterName;
+                            const itemCount = (item as any).cartItems?.reduce((s: number, i: any) => s + (i.qty || 0), 0) || 0;
 
-                {/* Right Column (40%): Aggregators & Hardware Station */}
+                            return (
+                              <TouchableOpacity
+                                key={item.id}
+                                onPress={() => navigation.navigate(Routes.MENU, { tableId: item.id, tableNo: item.tableNo, orderType: 'DINE_IN' })}
+                                className={'w-[78px] h-[78px] rounded-2xl border p-2 justify-between ' + (
+                                  isBillPrinted
+                                    ? isDark
+                                      ? 'bg-cyan-950/30 border-cyan-400/80 shadow-sm shadow-cyan-500/20'
+                                      : 'bg-cyan-50 border-cyan-400 shadow-sm'
+                                    : isOccupied
+                                    ? isDark
+                                      ? 'bg-amber-950/30 border-amber-500/50'
+                                      : 'bg-amber-50 border-amber-400 shadow-sm'
+                                    : isDark
+                                    ? 'bg-emerald-950/20 border-emerald-500/40'
+                                    : 'bg-emerald-50 border-emerald-300 shadow-sm'
+                                )}
+                              >
+                                <View className="flex-row items-center justify-between">
+                                  <View className={'w-2 h-2 rounded-full ' + (isBillPrinted ? 'bg-cyan-400' : isOccupied ? 'bg-amber-500' : 'bg-emerald-500')} />
+                                  <Text className={'text-[9px] font-bold ' + (isBillPrinted ? 'text-cyan-500 font-black' : isOccupied ? 'text-amber-500' : 'text-emerald-500')}>
+                                    {isBillPrinted ? 'PRINT' : isOccupied ? 'RUN' : 'AVL'}
+                                  </Text>
+                                </View>
+                                <Text className={`font-black text-center text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.tableNo}</Text>
+                                <Text className={`text-[9px] text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`} numberOfLines={1}>
+                                  {isBillPrinted ? '🧾 Printed' : (isOccupied && waiterName ? waiterName : (isOccupied && itemCount > 0 ? (itemCount + ' items') : 'Table'))}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        {tables.length > 18 && (
+                          <TouchableOpacity
+                            onPress={() => navigation.navigate(Routes.TABLES)}
+                            className={`mt-3 py-1.5 rounded-xl items-center border ${
+                              isDark
+                                ? 'bg-slate-800/80 border-slate-700/60'
+                                : 'bg-slate-100 border-slate-200'
+                            }`}
+                          >
+                            <Text
+                              className={`text-xs font-semibold ${
+                                isDark ? 'text-slate-400' : 'text-slate-600'
+                              }`}
+                            >
+                              + {tables.length - 18} more tables in Floor Plan
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Right Column (40%): Aggregators & Hardware Station */}
               <View className="w-[400px]">
                 <View className="flex-row items-center justify-between mb-3">
                   <View className="flex-row items-center">
                     <Bike size={18} color="#F59E0B" />
-                    <Text className="text-white font-black text-lg ml-2">Online Channels</Text>
+                    <Text className={`font-black text-lg ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Online Channels</Text>
                   </View>
                   <View className="bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                    <Text className="text-amber-400 text-[10px] font-bold">Aggregator Sync</Text>
+                    <Text className="text-amber-500 text-[10px] font-bold">Aggregator Sync</Text>
                   </View>
                 </View>
 
                 {/* Zomato & Swiggy Cards */}
                 <View className="flex-row gap-3 mb-4">
-                  <View className="flex-1 bg-slate-900 border border-slate-800 p-4 rounded-3xl justify-between">
+                  <View
+                    className={`flex-1 border p-4 rounded-3xl justify-between ${
+                      isDark
+                        ? 'bg-slate-900 border-slate-800'
+                        : 'bg-white border-red-200 shadow-sm'
+                    }`}
+                  >
                     <View>
                       <View className="flex-row items-center justify-between mb-2">
                         <View className="bg-[#E23744] px-2.5 py-1 rounded-lg shadow-sm">
@@ -890,28 +1263,52 @@ export const HomeScreen = () => {
                         <Switch
                           value={isZomatoOnline}
                           onValueChange={setZomatoOnline}
-                          trackColor={{ false: '#334155', true: '#E23744' }}
-                          thumbColor={isZomatoOnline ? '#FFFFFF' : '#94A3B8'}
+                          trackColor={{ false: isDark ? '#334155' : '#CBD5E1', true: '#E23744' }}
+                          thumbColor={isZomatoOnline ? '#FFFFFF' : (isDark ? '#94A3B8' : '#F1F5F9')}
                         />
                       </View>
-                      <Text className="text-white font-bold text-sm mt-1">
+                      <Text
+                        className={`font-bold text-sm mt-1 ${
+                          isDark ? 'text-white' : 'text-slate-900'
+                        }`}
+                      >
                         {isZomatoOnline ? 'Live & Accepting' : 'Store Paused'}
                       </Text>
-                      <Text className="text-slate-400 text-[11px] mt-0.5">
+                      <Text
+                        className={`text-[11px] mt-0.5 ${
+                          isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}
+                      >
                         {isZomatoOnline ? (zomatoOrdersCount + ' Incoming') : 'Offline'}
                       </Text>
                     </View>
 
                     <TouchableOpacity
                       onPress={() => setSelectedAggregator('zomato')}
-                      className="mt-3 bg-slate-800 border border-slate-700/80 py-2 px-3 rounded-xl flex-row items-center justify-between"
+                      className={`mt-3 py-2 px-3 rounded-xl flex-row items-center justify-between border ${
+                        isDark
+                          ? 'bg-slate-800 border-slate-700/80'
+                          : 'bg-red-50/70 border-red-100'
+                      }`}
                     >
-                      <Text className="text-slate-200 text-xs font-semibold">Orders ({zomatoOrdersCount})</Text>
-                      <ChevronRight size={14} color="#94A3B8" />
+                      <Text
+                        className={`text-xs font-semibold ${
+                          isDark ? 'text-slate-200' : 'text-red-700'
+                        }`}
+                      >
+                        Orders ({zomatoOrdersCount})
+                      </Text>
+                      <ChevronRight size={14} color={isDark ? '#94A3B8' : '#EF4444'} />
                     </TouchableOpacity>
                   </View>
 
-                  <View className="flex-1 bg-slate-900 border border-slate-800 p-4 rounded-3xl justify-between">
+                  <View
+                    className={`flex-1 border p-4 rounded-3xl justify-between ${
+                      isDark
+                        ? 'bg-slate-900 border-slate-800'
+                        : 'bg-white border-amber-200 shadow-sm'
+                    }`}
+                  >
                     <View>
                       <View className="flex-row items-center justify-between mb-2">
                         <View className="bg-[#FC8019] px-2.5 py-1 rounded-lg shadow-sm">
@@ -920,71 +1317,151 @@ export const HomeScreen = () => {
                         <Switch
                           value={isSwiggyOnline}
                           onValueChange={setSwiggyOnline}
-                          trackColor={{ false: '#334155', true: '#FC8019' }}
-                          thumbColor={isSwiggyOnline ? '#FFFFFF' : '#94A3B8'}
+                          trackColor={{ false: isDark ? '#334155' : '#CBD5E1', true: '#FC8019' }}
+                          thumbColor={isSwiggyOnline ? '#FFFFFF' : (isDark ? '#94A3B8' : '#F1F5F9')}
                         />
                       </View>
-                      <Text className="text-white font-bold text-sm mt-1">
+                      <Text
+                        className={`font-bold text-sm mt-1 ${
+                          isDark ? 'text-white' : 'text-slate-900'
+                        }`}
+                      >
                         {isSwiggyOnline ? 'Live & Accepting' : 'Store Paused'}
                       </Text>
-                      <Text className="text-slate-400 text-[11px] mt-0.5">
+                      <Text
+                        className={`text-[11px] mt-0.5 ${
+                          isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}
+                      >
                         {isSwiggyOnline ? (swiggyOrdersCount + ' Incoming') : 'Offline'}
                       </Text>
                     </View>
 
                     <TouchableOpacity
                       onPress={() => setSelectedAggregator('swiggy')}
-                      className="mt-3 bg-slate-800 border border-slate-700/80 py-2 px-3 rounded-xl flex-row items-center justify-between"
+                      className={`mt-3 py-2 px-3 rounded-xl flex-row items-center justify-between border ${
+                        isDark
+                          ? 'bg-slate-800 border-slate-700/80'
+                          : 'bg-amber-50/70 border-amber-100'
+                      }`}
                     >
-                      <Text className="text-slate-200 text-xs font-semibold">Orders ({swiggyOrdersCount})</Text>
-                      <ChevronRight size={14} color="#94A3B8" />
+                      <Text
+                        className={`text-xs font-semibold ${
+                          isDark ? 'text-slate-200' : 'text-amber-700'
+                        }`}
+                      >
+                        Orders ({swiggyOrdersCount})
+                      </Text>
+                      <ChevronRight size={14} color={isDark ? '#94A3B8' : '#F59E0B'} />
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 {/* Hardware Status & Quick Management Panel */}
-                <View className="bg-slate-900 border border-slate-800 rounded-3xl p-4 mb-6 shadow-md">
-                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3">Station & Hardware</Text>
+                <View
+                  className={`border rounded-3xl p-4 mb-6 ${
+                    isDark
+                      ? 'bg-slate-900 border-slate-800 shadow-md'
+                      : 'bg-white border-slate-200 shadow-sm'
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-bold uppercase tracking-wider mb-3 ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Station & Hardware
+                  </Text>
                   
-                  <View className="flex-row items-center justify-between py-2 border-b border-slate-800">
+                  <View
+                    className={`flex-row items-center justify-between py-2 border-b ${
+                      isDark ? 'border-slate-800' : 'border-slate-100'
+                    }`}
+                  >
                     <View className="flex-row items-center">
                       <Printer size={15} color={settings.ipAddress ? '#10B981' : '#F59E0B'} />
-                      <Text className="text-slate-200 text-xs font-medium ml-2">Kitchen Thermal KOT</Text>
+                      <Text
+                        className={`text-xs font-medium ml-2 ${
+                          isDark ? 'text-slate-200' : 'text-slate-700'
+                        }`}
+                      >
+                        Kitchen Thermal KOT
+                      </Text>
                     </View>
-                    <Text className={'text-xs font-bold ' + (settings.ipAddress ? 'text-emerald-400' : 'text-amber-400')}>
+                    <Text className={'text-xs font-bold ' + (settings.ipAddress ? 'text-emerald-500' : 'text-amber-500')}>
                       {settings.ipAddress ? settings.ipAddress : 'Not Set'}
                     </Text>
                   </View>
 
-                  <View className="flex-row items-center justify-between py-2 border-b border-slate-800">
+                  <View
+                    className={`flex-row items-center justify-between py-2 border-b ${
+                      isDark ? 'border-slate-800' : 'border-slate-100'
+                    }`}
+                  >
                     <View className="flex-row items-center">
                       <CheckCircle2 size={15} color="#10B981" />
-                      <Text className="text-slate-200 text-xs font-medium ml-2">Billing Shift</Text>
+                      <Text
+                        className={`text-xs font-medium ml-2 ${
+                          isDark ? 'text-slate-200' : 'text-slate-700'
+                        }`}
+                      >
+                        Billing Shift
+                      </Text>
                     </View>
-                    <Text className="text-emerald-400 text-xs font-bold">Active</Text>
+                    <Text className="text-emerald-500 text-xs font-bold">Active</Text>
                   </View>
 
                   {/* Management Shortcuts for Desktop Cashier */}
                   <View className="flex-row gap-2 mt-3 pt-2">
                     <TouchableOpacity
                       onPress={() => navigation.navigate(Routes.MENU_MANAGEMENT)}
-                      className="flex-1 bg-slate-800 py-2 px-2.5 rounded-xl items-center"
+                      className={`flex-1 py-2 px-2.5 rounded-xl items-center border ${
+                        isDark
+                          ? 'bg-slate-800 border-slate-750'
+                          : 'bg-slate-100 border-slate-200'
+                      }`}
                     >
-                      <Text className="text-slate-300 text-[11px] font-bold">Menu Setup</Text>
+                      <Text
+                        className={`text-[11px] font-bold ${
+                          isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}
+                      >
+                        Menu Setup
+                      </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       onPress={() => navigation.navigate(Routes.ORDERS)}
-                      className="flex-1 bg-slate-800 py-2 px-2.5 rounded-xl items-center"
+                      className={`flex-1 py-2 px-2.5 rounded-xl items-center border ${
+                        isDark
+                          ? 'bg-slate-800 border-slate-750'
+                          : 'bg-slate-100 border-slate-200'
+                      }`}
                     >
-                      <Text className="text-slate-300 text-[11px] font-bold">Orders Log</Text>
+                      <Text
+                        className={`text-[11px] font-bold ${
+                          isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}
+                      >
+                        Orders Log
+                      </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       onPress={() => navigation.navigate(Routes.SETTINGS)}
-                      className="flex-1 bg-slate-800 py-2 px-2.5 rounded-xl items-center"
+                      className={`flex-1 py-2 px-2.5 rounded-xl items-center border ${
+                        isDark
+                          ? 'bg-slate-800 border-slate-750'
+                          : 'bg-slate-100 border-slate-200'
+                      }`}
                     >
-                      <Text className="text-slate-300 text-[11px] font-bold">Settings</Text>
+                      <Text
+                        className={`text-[11px] font-bold ${
+                          isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}
+                      >
+                        Settings
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -997,29 +1474,62 @@ export const HomeScreen = () => {
       {/* Aggregator Live Orders Modal */}
       <Modal visible={selectedAggregator !== null} transparent animationType="slide">
         <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-slate-900 border-t border-slate-700 rounded-t-3xl p-5 max-h-[85%]">
-            <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
+          <View
+            className={`border-t rounded-t-3xl p-5 max-h-[85%] ${
+              isDark
+                ? 'bg-slate-900 border-slate-700'
+                : 'bg-white border-slate-200 shadow-2xl'
+            }`}
+          >
+            <View
+              className={`flex-row items-center justify-between pb-3 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}
+            >
               <View className="flex-row items-center">
                 <View className={'px-2.5 py-1 rounded-lg mr-2 ' + (selectedAggregator === 'zomato' ? 'bg-[#E23744]' : 'bg-[#FC8019]')}>
                   <Text className="text-white font-black text-xs uppercase">{selectedAggregator}</Text>
                 </View>
-                <Text className="text-white font-black text-lg">Incoming Online Orders</Text>
+                <Text
+                  className={`font-black text-lg ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
+                  Incoming Online Orders
+                </Text>
               </View>
-              <TouchableOpacity onPress={() => setSelectedAggregator(null)} className="p-1 rounded-full bg-slate-800">
-                <X size={20} color="#94A3B8" />
+              <TouchableOpacity
+                onPress={() => setSelectedAggregator(null)}
+                className={`p-1 rounded-full border ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                }`}
+              >
+                <X size={20} color={isDark ? '#94A3B8' : '#64748B'} />
               </TouchableOpacity>
             </View>
 
             <ScrollView className="mt-3">
               {(selectedAggregator === 'zomato' ? zomatoOrders : swiggyOrders).length === 0 ? (
                 <View className="py-8 px-4 items-center">
-                  <View className="w-14 h-14 rounded-full bg-slate-800 items-center justify-center mb-3">
-                    <Bike size={28} color="#94A3B8" />
+                  <View
+                    className={`w-14 h-14 rounded-full items-center justify-center mb-3 ${
+                      isDark ? 'bg-slate-800' : 'bg-slate-100'
+                    }`}
+                  >
+                    <Bike size={28} color={isDark ? '#94A3B8' : '#64748B'} />
                   </View>
-                  <Text className="text-white text-base font-bold text-center">
+                  <Text
+                    className={`text-base font-bold text-center ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}
+                  >
                     No Active Orders from {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'}
                   </Text>
-                  <Text className="text-slate-400 text-xs text-center mt-1.5 leading-relaxed max-w-xs">
+                  <Text
+                    className={`text-xs text-center mt-1.5 leading-relaxed max-w-xs ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
                     Orders placed on {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} will automatically appear here once forwarded via email or when simulated.
                   </Text>
 
@@ -1039,9 +1549,19 @@ export const HomeScreen = () => {
                     </Text>
                   </TouchableOpacity>
 
-                  <View className="mt-5 p-3.5 bg-slate-950/80 border border-slate-800 rounded-2xl w-full">
-                    <Text className="text-slate-400 text-[11px] leading-relaxed">
-                      💡 <Text className="font-bold text-slate-300">How to automate:</Text> Set up auto-forwarding from your registered restaurant email for {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} notifications.
+                  <View
+                    className={`mt-5 p-3.5 border rounded-2xl w-full ${
+                      isDark
+                        ? 'bg-slate-950/80 border-slate-800'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <Text
+                      className={`text-[11px] leading-relaxed ${
+                        isDark ? 'text-slate-400' : 'text-slate-600'
+                      }`}
+                    >
+                      💡 <Text className={`font-bold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>How to automate:</Text> Set up auto-forwarding from your registered restaurant email for {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} notifications.
                     </Text>
                   </View>
                 </View>
@@ -1050,49 +1570,105 @@ export const HomeScreen = () => {
                   const orderDisplayNo = order.aggregatorOrderId || String(order.kotNo || order.orderNumber || order.id);
                   const isPaid = order.paymentStatus === 'PAID';
                   return (
-                    <View key={order.id} className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 mb-3">
+                    <View
+                      key={order.id}
+                      className={`border rounded-2xl p-4 mb-3 ${
+                        isDark
+                          ? 'bg-slate-800/80 border-slate-700/80'
+                          : 'bg-slate-50 border-slate-200 shadow-sm'
+                      }`}
+                    >
                       <View className="flex-row items-center justify-between mb-2">
                         <View className="flex-row items-center flex-wrap gap-1.5 flex-1 mr-2">
-                          <Text className="text-white font-black text-base">#{orderDisplayNo}</Text>
+                          <Text
+                            className={`font-black text-base ${
+                              isDark ? 'text-white' : 'text-slate-900'
+                            }`}
+                          >
+                            #{orderDisplayNo}
+                          </Text>
                           <View className="bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
-                            <Text className="text-emerald-300 text-[10px] font-bold">
+                            <Text className="text-emerald-500 text-[10px] font-bold">
                               {isPaid ? 'PAID ONLINE' : 'PAY ON DELIVERY'}
                             </Text>
                           </View>
                         </View>
                         <View className="flex-row items-center shrink-0">
-                          <Clock size={12} color="#94A3B8" />
-                          <Text className="text-slate-400 text-[11px] ml-1">
+                          <Clock size={12} color={isDark ? '#94A3B8' : '#64748B'} />
+                          <Text
+                            className={`text-[11px] ml-1 ${
+                              isDark ? 'text-slate-400' : 'text-slate-500'
+                            }`}
+                          >
                             {order.createdAt ? 'Active' : 'Live'}
                           </Text>
                         </View>
                       </View>
 
-                      <Text className="text-slate-300 text-xs font-semibold mb-2">
+                      <Text
+                        className={`text-xs font-semibold mb-2 ${
+                          isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}
+                      >
                         Customer: {order.customerName || 'Online Diner'} {order.customerPhone ? `(${ order.customerPhone })` : ''}
                       </Text>
 
-                      <View className="bg-slate-900/90 rounded-xl p-3 mb-3 border border-slate-800">
+                      <View
+                        className={`rounded-xl p-3 mb-3 border ${
+                          isDark
+                            ? 'bg-slate-900/90 border-slate-800'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
                         {(order.items || []).map((item: any, idx: number) => (
-                          <View key={idx} className="flex-row justify-between py-1 border-b border-slate-800/60 last:border-b-0">
-                            <Text className="text-slate-200 text-xs flex-1 mr-2">
+                          <View
+                            key={idx}
+                            className={`flex-row justify-between py-1 border-b last:border-b-0 ${
+                              isDark ? 'border-slate-800/60' : 'border-slate-100'
+                            }`}
+                          >
+                            <Text
+                              className={`text-xs flex-1 mr-2 ${
+                                isDark ? 'text-slate-200' : 'text-slate-800'
+                              }`}
+                            >
                               {item.qty || 1}x {item.itemName || item.name}
                             </Text>
-                            <Text className="text-slate-400 text-xs font-bold">
+                            <Text
+                              className={`text-xs font-bold ${
+                                isDark ? 'text-slate-400' : 'text-slate-600'
+                              }`}
+                            >
                               ₹{Number(item.price || 0) * Number(item.qty || 1)}
                             </Text>
                           </View>
                         ))}
-                        <View className="flex-row justify-between pt-2 mt-1 border-t border-slate-800">
-                          <Text className="text-slate-400 font-bold text-xs">Total Bill</Text>
-                          <Text className="text-white font-black text-sm">₹{Number(order.totalAmount || 0).toFixed(2)}</Text>
+                        <View
+                          className={`flex-row justify-between pt-2 mt-1 border-t ${
+                            isDark ? 'border-slate-800' : 'border-slate-100'
+                          }`}
+                        >
+                          <Text
+                            className={`font-bold text-xs ${
+                              isDark ? 'text-slate-400' : 'text-slate-500'
+                            }`}
+                          >
+                            Total Bill
+                          </Text>
+                          <Text
+                            className={`font-black text-sm ${
+                              isDark ? 'text-white' : 'text-slate-900'
+                            }`}
+                          >
+                            ₹{Number(order.totalAmount || 0).toFixed(2)}
+                          </Text>
                         </View>
                       </View>
 
                       {order.deliveryRiderName && (
                         <View className="flex-row items-center mb-3 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl">
-                          <Bike size={14} color="#818CF8" />
-                          <Text className="text-indigo-300 text-xs font-medium ml-2 flex-1" numberOfLines={1}>
+                          <Bike size={14} color="#6366F1" />
+                          <Text className="text-indigo-600 text-xs font-medium ml-2 flex-1" numberOfLines={1}>
                             {order.deliveryRiderName} {order.deliveryRiderPhone ? `• ${ order.deliveryRiderPhone } ` : ''}
                           </Text>
                         </View>
@@ -1134,14 +1710,35 @@ export const HomeScreen = () => {
       {/* Branch Selection Modal for Client Admin */}
       <Modal visible={isBranchModalOpen} transparent animationType="fade">
         <View className="flex-1 bg-black/70 items-center justify-center p-5">
-          <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 w-full max-w-md shadow-2xl">
-            <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
+          <View
+            className={`border rounded-3xl p-5 w-full max-w-md shadow-2xl ${
+              isDark
+                ? 'bg-slate-900 border-slate-800'
+                : 'bg-white border-slate-200'
+            }`}
+          >
+            <View
+              className={`flex-row items-center justify-between pb-3 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}
+            >
               <View className="flex-row items-center">
                 <MapPin size={18} color="#A855F7" />
-                <Text className="text-white font-black text-lg ml-2">Select Active Branch</Text>
+                <Text
+                  className={`font-black text-lg ml-2 ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
+                  Select Active Branch
+                </Text>
               </View>
-              <TouchableOpacity onPress={() => setBranchModalOpen(false)} className="p-1 rounded-full bg-slate-800">
-                <X size={18} color="#94A3B8" />
+              <TouchableOpacity
+                onPress={() => setBranchModalOpen(false)}
+                className={`p-1 rounded-full border ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                }`}
+              >
+                <X size={18} color={isDark ? '#94A3B8' : '#64748B'} />
               </TouchableOpacity>
             </View>
 
@@ -1156,24 +1753,35 @@ export const HomeScreen = () => {
                     onPress={() => handleSelectBranch(loc)}
                     className={'p-3.5 mb-2 rounded-2xl border flex-row items-center justify-between ' + (
                       isSelected
-                        ? 'bg-purple-950/40 border-[#5D3FD3]'
+                        ? 'bg-purple-500/15 border-[#5D3FD3]'
                         : isDisabled
-                        ? 'bg-slate-950/40 border-slate-850 opacity-40'
-                        : 'bg-slate-800/80 border-slate-700/70'
+                        ? isDark
+                          ? 'bg-slate-950/40 border-slate-850 opacity-40'
+                          : 'bg-slate-100 border-slate-200 opacity-40'
+                        : isDark
+                        ? 'bg-slate-800/80 border-slate-700/70'
+                        : 'bg-slate-50 border-slate-200'
                     )}
                   >
                     <View className="flex-1 mr-2">
                       <View className="flex-row items-center">
-                        <Text className={'font-bold text-sm ' + (isSelected ? 'text-purple-300' : 'text-white')}>
+                        <Text className={'font-bold text-sm ' + (isSelected ? 'text-purple-600 font-black' : (isDark ? 'text-white' : 'text-slate-900'))}>
                           {loc.name}
                         </Text>
                         {isDisabled && (
                           <View className="ml-2 px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/30">
-                            <Text className="text-rose-300 text-[9px] font-bold">DISABLED</Text>
+                            <Text className="text-rose-400 text-[9px] font-bold">DISABLED</Text>
                           </View>
                         )}
                       </View>
-                      <Text className="text-slate-400 text-xs mt-0.5" numberOfLines={1}>{loc.address}</Text>
+                      <Text
+                        className={`text-xs mt-0.5 ${
+                          isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}
+                        numberOfLines={1}
+                      >
+                        {loc.address}
+                      </Text>
                     </View>
                     {isSelected && <CheckCircle2 size={18} color="#A855F7" />}
                   </TouchableOpacity>

@@ -64,7 +64,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const { orders } = useOrderStore();
   const { settings } = usePrinterStore();
   const { isSplitView, isLargePOS } = useResponsiveLayout();
-  const { themeMode, toggleTheme } = useThemeStore();
+  const { themeMode } = useThemeStore();
   const isDark = themeMode === 'dark';
 
   // Role check: Only Admin and Manager are allowed to edit items once bill has been printed
@@ -920,22 +920,6 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         </View>
 
         <View className="flex-row items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Theme Toggle Button (Dark / Light) */}
-          <TouchableOpacity
-            onPress={toggleTheme}
-            className={`p-1.5 sm:p-2 rounded-xl border active:opacity-80 ${
-              isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-300'
-            }`}
-            accessibilityLabel="Toggle Theme Mode"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            {isDark ? (
-              <Sun size={16} color="#FBBF24" />
-            ) : (
-              <Moon size={16} color="#6366F1" />
-            )}
-          </TouchableOpacity>
-
           {/* Quick Orders History shortcut for Quick Sale Mode (Desktop / Large POS) */}
           {isDirect && (
             <TouchableOpacity

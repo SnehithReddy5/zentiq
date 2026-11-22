@@ -21,7 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   showMenu = false,
   onMenuPress,
   rightElement,
-  showThemeToggle = true,
+  showThemeToggle = false,
 }) => {
   const navigation = useNavigation<any>();
   const { themeMode, toggleTheme } = useThemeStore();

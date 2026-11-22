@@ -167,39 +167,45 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
                 {features.tablesEnabled && (
                   <TouchableOpacity
                     onPress={() => navigateTo(Routes.TABLES)}
-                    className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                    className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                      isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                    }`}
                   >
                     <View className="flex-row items-center">
-                      <LayoutGrid size={18} color="#818CF8" />
-                      <Text className="text-slate-200 text-sm font-semibold ml-3">Floor Plan & Tables</Text>
+                      <LayoutGrid size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                      <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Floor Plan & Tables</Text>
                     </View>
-                    <ChevronRight size={16} color="#64748B" />
+                    <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                   </TouchableOpacity>
                 )}
 
                 {/* Running Orders: Available to All */}
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.ORDERS)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <ClipboardList size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Orders History & Ledger</Text>
+                    <ClipboardList size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Orders History & Ledger</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
 
               {/* Kitchen Inventory & Store Load */}
               {isManager && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.INVENTORY)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <Boxes size={18} color="#34D399" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Kitchen Inventory & Stock</Text>
+                    <Boxes size={18} color="#10B981" />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Kitchen Inventory & Stock</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
               )}
 
@@ -207,13 +213,15 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
               {isManager && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.CENTRAL_KITCHEN)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <ChefHat size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Central Kitchen Hub (Supply)</Text>
+                    <ChefHat size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Central Kitchen Hub (Supply)</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
               )}
 
@@ -221,13 +229,15 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
               {isManager && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.CENTRAL_KITCHEN_ORDERING)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <Store size={18} color="#38BDF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Order from Central Kitchen</Text>
+                    <Store size={18} color={isDark ? '#38BDF8' : '#0284C7'} />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Order from Central Kitchen</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
               )}
 
@@ -235,13 +245,15 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
               {isManager && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.MENU_MANAGEMENT)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <Utensils size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Edit Menu & Favorites</Text>
+                    <Utensils size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Edit Menu & Favorites</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
               )}
 
@@ -249,13 +261,15 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
               {isManager && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.SETTINGS)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <Printer size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Thermal Printers (LAN)</Text>
+                    <Printer size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Thermal Printers (LAN)</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
               )}
 
@@ -263,13 +277,15 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
               {isSuperAdmin && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.USER_MANAGEMENT)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <Users size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Staff & User Roles</Text>
+                    <Users size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Staff & User Roles</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
               )}
 
@@ -277,13 +293,15 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
               {isSuperAdmin && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.LOCATION_MANAGEMENT)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <Building size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Branch Management</Text>
+                    <Building size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Branch Management</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
               )}
 
@@ -291,13 +309,15 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
               {isManager && (
                 <TouchableOpacity
                   onPress={() => navigateTo(Routes.BUSINESS_PROFILE)}
-                  className="flex-row items-center justify-between p-3 rounded-2xl hover:bg-slate-800"
+                  className={`flex-row items-center justify-between p-3 rounded-2xl ${
+                    isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
+                  }`}
                 >
                   <View className="flex-row items-center">
-                    <Settings size={18} color="#818CF8" />
-                    <Text className="text-slate-200 text-sm font-semibold ml-3">Store & Payment Settings</Text>
+                    <Settings size={18} color={isDark ? '#818CF8' : '#6366F1'} />
+                    <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Store & Payment Settings</Text>
                   </View>
-                  <ChevronRight size={16} color="#64748B" />
+                  <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                 </TouchableOpacity>
               )}
             </View>
