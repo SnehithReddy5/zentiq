@@ -104,18 +104,43 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon -x lint || ./gradlew assembleDebug --no-daemon -x lint
 
-      - name: Collect Android APK
+      - name: Collect & Sign Android APK
         run: |
           mkdir -p dist-android
+          RAW_APK=""
           if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
-            cp android/app/build/outputs/apk/release/app-release.apk dist-android/Zentiq-POS.apk
+            RAW_APK="android/app/build/outputs/apk/release/app-release.apk"
           elif [ -f android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
-            cp android/app/build/outputs/apk/release/app-release-unsigned.apk dist-android/Zentiq-POS.apk
+            RAW_APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
           elif [ -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
-            cp android/app/build/outputs/apk/debug/app-debug.apk dist-android/Zentiq-POS.apk
+            RAW_APK="android/app/build/outputs/apk/debug/app-debug.apk"
           else
-            find android/app/build/outputs/apk -name "*.apk" -exec cp {} dist-android/Zentiq-POS.apk \;
+            RAW_APK=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
           fi
+
+          echo "Found candidate APK: $RAW_APK"
+          cp "$RAW_APK" dist-android/Zentiq-POS.apk
+
+          # Locate apksigner in Android SDK build-tools
+          APKSIGNER=$(find /usr/local/lib/android/sdk/build-tools -name "apksigner" | sort -V | tail -n 1)
+          echo "Using apksigner: $APKSIGNER"
+
+          # Sign the APK with release.keystore to guarantee v1/v2/v3 signatures
+          if [ -n "$APKSIGNER" ] && [ -f credentials/release.keystore ]; then
+            echo "Signing APK with release.keystore..."
+            $APKSIGNER sign --ks credentials/release.keystore \
+              --ks-pass pass:zentiq123 \
+              --ks-key-alias zentiq \
+              --key-pass pass:zentiq123 \
+              --out dist-android/Zentiq-POS.apk \
+              dist-android/Zentiq-POS.apk
+
+            echo "Verifying APK signature..."
+            $APKSIGNER verify --verbose dist-android/Zentiq-POS.apk
+          else
+            echo "apksigner or keystore not found, skipping explicit sign"
+          fi
+
           ls -lh dist-android/
 
       - name: Upload Android APK (Workflow Artifact)
