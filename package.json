@@ -66,6 +66,9 @@
   "build": {
     "appId": "com.zentiq.pos",
     "productName": "Zentiq POS",
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
     "directories": {
       "output": "dist-electron"
     },
