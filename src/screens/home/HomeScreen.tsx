@@ -37,8 +37,11 @@ import {
   ChefHat,
   Store,
   Settings,
-  Plus
+  Plus,
+  Sun,
+  Moon
 } from 'lucide-react-native';
+import { useThemeStore } from '../../store/theme.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { useOrderStore } from '../../store/order.store';
 import { useTableStore } from '../../store/table.store';
@@ -62,6 +65,8 @@ export const HomeScreen = () => {
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
   const { isLargePOS, isDesktop } = useResponsiveLayout();
+  const { themeMode, toggleTheme } = useThemeStore();
+  const isDark = themeMode === 'dark';
 
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isBranchModalOpen, setBranchModalOpen] = useState(false);
@@ -237,32 +242,38 @@ export const HomeScreen = () => {
   const isQuickSaleOnly = features.dineInEnabled === false && features.pickupEnabled === false;
   if (isQuickSaleOnly) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#090D1A' }}>
+      <View style={{ flex: 1, backgroundColor: isDark ? '#090D1A' : '#F8FAFC' }}>
         <MenuScreen isDirectHome={true} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-slate-50'}`}>
       <HamburgerMenu isVisible={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Top Header */}
-      <View className="flex-row items-center justify-between px-5 py-3.5 bg-[#111827] border-b border-slate-800">
-        <View className="flex-row items-center flex-1">
+      <View className={`flex-row items-center justify-between px-3 sm:px-5 py-3 border-b ${
+        isDark ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-200'
+      }`}>
+        <View className="flex-row items-center flex-1 min-w-0 mr-2">
           <TouchableOpacity
             onPress={() => setSidebarOpen(true)}
-            className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 mr-3"
+            className={`p-2 sm:p-2.5 rounded-xl border mr-2 sm:mr-3 ${
+              isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+            }`}
             accessibilityLabel="Open Navigation Menu"
           >
-            <MenuIcon size={20} color="#CBD5E1" />
+            <MenuIcon size={18} color={isDark ? '#CBD5E1' : '#475569'} />
           </TouchableOpacity>
-          <View className="flex-1">
+          <View className="flex-1 min-w-0">
             <View className="flex-row items-center gap-2">
-              <Text className="text-white font-black text-lg" numberOfLines={1}>{businessTitle}</Text>
+              <Text className={`font-black text-base sm:text-lg ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
+                {businessTitle}
+              </Text>
               {isDesktop && (
                 <View className="bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 rounded">
-                  <Text className="text-indigo-300 text-[10px] font-bold">DESKTOP POS TERMINAL</Text>
+                  <Text className="text-indigo-400 text-[10px] font-bold">DESKTOP POS TERMINAL</Text>
                 </View>
               )}
             </View>
@@ -287,38 +298,61 @@ export const HomeScreen = () => {
           </View>
         </View>
 
-        {/* Header Right Actions for Large POS */}
-        {isLargePOS && (
-          <View className="flex-row items-center gap-3">
-            {isManagerOrAbove && (
+        {/* Header Right Actions */}
+        <View className="flex-row items-center gap-1.5 sm:gap-2">
+          {isLargePOS && (
+            <>
+              {isManagerOrAbove && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate(Routes.INVENTORY)}
+                  className={`flex-row items-center border px-3 py-1.5 rounded-xl ${
+                    isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <Boxes size={14} color="#34D399" />
+                  <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                    Kitchen Inventory
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
-                onPress={() => navigation.navigate(Routes.INVENTORY)}
-                className="flex-row items-center bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl"
+                onPress={() => navigation.navigate(Routes.ORDERS)}
+                className={`flex-row items-center border px-3 py-1.5 rounded-xl ${
+                  isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-100 border-slate-200'
+                }`}
               >
-                <Boxes size={14} color="#34D399" />
-                <Text className="text-slate-200 text-xs font-bold ml-1.5">Kitchen Inventory</Text>
+                <Receipt size={14} color={isDark ? '#CBD5E1' : '#475569'} />
+                <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                  Bill History
+                </Text>
               </TouchableOpacity>
-            )}
 
-            <TouchableOpacity
-              onPress={() => navigation.navigate(Routes.ORDERS)}
-              className="flex-row items-center bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl"
-            >
-              <Receipt size={14} color="#CBD5E1" />
-              <Text className="text-slate-200 text-xs font-bold ml-1.5">Bill History</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigation.navigate(Routes.SETTINGS)}
+                className={`flex-row items-center border px-3 py-1.5 rounded-xl ${
+                  isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-100 border-slate-200'
+                }`}
+              >
+                <Printer size={14} color={settings.ipAddress ? '#10B981' : '#F59E0B'} />
+                <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                  {settings.ipAddress ? 'Printer Connected' : 'Printer Offline'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
 
-            <TouchableOpacity
-              onPress={() => navigation.navigate(Routes.SETTINGS)}
-              className="flex-row items-center bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl"
-            >
-              <Printer size={14} color={settings.ipAddress ? '#10B981' : '#F59E0B'} />
-              <Text className="text-slate-200 text-xs font-bold ml-1.5">
-                {settings.ipAddress ? 'Printer Connected' : 'Printer Offline'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          {/* App-Wide Theme Toggle Button */}
+          <TouchableOpacity
+            onPress={toggleTheme}
+            className={`p-2 rounded-xl border ${
+              isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+            }`}
+            accessibilityLabel="Toggle Theme Mode"
+          >
+            {isDark ? <Sun size={17} color="#FBBF24" /> : <Moon size={17} color="#6366F1" />}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Unselected Branch Alert Banner */}
@@ -407,43 +441,43 @@ export const HomeScreen = () => {
                 {features.dineInEnabled !== false && (
                   features.tablesEnabled ? (
                     <TouchableOpacity
-                      className="flex-1 bg-gradient-to-br from-[#6A45F7] to-[#4F30D1] border border-indigo-400/40 p-4 rounded-3xl shadow-xl shadow-purple-500/30 justify-between min-h-[135px]"
+                      className="flex-1 bg-gradient-to-br from-[#6A45F7] to-[#4F30D1] border border-indigo-400/40 p-3.5 sm:p-4 rounded-3xl shadow-xl shadow-purple-500/30 justify-between min-h-[135px]"
                       activeOpacity={0.85}
                       onPress={() => navigation.navigate(Routes.TABLES)}
                       style={{ backgroundColor: '#5D3FD3' }}
                     >
                       <View className="flex-row items-center justify-between">
-                        <View className="w-11 h-11 rounded-2xl bg-white/15 items-center justify-center">
-                          <Utensils size={22} color="white" />
+                        <View className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/15 items-center justify-center">
+                          <Utensils size={20} color="white" />
                         </View>
-                        <View className="bg-black/25 px-2 py-0.5 rounded-lg border border-white/10">
-                          <Text className="text-purple-100 text-[10px] font-bold">
+                        <View className="bg-black/25 px-2 py-0.5 rounded-lg border border-white/10 shrink-0">
+                          <Text className="text-purple-100 text-[10px] font-bold" numberOfLines={1}>
                             {occupiedTablesCount} Busy • {availableTablesCount} Free
                           </Text>
                         </View>
                       </View>
                       <View>
-                        <Text className="text-white font-black text-xl">Dine In</Text>
-                        <Text className="text-purple-200 text-xs font-medium mt-0.5">Select Table Floor</Text>
+                        <Text className="text-white font-black text-lg sm:text-xl" numberOfLines={1}>Dine In</Text>
+                        <Text className="text-purple-200 text-xs font-medium mt-0.5" numberOfLines={1}>Select Table Floor</Text>
                       </View>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
-                      className="flex-1 bg-[#5D3FD3] border border-indigo-400/40 p-4 rounded-3xl shadow-xl shadow-purple-500/30 justify-between min-h-[135px]"
+                      className="flex-1 bg-[#5D3FD3] border border-indigo-400/40 p-3.5 sm:p-4 rounded-3xl shadow-xl shadow-purple-500/30 justify-between min-h-[135px]"
                       activeOpacity={0.85}
                       onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'DINE_IN' })}
                     >
                       <View className="flex-row items-center justify-between">
-                        <View className="w-11 h-11 rounded-2xl bg-white/15 items-center justify-center">
-                          <Utensils size={22} color="white" />
+                        <View className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/15 items-center justify-center">
+                          <Utensils size={20} color="white" />
                         </View>
-                        <View className="bg-black/25 px-2 py-0.5 rounded-lg border border-white/10">
-                          <Text className="text-purple-100 text-[10px] font-bold">Counter</Text>
+                        <View className="bg-black/25 px-2 py-0.5 rounded-lg border border-white/10 shrink-0">
+                          <Text className="text-purple-100 text-[10px] font-bold" numberOfLines={1}>Counter</Text>
                         </View>
                       </View>
                       <View>
-                        <Text className="text-white font-black text-xl">Dine In</Text>
-                        <Text className="text-purple-200 text-xs font-medium mt-0.5">Fast Direct Order</Text>
+                        <Text className="text-white font-black text-lg sm:text-xl" numberOfLines={1}>Dine In</Text>
+                        <Text className="text-purple-200 text-xs font-medium mt-0.5" numberOfLines={1}>Fast Direct Order</Text>
                       </View>
                     </TouchableOpacity>
                   )
@@ -451,21 +485,21 @@ export const HomeScreen = () => {
 
                 {features.pickupEnabled !== false && (
                   <TouchableOpacity
-                    className="flex-1 bg-slate-900 border border-slate-700/90 p-4 rounded-3xl shadow-xl shadow-black/40 justify-between min-h-[135px]"
+                    className="flex-1 bg-slate-900 border border-slate-700/90 p-3.5 sm:p-4 rounded-3xl shadow-xl shadow-black/40 justify-between min-h-[135px]"
                     activeOpacity={0.85}
                     onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'PICKUP' })}
                   >
                     <View className="flex-row items-center justify-between">
-                      <View className="w-11 h-11 rounded-2xl bg-slate-800 border border-slate-700 items-center justify-center">
-                        <ShoppingBag size={22} color="#818CF8" />
+                      <View className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-slate-800 border border-slate-700 items-center justify-center">
+                        <ShoppingBag size={20} color="#818CF8" />
                       </View>
-                      <View className="bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700">
-                        <Text className="text-indigo-300 text-[10px] font-bold">Parcel</Text>
+                      <View className="bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shrink-0">
+                        <Text className="text-indigo-300 text-[10px] font-bold" numberOfLines={1}>Parcel</Text>
                       </View>
                     </View>
                     <View>
-                      <Text className="text-white font-black text-xl">Pick Up</Text>
-                      <Text className="text-slate-400 text-xs font-medium mt-0.5">Takeaway Counter</Text>
+                      <Text className="text-white font-black text-lg sm:text-xl" numberOfLines={1}>Pick Up</Text>
+                      <Text className="text-slate-400 text-xs font-medium mt-0.5" numberOfLines={1}>Takeaway Counter</Text>
                     </View>
                   </TouchableOpacity>
                 )}

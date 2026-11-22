@@ -16,36 +16,32 @@ export const FloatingToast = () => {
     switch (type) {
       case 'error':
         return {
-          bg: 'bg-rose-950/95 border-rose-500/60 shadow-rose-500/30',
-          indicator: 'bg-rose-500',
-          titleColor: 'text-rose-200',
-          textColor: 'text-rose-100',
-          icon: <AlertTriangle size={20} color="#F43F5E" />,
+          bg: 'bg-slate-900 border-rose-500/40 shadow-rose-950/50',
+          titleColor: 'text-rose-400',
+          textColor: 'text-slate-300',
+          icon: <AlertTriangle size={18} color="#F43F5E" />,
         };
       case 'success':
         return {
-          bg: 'bg-emerald-950/95 border-emerald-500/60 shadow-emerald-500/30',
-          indicator: 'bg-emerald-500',
-          titleColor: 'text-emerald-200',
-          textColor: 'text-emerald-100',
-          icon: <CheckCircle size={20} color="#10B981" />,
+          bg: 'bg-slate-900 border-emerald-500/40 shadow-emerald-950/50',
+          titleColor: 'text-emerald-400',
+          textColor: 'text-slate-300',
+          icon: <CheckCircle size={18} color="#10B981" />,
         };
       case 'warning':
         return {
-          bg: 'bg-amber-950/95 border-amber-500/60 shadow-amber-500/30',
-          indicator: 'bg-amber-500',
-          titleColor: 'text-amber-200',
-          textColor: 'text-amber-100',
-          icon: <AlertCircle size={20} color="#F59E0B" />,
+          bg: 'bg-slate-900 border-amber-500/40 shadow-amber-950/50',
+          titleColor: 'text-amber-400',
+          textColor: 'text-slate-300',
+          icon: <AlertCircle size={18} color="#F59E0B" />,
         };
       case 'info':
       default:
         return {
-          bg: 'bg-indigo-950/95 border-indigo-500/60 shadow-indigo-500/30',
-          indicator: 'bg-indigo-500',
-          titleColor: 'text-indigo-200',
-          textColor: 'text-indigo-100',
-          icon: <Info size={20} color="#6366F1" />,
+          bg: 'bg-slate-900 border-indigo-500/40 shadow-indigo-950/50',
+          titleColor: 'text-indigo-400',
+          textColor: 'text-slate-300',
+          icon: <Info size={18} color="#818CF8" />,
         };
     }
   };
@@ -55,26 +51,27 @@ export const FloatingToast = () => {
   return (
     <View
       style={{
-        position: 'absolute',
+        position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
         bottom: Math.max(insets.bottom + 16, 24),
-        left: 16,
-        right: 16,
-        maxWidth: 520,
-        alignSelf: 'center',
+        left: 0,
+        right: 0,
+        alignItems: 'center',
         zIndex: 999999,
         elevation: 30,
         pointerEvents: 'box-none',
       }}
     >
       <View
-        className={`${theme.bg} border p-4 rounded-2xl shadow-2xl flex-row items-start backdrop-blur-xl`}
+        className={`${theme.bg} border p-3.5 sm:p-4 rounded-2xl shadow-2xl flex-row items-center backdrop-blur-xl mx-4`}
         style={{
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.5,
+          maxWidth: 480,
+          width: '100%',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.6,
           shadowRadius: 20,
         }}
       >
-        <View className="mr-3 mt-0.5">{theme.icon}</View>
+        <View className="mr-3">{theme.icon}</View>
 
         <View className="flex-1 mr-2">
           {Boolean(title) && (
@@ -82,7 +79,7 @@ export const FloatingToast = () => {
               {title}
             </Text>
           )}
-          <Text className={`${theme.textColor} text-xs font-semibold leading-relaxed`}>
+          <Text className={`${theme.textColor} text-xs font-medium leading-relaxed`}>
             {message}
           </Text>
 

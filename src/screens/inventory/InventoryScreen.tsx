@@ -370,15 +370,15 @@ export const InventoryScreen = () => {
         title="Kitchen Inventory & Store"
         subtitle="Bulk Loads, Kitchen Consumption & Live Ledger"
         rightElement={
-          <View className="flex-row items-center gap-2">
-
-
+          <View className="flex-row items-center gap-1.5 sm:gap-2 shrink-0">
             <TouchableOpacity
               onPress={() => setAddItemModalOpen(true)}
-              className="bg-emerald-600 px-3 py-1.5 rounded-xl flex-row items-center active:bg-emerald-700 shadow-md shadow-emerald-600/30"
+              className="bg-emerald-600 px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center active:bg-emerald-700 shadow-md shadow-emerald-600/30 shrink-0"
             >
               <Plus size={15} color="white" />
-              <Text className="text-white font-bold text-xs ml-1.5">+ New Item</Text>
+              <Text className="text-white font-bold text-xs ml-1" numberOfLines={1} ellipsizeMode="tail">
+                + New Item
+              </Text>
             </TouchableOpacity>
           </View>
         }

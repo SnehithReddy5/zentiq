@@ -302,14 +302,16 @@ export const BusinessProfileScreen = () => {
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
-            className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3.5 py-1.5 rounded-xl flex-row items-center shadow-md shadow-emerald-900/40"
+            className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-2.5 sm:px-3.5 py-1.5 rounded-xl flex-row items-center shadow-md shadow-emerald-900/40 shrink-0"
           >
             {isSaving ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
               <View className="flex-row items-center">
                 <Save size={14} color="white" />
-                <Text className="text-white font-bold text-xs ml-1.5">Save Settings</Text>
+                <Text className="text-white font-bold text-xs ml-1.5" numberOfLines={1} ellipsizeMode="tail">
+                  Save Settings
+                </Text>
               </View>
             )}
           </TouchableOpacity>

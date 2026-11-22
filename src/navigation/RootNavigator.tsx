@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/auth.store';
 import { useTenantStore } from '../store/tenant.store';
+import { useThemeStore } from '../store/theme.store';
 import { AuthNavigator } from './AuthNavigator';
 import { AppNavigator } from './AppNavigator';
 import { KitchenStockScreen } from '../screens/menu/KitchenStockScreen';
@@ -18,8 +19,6 @@ const GlobalOrderWatcher = () => {
 
 const Stack = createNativeStackNavigator();
 
-// Custom Dark Theme permanently sets the background canvas to #090D1A,
-// eliminating any white screen flicker during native back transitions.
 const CustomDarkTheme = {
   ...DarkTheme,
   colors: {
@@ -32,9 +31,23 @@ const CustomDarkTheme = {
   },
 };
 
+const CustomLightTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#F8FAFC',
+    card: '#FFFFFF',
+    text: '#0F172A',
+    border: '#E2E8F0',
+    notification: '#5D3FD3',
+  },
+};
+
 export const RootNavigator = () => {
   const { user, logout } = useAuthStore();
   const { tenant, subscribeToActiveTenant } = useTenantStore();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
 
   // Establish continuous real-time Firebase listeners on app startup across Android, iOS & Windows
   useEffect(() => {
@@ -89,12 +102,12 @@ export const RootNavigator = () => {
   const isKitchenStaff = user?.role === 'KITCHEN' || user?.role === 'KITCHEN_STAFF';
 
   return (
-    <NavigationContainer theme={CustomDarkTheme}>
+    <NavigationContainer theme={isDark ? CustomDarkTheme : CustomLightTheme}>
       {user && !isKitchenStaff && <GlobalOrderWatcher />}
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#090D1A' },
+          contentStyle: { backgroundColor: isDark ? '#090D1A' : '#F8FAFC' },
           animation: 'fade',
         }}
       >

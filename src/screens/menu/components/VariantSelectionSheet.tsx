@@ -226,9 +226,13 @@ export const VariantSelectionSheet: React.FC<VariantSelectionSheetProps> = ({
           <TouchableOpacity
             onPress={handleConfirm}
             disabled={!selectedVariant}
-            className="w-full py-4 rounded-2xl bg-[#5D3FD3] active:bg-[#4D32B8] flex-row items-center justify-center shadow-xl shadow-purple-500/30"
+            className="w-full py-4 px-3 rounded-2xl bg-[#5D3FD3] active:bg-[#4D32B8] flex-row items-center justify-center shadow-xl shadow-purple-500/30"
           >
-            <Text className="text-white font-black text-base tracking-wide">
+            <Text
+              className="text-white font-black text-xs sm:text-base tracking-wide shrink text-center"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
               Add to Order • ₹{totalPrice.toFixed(0)}
             </Text>
           </TouchableOpacity>

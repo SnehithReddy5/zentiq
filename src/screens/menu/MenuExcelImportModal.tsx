@@ -20,11 +20,38 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
   const isMobile = width < 640;
 
   const { tenant, activeLocationId } = useTenantStore();
-  const { items } = useMenuStore();
+  const { items, categories } = useMenuStore();
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isExportingLive, setIsExportingLive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+
+  // Download client's current live menu as editable Excel
+  const handleDownloadLiveMenu = async () => {
+    if (isExportingLive) return;
+    if (items.length === 0) {
+      toast.warning('No menu items available to download.', 'Empty Menu');
+      return;
+    }
+    setIsExportingLive(true);
+    try {
+      const res = await MenuExcelService.exportMenuToFile(
+        items,
+        categories,
+        tenant?.businessName || 'Zentiq',
+        'xlsx'
+      );
+      toast.success(
+        `Downloaded ${res.count} current items to ${res.filename}! Update prices in Excel and re-upload here.`,
+        'Current Menu Downloaded'
+      );
+    } catch (e: any) {
+      toast.error(`Download failed: ${e.message}`);
+    } finally {
+      setIsExportingLive(false);
+    }
+  };
 
   // 1. Download formatted template (Excel .xlsx or .csv)
   const handleDownloadTemplate = (format: 'xlsx' | 'csv' = 'xlsx') => {
@@ -189,35 +216,56 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
           <ScrollView className="flex-1 p-3.5 sm:p-5" showsVerticalScrollIndicator={true}>
             {/* Step 1 & Step 2 Action Grid */}
             <View className={`gap-3 mb-4 ${isMobile ? 'flex-col' : 'flex-row'}`}>
-              {/* Step 1: Download Template */}
+              {/* Step 1: Download Template or Live Menu */}
               <View className="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-3.5 sm:p-4 flex-col justify-between">
                 <View>
                   <View className="flex-row items-center gap-2 mb-1.5">
                     <View className="w-5 h-5 rounded-full bg-indigo-500/20 items-center justify-center">
                       <Text className="text-indigo-300 font-bold text-xs">1</Text>
                     </View>
-                    <Text className="text-white font-bold text-sm">Download Template</Text>
+                    <Text className="text-white font-bold text-sm">Download Menu / Template</Text>
                   </View>
                   <Text className="text-slate-400 text-[11px] leading-relaxed mb-3">
-                    Columns: <Text className="text-indigo-300 font-semibold">Category, Item Name, Price, Variants</Text>.
+                    Export your live menu to edit prices in bulk, or download a blank template.
                   </Text>
                 </View>
 
-                <View className="flex-row gap-2">
-                  <TouchableOpacity
-                    onPress={() => handleDownloadTemplate('xlsx')}
-                    className="flex-1 py-2.5 px-2.5 sm:px-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl flex-row items-center justify-center shadow-md shadow-indigo-600/20"
-                  >
-                    <Download size={14} color="white" />
-                    <Text className="text-white font-black text-xs ml-1.5">.XLSX Template</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleDownloadTemplate('csv')}
-                    className="py-2.5 px-3 bg-slate-700 hover:bg-slate-650 active:bg-slate-600 rounded-xl flex-row items-center justify-center"
-                  >
-                    <FileText size={14} color="#CBD5E1" />
-                    <Text className="text-slate-200 font-bold text-xs ml-1">.CSV</Text>
-                  </TouchableOpacity>
+                <View className="gap-2">
+                  {items.length > 0 && (
+                    <TouchableOpacity
+                      onPress={handleDownloadLiveMenu}
+                      disabled={isExportingLive}
+                      className="w-full py-2 px-3 bg-purple-600/30 hover:bg-purple-600/40 active:bg-purple-600/50 border border-purple-500/40 rounded-xl flex-row items-center justify-center shadow-sm"
+                    >
+                      {isExportingLive ? (
+                        <ActivityIndicator size="small" color="#C084FC" />
+                      ) : (
+                        <>
+                          <Download size={14} color="#C084FC" />
+                          <Text className="text-purple-200 font-bold text-xs ml-1.5" numberOfLines={1}>
+                            Download Live Menu ({items.length} Items)
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity
+                      onPress={() => handleDownloadTemplate('xlsx')}
+                      className="flex-1 py-2 px-2.5 sm:px-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-xl flex-row items-center justify-center shadow-md shadow-indigo-600/20"
+                    >
+                      <Download size={13} color="white" />
+                      <Text className="text-white font-bold text-xs ml-1.5">Blank .XLSX</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDownloadTemplate('csv')}
+                      className="py-2 px-3 bg-slate-700 hover:bg-slate-650 active:bg-slate-600 rounded-xl flex-row items-center justify-center"
+                    >
+                      <FileText size={13} color="#CBD5E1" />
+                      <Text className="text-slate-200 font-bold text-xs ml-1">.CSV</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
@@ -417,23 +465,25 @@ export const MenuExcelImportModal: React.FC<MenuExcelImportModalProps> = ({ isVi
             <TouchableOpacity
               onPress={onClose}
               disabled={isImporting}
-              className="flex-1 py-3 bg-slate-800 hover:bg-slate-750 active:bg-slate-700 rounded-2xl items-center justify-center"
+              className="flex-1 py-3 bg-slate-800 hover:bg-slate-750 active:bg-slate-700 rounded-2xl items-center justify-center px-2"
             >
-              <Text className="text-slate-300 font-bold text-sm">Cancel</Text>
+              <Text className="text-slate-300 font-bold text-xs sm:text-sm" numberOfLines={1} ellipsizeMode="tail">
+                Cancel
+              </Text>
             </TouchableOpacity>
 
             {parseResult && parseResult.validItems.length > 0 && (
               <TouchableOpacity
                 onPress={handleCommitImport}
                 disabled={isImporting}
-                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-2xl flex-row items-center justify-center shadow-lg shadow-emerald-600/30"
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 rounded-2xl flex-row items-center justify-center shadow-lg shadow-emerald-600/30 px-2"
               >
                 {isImporting ? (
                   <ActivityIndicator size="small" color="white" />
                 ) : (
                   <View className="flex-row items-center justify-center">
                     <CheckCircle2 size={16} color="white" />
-                    <Text className="text-white font-black text-sm ml-1.5">
+                    <Text className="text-white font-black text-xs sm:text-sm ml-1.5 shrink" numberOfLines={1} ellipsizeMode="tail">
                       Import {parseResult.validItems.length} Items
                     </Text>
                   </View>

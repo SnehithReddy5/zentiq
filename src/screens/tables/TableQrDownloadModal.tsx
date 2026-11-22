@@ -441,18 +441,18 @@ ${orderUrl}`,
           </View>
 
           {/* Action Buttons */}
-          <View className="flex-row items-center gap-2.5 mt-5">
+          <View className="flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 mt-4 sm:mt-5">
             <TouchableOpacity
               onPress={handleDownload}
               disabled={isGenerating || !qrSvg || isDownloading}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3.5 px-4 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-lg shadow-emerald-600/30"
+              className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 sm:py-3.5 px-3 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-lg shadow-emerald-600/30"
             >
               {isDownloading ? (
                 <ActivityIndicator size="small" color="white" />
               ) : (
                 <View className="flex-row items-center justify-center">
-                  <Download size={16} color="white" />
-                  <Text className="text-white font-black text-xs ml-2">
+                  <Download size={15} color="white" />
+                  <Text className="text-white font-black text-xs ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
                     Save / Share Table {selectedTableNo} QR
                   </Text>
                 </View>
@@ -461,10 +461,10 @@ ${orderUrl}`,
 
             <TouchableOpacity
               onPress={handleCopyLink}
-              className="bg-slate-800 border border-slate-700 py-3.5 px-4 rounded-2xl flex-row items-center justify-center active:opacity-80"
+              className="bg-slate-800 border border-slate-700 py-3 sm:py-3.5 px-4 rounded-2xl flex-row items-center justify-center active:opacity-80"
             >
-              {copied ? <Check size={16} color="#34D399" /> : <Copy size={16} color="#CBD5E1" />}
-              <Text className="text-slate-200 font-bold text-xs ml-2">
+              {copied ? <Check size={15} color="#34D399" /> : <Copy size={15} color="#CBD5E1" />}
+              <Text className="text-slate-200 font-bold text-xs ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
                 {copied ? 'Copied!' : 'Copy Link'}
               </Text>
             </TouchableOpacity>
@@ -474,10 +474,10 @@ ${orderUrl}`,
           {sortedTables.length > 1 && (
             <TouchableOpacity
               onPress={handleDownloadAll}
-              className="mt-2.5 bg-slate-800/80 border border-slate-700 py-3 px-4 rounded-2xl flex-row items-center justify-center active:opacity-80"
+              className="mt-2.5 bg-slate-800/80 border border-slate-700 py-3 px-3 rounded-2xl flex-row items-center justify-center active:opacity-80"
             >
               <Download size={14} color="#34D399" />
-              <Text className="text-emerald-400 font-bold text-xs ml-2">
+              <Text className="text-emerald-400 font-bold text-xs ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
                 Download All {sortedTables.length} Tables (Batch Standees)
               </Text>
             </TouchableOpacity>

@@ -19,11 +19,14 @@ import {
   ChevronRight,
   Printer,
   Sparkles,
-  ShieldAlert
+  ShieldAlert,
+  Sun,
+  Moon
 } from 'lucide-react-native';
 import { Routes } from '../../constants/routes';
 import { useAuthStore } from '../../store/auth.store';
 import { useTenantStore } from '../../store/tenant.store';
+import { useThemeStore } from '../../store/theme.store';
 import packageJson from '../../../package.json';
 
 interface HamburgerMenuProps {
@@ -36,6 +39,8 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
   const navigation = useNavigation<any>();
   const { logout, user } = useAuthStore();
   const { tenant, branding, features, getActiveLocation } = useTenantStore();
+  const { themeMode, toggleTheme } = useThemeStore();
+  const isDark = themeMode === 'dark';
 
   if (!isVisible) return null;
 
@@ -56,41 +61,104 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
     <Modal visible={isVisible} transparent animationType="fade">
       <View className="flex-1 flex-row">
         {/* Sidebar */}
-        <View className="w-4/5 max-w-[320px] bg-[#090D1A] border-r border-slate-800 p-6 justify-between" style={{ paddingTop: Math.max(insets.top, 24), paddingBottom: Math.max(insets.bottom, 24) }}>
+        <View
+          className={`w-4/5 max-w-[320px] border-r p-6 justify-between ${
+            isDark ? 'bg-[#090D1A] border-slate-800' : 'bg-white border-slate-200'
+          }`}
+          style={{ paddingTop: Math.max(insets.top, 24), paddingBottom: Math.max(insets.bottom, 24) }}
+        >
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Header Brand */}
-            <View className="flex-row items-center justify-between pb-6 border-b border-slate-800">
+            <View
+              className={`flex-row items-center justify-between pb-6 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}
+            >
               <View className="flex-row items-center flex-1 mr-2">
-                <View className="w-10 h-10 rounded-2xl bg-indigo-600 items-center justify-center mr-3 shadow-lg shadow-indigo-500/30">
+                <View className="w-10 h-10 rounded-2xl bg-[#5D3FD3] items-center justify-center mr-3 shadow-lg shadow-purple-500/30">
                   <Utensils size={20} color="white" />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-white font-black text-base" numberOfLines={1}>
+                  <Text
+                    className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}
+                    numberOfLines={1}
+                  >
                     {businessName}
                   </Text>
                   <View className="flex-row items-center mt-0.5">
-                    <MapPin size={11} color="#818CF8" />
+                    <MapPin size={11} color="#A855F7" />
                     <Text className="text-slate-400 text-xs ml-1" numberOfLines={1}>
                       {activeLocation?.name || 'No Branch Selected'}
                     </Text>
                   </View>
                 </View>
               </View>
-              <TouchableOpacity onPress={onClose} className="p-1.5 rounded-xl bg-slate-800">
-                <X size={18} color="#94A3B8" />
+              <TouchableOpacity
+                onPress={onClose}
+                className={`p-1.5 rounded-xl border ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                }`}
+              >
+                <X size={18} color={isDark ? '#94A3B8' : '#64748B'} />
               </TouchableOpacity>
             </View>
 
             {/* User Role Card */}
-            <View className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl my-4">
+            <View
+              className={`p-3.5 rounded-2xl my-4 border ${
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}
+            >
               <Text className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">Logged In Staff</Text>
-              <Text className="text-white font-bold text-sm mt-0.5">{user?.name || 'Staff'}</Text>
-              <View className="mt-1 bg-indigo-500/10 px-2 py-0.5 rounded self-start border border-indigo-500/20">
-                <Text className="text-indigo-400 text-[10px] font-bold">
+              <Text
+                className={`font-bold text-sm mt-0.5 ${
+                  isDark ? 'text-white' : 'text-slate-900'
+                }`}
+              >
+                {user?.name || 'Staff'}
+              </Text>
+              <View className="mt-1 bg-purple-500/10 px-2 py-0.5 rounded self-start border border-purple-500/20">
+                <Text className="text-purple-400 text-[10px] font-bold">
                   ROLE: {user?.role || 'WAITER'}
                 </Text>
               </View>
             </View>
+
+            {/* Theme Mode Switcher Tile */}
+            <TouchableOpacity
+              onPress={toggleTheme}
+              className={`flex-row items-center justify-between p-3 rounded-2xl mb-3 border ${
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <View className="flex-row items-center">
+                {isDark ? (
+                  <Sun size={18} color="#FBBF24" />
+                ) : (
+                  <Moon size={18} color="#6366F1" />
+                )}
+                <Text
+                  className={`text-sm font-semibold ml-3 ${
+                    isDark ? 'text-slate-200' : 'text-slate-800'
+                  }`}
+                >
+                  Theme Mode
+                </Text>
+              </View>
+              <View
+                className={`px-2 py-0.5 rounded-full ${
+                  isDark ? 'bg-amber-500/15' : 'bg-indigo-500/15'
+                }`}
+              >
+                <Text
+                  className={`text-[10px] font-bold ${
+                    isDark ? 'text-amber-400' : 'text-indigo-600'
+                  }`}
+                >
+                  {isDark ? '🌙 Dark' : '☀️ Light'}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
             {/* Navigation Items (Filtered by Role - Kitchen Staff gets 0 access to POS modules) */}
             {!isKitchenStaff && (
@@ -237,12 +305,18 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
           </ScrollView>
 
           {/* Logout Footer */}
-          <View className="pt-4 border-t border-slate-800">
+          <View className={`pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
             {/* App Version Row */}
             <View className="flex-row items-center justify-between px-2 pb-3 mb-1">
               <Text className="text-slate-500 text-xs font-medium">App Version</Text>
-              <View className="bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700/60">
-                <Text className="text-indigo-400 text-xs font-bold font-mono">v{packageJson.version}</Text>
+              <View
+                className={`px-2.5 py-0.5 rounded-full border ${
+                  isDark
+                    ? 'bg-slate-800/80 border-slate-700/60'
+                    : 'bg-slate-100 border-slate-200'
+                }`}
+              >
+                <Text className="text-purple-500 text-xs font-bold font-mono">v{packageJson.version}</Text>
               </View>
             </View>
 

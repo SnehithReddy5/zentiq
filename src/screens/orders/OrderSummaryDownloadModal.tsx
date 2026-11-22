@@ -385,19 +385,23 @@ const OrderSummaryDownloadModalInner: React.FC<OrderSummaryDownloadModalProps> =
                   {isExporting ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <View className="flex-row items-center">
-                      <Download size={17} color="white" />
-                      <Text className="text-white font-bold text-sm ml-2">Download Today's Report (.xlsx)</Text>
+                    <View className="flex-row items-center px-2">
+                      <Download size={16} color="white" />
+                      <Text className="text-white font-bold text-xs sm:text-sm ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
+                        Download Today's Report (.xlsx)
+                      </Text>
                     </View>
                   )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={handleShareWhatsAppToday}
-                  className="w-full mt-2.5 py-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
+                  className="w-full mt-2.5 py-3 px-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
                 >
                   <MessageSquare size={16} color="white" />
-                  <Text className="text-white font-bold text-xs sm:text-sm ml-2">Share Today via WhatsApp (Free)</Text>
+                  <Text className="text-white font-bold text-xs sm:text-sm ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
+                    Share Today via WhatsApp (Free)
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -484,19 +488,23 @@ const OrderSummaryDownloadModalInner: React.FC<OrderSummaryDownloadModalProps> =
                   {isExporting ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <View className="flex-row items-center">
-                      <Download size={17} color="white" />
-                      <Text className="text-white font-bold text-sm ml-2">Download Last Month Report (.xlsx)</Text>
+                    <View className="flex-row items-center px-2">
+                      <Download size={16} color="white" />
+                      <Text className="text-white font-bold text-xs sm:text-sm ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
+                        Download Last Month Report (.xlsx)
+                      </Text>
                     </View>
                   )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={handleShareWhatsAppLastMonth}
-                  className="w-full mt-2.5 py-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
+                  className="w-full mt-2.5 py-3 px-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
                 >
                   <MessageSquare size={16} color="white" />
-                  <Text className="text-white font-bold text-xs sm:text-sm ml-2">Share Last Month via WhatsApp (Free)</Text>
+                  <Text className="text-white font-bold text-xs sm:text-sm ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
+                    Share Last Month via WhatsApp (Free)
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -613,19 +621,23 @@ const OrderSummaryDownloadModalInner: React.FC<OrderSummaryDownloadModalProps> =
                   {isExporting ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <View className="flex-row items-center">
-                      <Download size={17} color="white" />
-                      <Text className="text-white font-bold text-sm ml-2">Download Custom Range Report (.xlsx)</Text>
+                    <View className="flex-row items-center px-2">
+                      <Download size={16} color="white" />
+                      <Text className="text-white font-bold text-xs sm:text-sm ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
+                        Download Custom Range Report (.xlsx)
+                      </Text>
                     </View>
                   )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={handleShareWhatsAppCustom}
-                  className="w-full mt-2.5 py-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
+                  className="w-full mt-2.5 py-3 px-3 bg-[#25D366] rounded-2xl flex-row items-center justify-center active:bg-[#1EBE5D] shadow-md shadow-emerald-900/30"
                 >
                   <MessageSquare size={16} color="white" />
-                  <Text className="text-white font-bold text-xs sm:text-sm ml-2">Share Custom Period via WhatsApp (Free)</Text>
+                  <Text className="text-white font-bold text-xs sm:text-sm ml-2 shrink" numberOfLines={1} ellipsizeMode="tail">
+                    Share Custom Period via WhatsApp (Free)
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}

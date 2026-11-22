@@ -416,14 +416,14 @@ export const CentralKitchenScreen = () => {
         title="Central Kitchen Hub"
         subtitle="B2B Bulk Food Supply & Orders"
         rightElement={
-          <View className="flex-row items-center gap-2">
+          <View className="flex-row items-center gap-1.5 sm:gap-2 shrink-0">
             {ckProfile && (
               <TouchableOpacity
                 onPress={handleCopyPartnerCode}
-                className="bg-indigo-600/20 border border-indigo-500/40 px-3 py-1.5 rounded-xl flex-row items-center"
+                className="bg-indigo-600/20 border border-indigo-500/40 px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center shrink-0"
               >
                 <ShieldCheck size={14} color="#818CF8" />
-                <Text className="text-indigo-300 font-mono font-bold text-xs ml-1.5">
+                <Text className="text-indigo-300 font-mono font-bold text-xs ml-1.5" numberOfLines={1} ellipsizeMode="tail">
                   {copiedCode ? 'Copied!' : ckProfile.partnerCode}
                 </Text>
               </TouchableOpacity>
@@ -432,10 +432,12 @@ export const CentralKitchenScreen = () => {
             {activeTab === 'MENU' && (
               <TouchableOpacity
                 onPress={handleOpenAddItem}
-                className="bg-emerald-600 px-3 py-1.5 rounded-xl flex-row items-center shadow-md shadow-emerald-600/30"
+                className="bg-emerald-600 px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center shadow-md shadow-emerald-600/30 shrink-0"
               >
                 <Plus size={14} color="white" />
-                <Text className="text-white font-bold text-xs ml-1">New Item</Text>
+                <Text className="text-white font-bold text-xs ml-1" numberOfLines={1} ellipsizeMode="tail">
+                  New Item
+                </Text>
               </TouchableOpacity>
             )}
           </View>

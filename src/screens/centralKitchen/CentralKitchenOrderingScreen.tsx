@@ -307,22 +307,26 @@ export const CentralKitchenOrderingScreen = () => {
         title="Central Kitchen Ordering"
         subtitle={connectedCK ? `Supplied by: ${connectedCK.businessName}` : 'Connect & Order Bulk Prepared Food'}
         rightElement={
-          <View className="flex-row items-center gap-2">
+          <View className="flex-row items-center gap-1.5 sm:gap-2 shrink-0">
             {connectedCK ? (
               <TouchableOpacity
                 onPress={() => setConnectModalOpen(true)}
-                className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl flex-row items-center"
+                className="bg-slate-800 border border-slate-700 px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center shrink-0"
               >
                 <Store size={14} color="#CBD5E1" />
-                <Text className="text-slate-300 font-bold text-xs ml-1.5">Change Kitchen</Text>
+                <Text className="text-slate-300 font-bold text-xs ml-1.5" numberOfLines={1} ellipsizeMode="tail">
+                  Change Kitchen
+                </Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 onPress={() => setConnectModalOpen(true)}
-                className="bg-[#5D3FD3] px-3.5 py-1.5 rounded-xl flex-row items-center shadow-md shadow-indigo-600/30"
+                className="bg-[#5D3FD3] px-2.5 sm:px-3.5 py-1.5 rounded-xl flex-row items-center shadow-md shadow-indigo-600/30 shrink-0"
               >
                 <ShieldCheck size={14} color="white" />
-                <Text className="text-white font-bold text-xs ml-1.5">Connect Partner</Text>
+                <Text className="text-white font-bold text-xs ml-1.5" numberOfLines={1} ellipsizeMode="tail">
+                  Connect Partner
+                </Text>
               </TouchableOpacity>
             )}
 

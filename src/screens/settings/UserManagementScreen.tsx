@@ -147,11 +147,13 @@ export const UserManagementScreen = () => {
         subtitle={`${users.length} staff accounts • Branch access restricted`}
         rightElement={
           <TouchableOpacity
-            className="bg-[#5D3FD3] px-3 py-1.5 rounded-xl flex-row items-center"
+            className="bg-[#5D3FD3] px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center shrink-0"
             onPress={openAddModal}
           >
-            <Plus size={16} color="white" />
-            <Text className="text-white font-bold text-xs ml-1">Add Staff</Text>
+            <Plus size={15} color="white" />
+            <Text className="text-white font-bold text-xs ml-1" numberOfLines={1} ellipsizeMode="tail">
+              Add Staff
+            </Text>
           </TouchableOpacity>
         }
       />

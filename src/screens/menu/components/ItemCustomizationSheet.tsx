@@ -373,13 +373,17 @@ export const ItemCustomizationSheet: React.FC<ItemCustomizationSheetProps> = ({
             <TouchableOpacity
               onPress={handleConfirm}
               disabled={Boolean(validationError)}
-              className={`flex-1 py-3.5 rounded-2xl flex-row items-center justify-center shadow-xl ${
+              className={`flex-1 py-3.5 px-3 rounded-2xl flex-row items-center justify-center shadow-xl ${
                 validationError
                   ? 'bg-slate-800 border border-slate-700 opacity-50'
                   : 'bg-[#5D3FD3] active:bg-[#4D32B8] shadow-purple-500/30'
               }`}
             >
-              <Text className="text-white font-black text-base">
+              <Text
+                className="text-white font-black text-xs sm:text-base shrink text-center"
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 Add to Order • ₹{totalPrice.toFixed(0)}
               </Text>
             </TouchableOpacity>

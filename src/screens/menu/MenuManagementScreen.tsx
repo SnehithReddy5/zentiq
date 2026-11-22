@@ -2,7 +2,7 @@ import { toast } from '../../utils/toast';
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check, Package, Scale, Layers, MoreVertical, Ban, CheckCircle2 } from 'lucide-react-native';
+import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check, Package, Scale, Layers, MoreVertical, Ban, CheckCircle2, Download } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
@@ -10,6 +10,7 @@ import { useMenuStore } from '../../store/menu.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { DBServices } from '../../services/firebase/db';
 import { MenuExcelImportModal } from './MenuExcelImportModal';
+import { MenuExcelService } from '../../services/excel/menuExcel.service';
 import { MenuItem, MenuItemVariant, ItemInteractionType, CustomizationGroup, getItemInteractionType } from '../../types/menu.types';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 
@@ -27,6 +28,7 @@ export const MenuManagementScreen = () => {
   const [isManageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [isItemModalOpen, setItemModalOpen] = useState(false);
   const [isExcelModalOpen, setExcelModalOpen] = useState(false);
+  const [isExportingMenu, setIsExportingMenu] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -92,6 +94,33 @@ export const MenuManagementScreen = () => {
       }
     } catch (e: any) {
       toast.error(e.message, 'Category Error');
+    }
+  };
+
+  // Download client's current live menu as Excel template
+  const handleDownloadMenu = async () => {
+    if (isExportingMenu) return;
+    if (items.length === 0) {
+      toast.warning('No menu items available to download.', 'Empty Menu');
+      return;
+    }
+    setIsExportingMenu(true);
+    try {
+      const res = await MenuExcelService.exportMenuToFile(
+        items,
+        categories,
+        tenant?.businessName || 'Zentiq',
+        'xlsx'
+      );
+      toast.success(
+        `Downloaded ${res.count} menu items to ${res.filename}! You can edit prices or details and re-upload via Import Excel.`,
+        'Menu Exported'
+      );
+    } catch (e: any) {
+      console.error('Menu download error:', e);
+      toast.error(`Failed to download menu: ${e.message}`, 'Export Error');
+    } finally {
+      setIsExportingMenu(false);
     }
   };
 
@@ -393,22 +422,44 @@ export const MenuManagementScreen = () => {
         title="Menu Management"
         subtitle={`${items.length} Items • ${categories.length} Categories • ${favoriteCount} Favorites`}
         rightElement={
-          <View className="flex-row items-center gap-2">
+          <View className="flex-row items-center gap-1.5 sm:gap-2">
             <TouchableOpacity
-              onPress={() => setExcelModalOpen(true)}
-              className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3.5 py-1.5 rounded-xl flex-row items-center shadow-sm"
+              onPress={handleDownloadMenu}
+              disabled={isExportingMenu}
+              className="bg-indigo-600/20 hover:bg-indigo-600/30 active:bg-indigo-600/40 border border-indigo-500/40 px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center shadow-sm shrink-0"
               activeOpacity={0.8}
             >
-              <FileSpreadsheet size={15} color="white" />
-              <Text className="text-white font-bold text-xs ml-1.5">Import Excel</Text>
+              {isExportingMenu ? (
+                <ActivityIndicator size="small" color="#818CF8" />
+              ) : (
+                <>
+                  <Download size={14} color="#818CF8" />
+                  <Text className="text-indigo-300 font-bold text-xs ml-1 sm:ml-1.5" numberOfLines={1} ellipsizeMode="tail">
+                    {isPhone ? 'Export' : 'Download Menu'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setExcelModalOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-2.5 sm:px-3.5 py-1.5 rounded-xl flex-row items-center shadow-sm shrink-0"
+              activeOpacity={0.8}
+            >
+              <FileSpreadsheet size={14} color="white" />
+              <Text className="text-white font-bold text-xs ml-1 sm:ml-1.5" numberOfLines={1} ellipsizeMode="tail">
+                Import Excel
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={openAddItemModal}
-              className="bg-[#5D3FD3] px-3 py-1.5 rounded-xl flex-row items-center"
+              className="bg-[#5D3FD3] px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center shrink-0"
             >
               <Plus size={15} color="white" />
-              <Text className="text-white font-bold text-xs ml-1">Add Item</Text>
+              <Text className="text-white font-bold text-xs ml-1" numberOfLines={1} ellipsizeMode="tail">
+                Add Item
+              </Text>
             </TouchableOpacity>
           </View>
         }

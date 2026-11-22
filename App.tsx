@@ -14,15 +14,19 @@ import { NativeWindStyleSheet } from 'nativewind';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { FloatingToast } from './src/components/common/FloatingToast';
 import { ConfirmModal } from './src/components/common/ConfirmModal';
+import { useThemeStore } from './src/store/theme.store';
 
 NativeWindStyleSheet.setOutput({
   default: 'native',
 });
 
 export default function App() {
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
+
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
+      <StatusBar style={isDark ? "light" : "dark"} />
       <RootNavigator />
       <FloatingToast />
       <ConfirmModal />

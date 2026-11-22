@@ -25,11 +25,11 @@ export const Button: React.FC<ButtonProps> = ({
   let baseClasses = 'flex-row justify-center items-center rounded-xl shadow-sm ';
 
   if (size === 'sm') {
-    baseClasses += 'py-2 px-3 ';
+    baseClasses += 'py-2 px-2.5 sm:px-3 ';
   } else if (size === 'lg') {
-    baseClasses += 'py-4 px-6 ';
+    baseClasses += 'py-3.5 sm:py-4 px-4 sm:px-6 ';
   } else {
-    baseClasses += 'py-3.5 px-4 ';
+    baseClasses += 'py-2.5 sm:py-3.5 px-3 sm:px-4 ';
   }
 
   let variantClasses = '';
@@ -60,7 +60,7 @@ export const Button: React.FC<ButtonProps> = ({
     defaultTextColor = 'text-gray-500 font-semibold ';
   }
 
-  const textSize = size === 'sm' ? 'text-xs' : size === 'lg' ? 'text-lg' : 'text-base';
+  const textSize = size === 'sm' ? 'text-xs' : size === 'lg' ? 'text-base sm:text-lg' : 'text-xs sm:text-sm';
 
   return (
     <TouchableOpacity
@@ -73,7 +73,11 @@ export const Button: React.FC<ButtonProps> = ({
       {isLoading ? (
         <ActivityIndicator color={variant === 'outline' ? '#5D3FD3' : 'white'} />
       ) : (
-        <Text className={`${defaultTextColor} ${textSize} text-center ${textClassName}`}>
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          className={`${defaultTextColor} ${textSize} text-center shrink ${textClassName}`}
+        >
           {title}
         </Text>
       )}

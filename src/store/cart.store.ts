@@ -93,6 +93,7 @@ const syncRunningOrderToFirestore = (tableNo: number, cartItems: CartItem[]) => 
   if (tableNo === 0) return;
   try {
     const { useOrderStore } = require('./order.store');
+    const { useTableStore } = require('./table.store');
     const tenantId = useTenantStore.getState().tenant?.id;
     const locationId = useTenantStore.getState().activeLocationId;
     const runningOrder = useOrderStore.getState().orders.find(
@@ -109,27 +110,47 @@ const syncRunningOrderToFirestore = (tableNo: number, cartItems: CartItem[]) => 
         selectedOptions: i.selectedOptions || null,
         customizationKey: i.customizationKey || null,
         note: i.note || '',
-        sentQty: Math.min(Number(i.sentQty ?? 0), i.qty),
+        sentQty: typeof i.sentQty === 'number' ? Math.min(i.sentQty, i.qty) : 0,
       }));
       const newTotal = firestoreItems.reduce((s, i) => s + (i.price * i.qty), 0);
 
       // 1. Immediately update local order store optimistically so memory has fresh items
+      // When items or quantities change, reset billPrinted to false so a fresh bill can be printed
       const currentOrders = useOrderStore.getState().orders;
       const updatedOrders = currentOrders.map((o: any) =>
         o.id === runningOrder.id
-          ? { ...o, items: firestoreItems, totalAmount: newTotal, subtotal: newTotal }
+          ? {
+              ...o,
+              items: firestoreItems,
+              totalAmount: newTotal,
+              subtotal: newTotal,
+              billPrinted: false,
+              billNo: null,
+            }
           : o
       );
       useOrderStore.setState({ orders: updatedOrders });
 
-      // 2. Persist to Firestore
+      // 2. Persist to Firestore: order items + reset billPrinted
       const { DBServices } = require('../services/firebase/db');
       DBServices.updateOrder(runningOrder.id, {
         items: firestoreItems,
         totalAmount: newTotal,
         subtotal: newTotal,
+        billPrinted: false,
+        billNo: null,
       }, tenantId, runningOrder.locationId || locationId || undefined).catch((err: any) => {
         console.warn('Failed to sync cart changes to running order:', err);
+      });
+
+      // 3. Clear billPrinted on table document in Firestore & tableStore
+      DBServices.updateTableBillPrinted(tableNo, false, undefined, tenantId, locationId || undefined).catch(() => {});
+      useTableStore.setState({
+        tables: useTableStore.getState().tables.map((t: any) =>
+          Number(t.tableNo) === Number(tableNo)
+            ? { ...t, status: 'running', billPrinted: false, billNo: null }
+            : t
+        )
       });
     }
   } catch (err) {
@@ -203,6 +224,19 @@ export const useCartStore = create<CartState>()(
         const currentCarts = get().carts;
         const rawTableCart = currentCarts[tableNo] || [];
 
+        // If local cart is currently empty (e.g. freshly opening this table), initialize directly
+        if (rawTableCart.length === 0) {
+          if (confirmedItems.length > 0) {
+            set({
+              carts: {
+                ...currentCarts,
+                [tableNo]: consolidateCartItems(confirmedItems),
+              }
+            });
+          }
+          return;
+        }
+
         // 1. First consolidate any duplicate rows that might already exist in tableCart
         const consolidatedLocal = consolidateCartItems(rawTableCart);
 
@@ -218,7 +252,7 @@ export const useCartStore = create<CartState>()(
           if (!item || !item.itemId) continue;
           const key = getCartItemKey(item);
           const confQty = item.qty || 1;
-          const confSentQty = typeof item.sentQty === 'number' ? item.sentQty : 0;
+          const confSentQty = typeof item.sentQty === 'number' ? item.sentQty : confQty;
 
           if (!confirmedMap.has(key)) {
             confirmedMap.set(key, {
@@ -233,37 +267,36 @@ export const useCartStore = create<CartState>()(
           }
         }
 
-        // 2. Build merged cart: exactly ONE entry per item/variant
+        // 2. Build merged cart:
+        // Local user edits are authoritative for quantities.
         const merged: CartItem[] = [];
 
-        // Add confirmed items (merging in any unsent local additions)
-        for (const [key, confItem] of confirmedMap.entries()) {
-          const localItem = localMap.get(key);
-          if (localItem) {
-            // Respect the local user's edited quantity; preserve local sentQty strictly
+        for (const [key, localItem] of localMap.entries()) {
+          const confItem = confirmedMap.get(key);
+          if (confItem) {
+            // Keep localItem.qty; preserve sentQty from confItem or localItem
             merged.push({
               ...confItem,
               ...localItem,
               qty: localItem.qty,
-              sentQty: Math.min(Number(localItem.sentQty ?? confItem.sentQty ?? 0), localItem.qty),
+              sentQty: typeof confItem.sentQty === 'number' ? confItem.sentQty : (localItem.sentQty || 0),
               note: localItem.note || confItem.note || '',
             });
           } else {
-            // Confirmed item from running order (e.g. initial load, QR order, or other device)
-            merged.push({
-              ...confItem,
-              sentQty: Number(confItem.sentQty ?? 0),
-            });
+            // Unconfirmed draft addition not yet in running order
+            merged.push({ ...localItem });
           }
         }
 
-        // Add pure draft items that have not yet been placed into the confirmed order
-        for (const [key, localItem] of localMap.entries()) {
-          if (!confirmedMap.has(key)) {
-            merged.push({
-              ...localItem,
-              sentQty: Number(localItem.sentQty ?? 0),
-            });
+        // Only add items from confirmedMap that were added externally (e.g. from customer QR self-order)
+        for (const [key, confItem] of confirmedMap.entries()) {
+          if (!localMap.has(key)) {
+            if ((confItem as any).isQRItem || (confItem as any).source === 'QR') {
+              merged.push({
+                ...confItem,
+                sentQty: Number(confItem.sentQty ?? 0),
+              });
+            }
           }
         }
 
@@ -302,6 +335,25 @@ export const useCartStore = create<CartState>()(
         debounceSyncCart(tableNo, newItems);
         // Also update the running order in Firestore so added items persist
         syncRunningOrderToFirestore(tableNo, newItems);
+
+        // Ensure table status is set to 'running' in local store and Firestore
+        if (tableNo !== 0) {
+          try {
+            const { useTableStore } = require('./table.store');
+            const tables = useTableStore.getState().tables;
+            const targetTable = tables.find((t: any) => Number(t.tableNo) === Number(tableNo));
+            if (targetTable && targetTable.status !== 'running') {
+              useTableStore.setState({
+                tables: tables.map((t: any) =>
+                  Number(t.tableNo) === Number(tableNo) ? { ...t, status: 'running' } : t
+                )
+              });
+              const tenantId = useTenantStore.getState().tenant?.id;
+              const locationId = useTenantStore.getState().activeLocationId;
+              DBServices.updateTableStatusByNo(tableNo, 'running', tenantId, locationId || undefined).catch(() => {});
+            }
+          } catch (_) {}
+        }
       },
       removeItem: (tableNo, itemId, variantId, customizationKey) => {
         recordLocalWrite(tableNo);
@@ -361,7 +413,8 @@ export const useCartStore = create<CartState>()(
             if (checkItemMatches(i) && !updated) {
               updated = true;
               const currentSent = typeof i.sentQty === 'number' ? i.sentQty : 0;
-              return { ...i, qty, sentQty: Math.min(currentSent, qty) };
+              // Preserve original sentQty baseline so decreasing and increasing does not falsely trigger Send KOT
+              return { ...i, qty, sentQty: currentSent };
             }
             return i;
           });

@@ -35,6 +35,7 @@ import {
   Tag
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
+import { useThemeStore } from '../../store/theme.store';
 import { useOrderStore } from '../../store/order.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
@@ -99,6 +100,8 @@ const OrderCard = React.memo(({
   isLowest,
   onPress
 }: OrderCardProps) => {
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
   const isRunning = item.status === 'running' || item.status === 'RUNNING';
   const itemsList = item.items || [];
   const displayedItems = itemsList.slice(0, 2);
@@ -109,14 +112,14 @@ const OrderCard = React.memo(({
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={() => onPress(item)}
-      className={`p-4 rounded-3xl m-1.5 justify-between active:bg-slate-850 ${
+      className={`p-4 rounded-3xl m-1.5 justify-between shadow-sm border ${
         isRunning && item.billRequested
-          ? 'bg-amber-950/30 border-2 border-amber-400 shadow-lg shadow-amber-500/20'
+          ? 'bg-amber-500/20 border-2 border-amber-400 shadow-lg shadow-amber-500/20'
           : isHighest
-          ? 'bg-slate-900 border-2 border-emerald-500'
+          ? isDark ? 'bg-slate-900 border-2 border-emerald-500' : 'bg-emerald-50 border-2 border-emerald-500'
           : isLowest
-          ? 'bg-slate-900 border-2 border-rose-500'
-          : 'bg-slate-900 border border-slate-800 hover:border-slate-700'
+          ? isDark ? 'bg-slate-900 border-2 border-rose-500' : 'bg-rose-50 border-2 border-rose-400'
+          : isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
         }`}
       style={{ flex: 1 / ordersGridColumns }}
     >
@@ -151,7 +154,7 @@ const OrderCard = React.memo(({
         {/* Header Row: Table/Type pill, KOT, Status, and Total */}
         <View className="flex-row items-start justify-between mb-2">
           <View className="flex-1 mr-2 flex-row items-center flex-wrap gap-1.5">
-            <Text className="text-white font-black text-base">
+            <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
               {item.orderType === 'ONLINE_ZOMATO'
                 ? '🔴 Zomato'
                 : item.orderType === 'ONLINE_SWIGGY'
@@ -642,6 +645,8 @@ export const RunningOrdersScreen = () => {
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
   const { ordersGridColumns, isLargePOS } = useResponsiveLayout();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
   const isClientAdmin = user?.role === 'CLIENT_ADMIN' || user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'admin';
   const isPaymentsEnabled = features?.paymentsEnabled !== false;
 
@@ -1311,7 +1316,7 @@ export const RunningOrdersScreen = () => {
   }, [timeScope, stats.todayHighestId, stats.highestOrderId, stats.todayLowestId, stats.lowestOrderId, filteredOrders.length, ordersGridColumns]);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-slate-50'}`}>
       <Header
         title="Orders History"
         subtitle={timeScope === 'TODAY' ? `${todayOrders.length} Today's Orders` : stats.totalOrdersCount > filteredOrders.length ? `Showing latest ${filteredOrders.length} of ${stats.totalOrdersCount} Total Orders` : `${stats.totalOrdersCount} Total Orders`}
@@ -1321,7 +1326,7 @@ export const RunningOrdersScreen = () => {
             className="bg-emerald-600 px-3 py-1.5 rounded-xl flex-row items-center active:bg-emerald-700 shadow-md shadow-emerald-600/30"
           >
             <FileSpreadsheet size={15} color="white" />
-            <Text className="text-white font-bold text-xs ml-1.5">Download Summary</Text>
+            <Text className="text-white font-bold text-xs ml-1.5" numberOfLines={1}>Download Summary</Text>
           </TouchableOpacity>
         }
       />
@@ -1340,7 +1345,7 @@ export const RunningOrdersScreen = () => {
       )}
 
       {/* Top Filter & Search Bar */}
-      <View className="bg-slate-900 border-b border-slate-800 px-4 py-3 gap-2.5">
+      <View className={`border-b px-4 py-3 gap-2.5 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
         {/* Branch Selector Pill if Multi-Branch */}
         {locations.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingBottom: 2 }}>
@@ -1348,10 +1353,10 @@ export const RunningOrdersScreen = () => {
               onPress={() => setSelectedLocationId('ALL')}
               className={`px-3 py-1 rounded-full border ${selectedLocationId === 'ALL'
                 ? 'bg-[#5D3FD3] border-purple-500'
-                : 'bg-slate-800 border-slate-700'
+                : isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
                 }`}
             >
-              <Text className={`text-xs font-bold ${selectedLocationId === 'ALL' ? 'text-white' : 'text-slate-400'}`}>
+              <Text className={`text-xs font-bold ${selectedLocationId === 'ALL' ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 All Branches
               </Text>
             </TouchableOpacity>
@@ -1362,10 +1367,10 @@ export const RunningOrdersScreen = () => {
                 onPress={() => setSelectedLocationId(loc.id)}
                 className={`px-3 py-1 rounded-full border ${selectedLocationId === loc.id
                   ? 'bg-[#5D3FD3] border-purple-500'
-                  : 'bg-slate-800 border-slate-700'
+                  : isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
                   }`}
               >
-                <Text className={`text-xs font-bold ${selectedLocationId === loc.id ? 'text-white' : 'text-slate-400'}`}>
+                <Text className={`text-xs font-bold ${selectedLocationId === loc.id ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   {loc.name}
                 </Text>
               </TouchableOpacity>
@@ -1374,14 +1379,16 @@ export const RunningOrdersScreen = () => {
         )}
 
         {/* Full-Width Search Input */}
-        <View className="flex-row items-center bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5">
-          <Search size={16} color="#94A3B8" />
+        <View className={`flex-row items-center border rounded-2xl px-3.5 py-2.5 ${
+          isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+        }`}>
+          <Search size={16} color={isDark ? '#94A3B8' : '#64748B'} />
           <TextInput
             placeholder="Search by Bill #, KOT #, Table, Item, or Cashier..."
-            placeholderTextColor="#64748B"
+            placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
             value={search}
             onChangeText={setSearch}
-            className="flex-1 text-white text-xs ml-2 py-0"
+            className={`flex-1 text-xs ml-2 py-0 ${isDark ? 'text-white' : 'text-slate-900'}`}
             returnKeyType="search"
             autoCorrect={false}
           />

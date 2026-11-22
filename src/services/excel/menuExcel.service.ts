@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { Platform } from 'react-native';
 
 export interface ExcelMenuRow {
   Category: string;
@@ -206,6 +207,120 @@ export class MenuExcelService {
       console.warn('Native sharing fallback error:', nativeErr);
     }
     return false;
+  }
+
+  /**
+   * Generates and downloads an Excel spreadsheet containing the client's current live menu
+   * using the exact template format that parseMenuExcel accepts for re-importing.
+   */
+  static async exportMenuToFile(
+    items: any[],
+    categories: any[],
+    businessName: string = 'Restaurant',
+    format: 'xlsx' | 'csv' = 'xlsx'
+  ): Promise<{ count: number; filename: string }> {
+    const catMap: Record<string, string> = {};
+    (categories || []).forEach(c => {
+      if (c && c.id) {
+        catMap[c.id] = c.name;
+      }
+    });
+
+    const rows: ExcelMenuRow[] = [];
+
+    (items || []).forEach(item => {
+      const categoryName = catMap[item.categoryId] || 'General';
+      const hasVariants = Boolean(item.variants && item.variants.length > 0);
+      const isItemActive = item.isAvailable !== false && item.active !== false;
+
+      if (hasVariants) {
+        item.variants.forEach((v: any) => {
+          rows.push({
+            Category: categoryName,
+            'Item Name': item.name,
+            Price: Number(item.price ?? v.price ?? 0),
+            'Has Variant': 'YES',
+            'Variant Name': v.name || '',
+            'Variant Price': Number(v.price ?? 0),
+            Active: (isItemActive && v.active !== false) ? 'YES' : 'NO',
+            SKU: item.sku || '',
+          });
+        });
+      } else {
+        rows.push({
+          Category: categoryName,
+          'Item Name': item.name,
+          Price: Number(item.price ?? 0),
+          'Has Variant': 'NO',
+          'Variant Name': '',
+          'Variant Price': '',
+          Active: isItemActive ? 'YES' : 'NO',
+          SKU: item.sku || '',
+        });
+      }
+    });
+
+    const finalData = rows.length > 0 ? rows : this.getSampleRows();
+    const worksheet = XLSX.utils.json_to_sheet(finalData);
+
+    worksheet['!cols'] = [
+      { wch: 22 }, // Category
+      { wch: 28 }, // Item Name
+      { wch: 12 }, // Price
+      { wch: 14 }, // Has Variant
+      { wch: 20 }, // Variant Name
+      { wch: 14 }, // Variant Price
+      { wch: 10 }, // Active
+      { wch: 14 }, // SKU
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Menu Items');
+
+    const fileType = format === 'csv' ? 'csv' : 'xlsx';
+    const cleanBusiness = (businessName || 'Zentiq').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `${cleanBusiness}_menu_${dateStr}.${fileType}`;
+
+    // Download / Save Handling
+    if (Platform.OS === 'web' || (typeof window !== 'undefined' && (window as any).document)) {
+      const mime = format === 'csv'
+        ? 'text/csv;charset=utf-8;'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const buffer = XLSX.write(workbook, { type: 'array', bookType: fileType });
+      const blob = new Blob([buffer], { type: mime });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } else {
+      // Native Mobile (Android / iOS)
+      try {
+        const FileSystem = require('expo-file-system');
+        const Sharing = require('expo-sharing');
+        const base64Data = XLSX.write(workbook, { type: 'base64', bookType: fileType });
+        const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: `Export ${businessName} Menu`,
+            UTI: 'com.microsoft.excel.xlsx',
+          });
+        }
+      } catch (nativeErr) {
+        console.warn('Native menu export error:', nativeErr);
+      }
+    }
+
+    return { count: rows.length, filename };
   }
 
   /**

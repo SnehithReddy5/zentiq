@@ -15,6 +15,7 @@ import { useTenantStore } from '../../store/tenant.store';
 import { usePrinterStore } from '../../store/printer.store';
 import { useToastStore } from '../../store/toast.store';
 import { useAuthStore } from '../../store/auth.store';
+import { useThemeStore } from '../../store/theme.store';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { DBServices } from '../../services/firebase/db';
 import { printerService } from '../../services/printer/printer.service';
@@ -35,6 +36,8 @@ export const CartScreen = () => {
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
   const { isLargePOS } = useResponsiveLayout();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
 
   const cartItems = useMemo(() => consolidateCartItems(carts[tableNo] || []), [carts, tableNo]);
 
@@ -583,7 +586,7 @@ export const CartScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-slate-50'}`}>
       <Header
         title={tableNo === 0 ? 'Pick Up Checkout' : ('Table ' + tableNo + ' Bill Settlement')}
         subtitle={'Total: ₹' + cartTotal.toFixed(2) + ' • ' + totalUnits + ' item' + (totalUnits === 1 ? '' : 's')}
@@ -603,11 +606,21 @@ export const CartScreen = () => {
         <View className={isLargePOS ? 'flex-row gap-6 items-start' : ''}>
           {/* Left Panel (50% on desktop): Order Summary and Item Details */}
           <View className={isLargePOS ? 'flex-1' : ''}>
-            <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-              <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
-                <Text className="text-white font-black text-base">Order Breakdown</Text>
+            <View
+              className={`p-5 rounded-3xl mb-5 shadow-md border ${
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+              }`}
+            >
+              <View
+                className={`flex-row items-center justify-between pb-3 border-b ${
+                  isDark ? 'border-slate-800' : 'border-slate-200'
+                }`}
+              >
+                <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Order Breakdown
+                </Text>
                 <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-lg border border-purple-500/30">
-                  <Text className="text-purple-300 font-bold text-xs">
+                  <Text className="text-purple-400 font-bold text-xs">
                     {orderType === 'PICKUP' ? 'Pick Up' : (orderType === 'COUNTER' ? 'Quick Counter' : ('Table ' + tableNo))}
                   </Text>
                 </View>
@@ -615,16 +628,21 @@ export const CartScreen = () => {
 
               <View className="mt-3">
                 {cartItems.map((item, idx) => (
-                  <View key={`${item.itemId || 'cart'}-${item.variantName || ''}-${idx}`} className="flex-row justify-between py-2 border-b border-slate-800/60 last:border-b-0">
+                  <View
+                    key={`${item.itemId || 'cart'}-${item.variantName || ''}-${idx}`}
+                    className={`flex-row justify-between py-2 border-b ${
+                      isDark ? 'border-slate-800/60' : 'border-slate-100'
+                    } last:border-b-0`}
+                  >
                     <View className="flex-1 mr-3">
-                      <Text className="text-white text-xs font-semibold">
+                      <Text className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         {item.qty}x {getBaseItemName(item.itemName, item.variantName)}
                       </Text>
                       {item.variantName && (
                         <Text className="text-slate-400 text-[11px]">{item.variantName}</Text>
                       )}
                       {item.selectedOptions && item.selectedOptions.length > 0 && (
-                        <Text className="text-purple-300 text-[11px] mt-0.5">
+                        <Text className="text-purple-400 text-[11px] mt-0.5">
                           + {item.selectedOptions.map(o => o.optionName).join(', ')}
                         </Text>
                       )}
@@ -634,7 +652,7 @@ export const CartScreen = () => {
                         </Text>
                       ) : null}
                     </View>
-                    <Text className="text-purple-300 font-bold text-xs">
+                    <Text className="text-purple-400 font-bold text-xs">
                       ₹{(item.price * item.qty).toFixed(2)}
                     </Text>
                   </View>
@@ -642,12 +660,14 @@ export const CartScreen = () => {
               </View>
 
               {/* Total Calculation */}
-              <View className="pt-4 mt-3 border-t border-slate-800">
+              <View className={`pt-4 mt-3 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                 <View className="flex-row justify-between py-1">
                   <Text className="text-slate-400 text-xs">
                     {gstEnabled && gstType === 'INCLUSIVE' ? 'Subtotal (Excl. Tax)' : 'Subtotal'}
                   </Text>
-                  <Text className="text-slate-300 font-bold text-xs">₹{subtotal.toFixed(2)}</Text>
+                  <Text className={`font-bold text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    ₹{subtotal.toFixed(2)}
+                  </Text>
                 </View>
 
                 {gstEnabled ? (
@@ -674,26 +694,28 @@ export const CartScreen = () => {
 
                 {/* Discount Field (Enabled for Biller and above only) */}
                 {isBillerOrAbove && (
-                  <View className="py-2.5 my-1 border-t border-b border-slate-800/80">
+                  <View className={`py-2.5 my-1 border-t border-b ${isDark ? 'border-slate-800/80' : 'border-slate-200'}`}>
                     <View className="flex-row items-center justify-between">
                       <View className="flex-row items-center">
                         <Tag size={13} color="#A855F7" />
-                        <Text className="text-purple-300 font-bold text-xs ml-1.5">
+                        <Text className="text-purple-400 font-bold text-xs ml-1.5">
                           Discount (₹)
                         </Text>
                       </View>
-                      <View className="flex-row items-center bg-slate-950 border border-purple-500/40 rounded-xl px-2.5 py-1 w-28">
+                      <View className={`flex-row items-center rounded-xl px-2.5 py-1 w-28 border ${
+                        isDark ? 'bg-slate-950 border-purple-500/40' : 'bg-slate-50 border-purple-300'
+                      }`}>
                         <Text className="text-purple-400 font-bold text-xs mr-1">₹</Text>
                         <TextInput
                           placeholder="0"
-                          placeholderTextColor="#64748B"
+                          placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                           keyboardType="numeric"
                           value={discountText}
                           onChangeText={(val) => {
                             const cleaned = val.replace(/[^0-9.]/g, '');
                             setDiscountText(cleaned);
                           }}
-                          className="text-white font-bold text-xs flex-1 p-0"
+                          className={`font-bold text-xs flex-1 p-0 ${isDark ? 'text-white' : 'text-slate-900'}`}
                         />
                         {Number(discountText) > 0 && (
                           <TouchableOpacity onPress={() => setDiscountText('')}>
@@ -704,7 +726,7 @@ export const CartScreen = () => {
                     </View>
                     {discountAmount > 0 && (
                       <View className="flex-row justify-between items-center mt-1.5">
-                        <Text className="text-slate-500 text-[10px]">Discount Applied</Text>
+                        <Text className="text-slate-400 text-[10px]">Discount Applied</Text>
                         <Text className="text-purple-400 font-bold text-xs">
                           -₹{discountAmount.toFixed(2)}
                         </Text>
@@ -713,9 +735,9 @@ export const CartScreen = () => {
                   </View>
                 )}
 
-                <View className="flex-row justify-between pt-3 mt-1 border-t border-slate-800/80 items-center">
-                  <Text className="text-white font-black text-base">Grand Total</Text>
-                  <Text className="text-emerald-400 font-black text-xl">₹{cartTotal.toFixed(2)}</Text>
+                <View className={`flex-row justify-between pt-3 mt-1 border-t items-center ${isDark ? 'border-slate-800/80' : 'border-slate-200'}`}>
+                  <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>Grand Total</Text>
+                  <Text className="text-emerald-500 font-black text-xl">₹{cartTotal.toFixed(2)}</Text>
                 </View>
               </View>
             </View>
@@ -723,28 +745,36 @@ export const CartScreen = () => {
 
           {/* Right Panel: Pure KOT Mode OR Dynamic Payment Settlement */}
           <View className={isLargePOS ? 'w-[480px]' : ''}>
-            <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
+            <View className={`p-5 rounded-3xl mb-5 shadow-md border ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+            }`}>
 
               {/* CASE 1: PURE KOT MODE (Payments Disabled in Store Settings) */}
               {!paymentsEnabled || activePaymentMethods.length === 0 ? (
                 <View>
-                  <View className="flex-row items-center justify-between pb-3 mb-4 border-b border-slate-800">
+                  <View className={`flex-row items-center justify-between pb-3 mb-4 border-b ${
+                    isDark ? 'border-slate-800' : 'border-slate-200'
+                  }`}>
                     <View className="flex-row items-center">
                       <Utensils size={20} color="#F59E0B" />
-                      <Text className="text-white font-black text-base ml-2">Kitchen KOT Dispatch</Text>
+                      <Text className={`font-black text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Kitchen KOT Dispatch</Text>
                     </View>
                     <View className="px-2.5 py-0.5 rounded-full border bg-amber-500/10 border-amber-500/30">
-                      <Text className="text-amber-400 text-[10px] font-bold">Payments Disabled</Text>
+                      <Text className="text-amber-500 text-[10px] font-bold">Payments Disabled</Text>
                     </View>
                   </View>
 
-                  <View className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800 mb-5">
-                    <Text className="text-slate-300 text-xs leading-relaxed">
+                  <View className={`p-4 rounded-2xl border mb-5 ${
+                    isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <Text className={`text-xs leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                       Payment collection is currently turned OFF in Store Settings. Tapping below will print the kitchen ticket and create an active running order without collecting payment.
                     </Text>
-                    <View className="flex-row items-center justify-between mt-3 pt-3 border-t border-slate-850">
+                    <View className={`flex-row items-center justify-between mt-3 pt-3 border-t ${
+                      isDark ? 'border-slate-850' : 'border-slate-200'
+                    }`}>
                       <Text className="text-slate-400 text-xs font-semibold">Order Total:</Text>
-                      <Text className="text-white font-black text-lg">₹{cartTotal.toFixed(2)}</Text>
+                      <Text className={`font-black text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>₹{cartTotal.toFixed(2)}</Text>
                     </View>
                   </View>
 
@@ -753,7 +783,7 @@ export const CartScreen = () => {
                     disabled={isSettling || cartItems.length === 0}
                     className={`w-full py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
                       ? 'bg-amber-500 shadow-amber-500/30 active:opacity-90'
-                      : 'bg-slate-800 opacity-60'
+                      : isDark ? 'bg-slate-800 opacity-60' : 'bg-slate-200 opacity-60'
                       }`}
                   >
                     {isSettling ? (
@@ -773,7 +803,9 @@ export const CartScreen = () => {
                 <View>
                   {/* Payment Mode Segmented Tab (Only shown if split payments are enabled) */}
                   {allowSplit && (
-                    <View className="flex-row bg-slate-950 p-1 rounded-2xl mb-5 border border-slate-800">
+                    <View className={`flex-row p-1 rounded-2xl mb-5 border ${
+                      isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+                    }`}>
                       <TouchableOpacity
                         onPress={() => setPaymentMode('FULL')}
                         className={`flex-1 py-2 rounded-xl items-center ${paymentMode === 'FULL' ? 'bg-[#5D3FD3]' : 'bg-transparent'
@@ -813,20 +845,25 @@ export const CartScreen = () => {
                           return (
                             <TouchableOpacity
                               key={m}
-                              className={`flex-1 min-w-[90px] p-3 rounded-2xl border items-center ${isSelected ? 'bg-purple-950/60 border-[#5D3FD3]' : 'bg-slate-800/80 border-slate-700'
-                                }`}
+                              className={`flex-1 min-w-[90px] p-3 rounded-2xl border items-center ${
+                                isSelected
+                                  ? 'bg-purple-950/60 border-[#5D3FD3]'
+                                  : isDark
+                                    ? 'bg-slate-800/80 border-slate-700'
+                                    : 'bg-slate-100 border-slate-200'
+                              }`}
                               onPress={() => setSelectedMethod(m)}
                             >
                               {m === 'CASH' ? (
-                                <Banknote size={22} color={isSelected ? '#A78BFA' : '#94A3B8'} />
+                                <Banknote size={22} color={isSelected ? '#A78BFA' : (isDark ? '#94A3B8' : '#64748B')} />
                               ) : m === 'UPI' ? (
-                                <Smartphone size={22} color={isSelected ? '#A78BFA' : '#94A3B8'} />
+                                <Smartphone size={22} color={isSelected ? '#A78BFA' : (isDark ? '#94A3B8' : '#64748B')} />
                               ) : m === 'CARD' ? (
-                                <CreditCard size={22} color={isSelected ? '#A78BFA' : '#94A3B8'} />
+                                <CreditCard size={22} color={isSelected ? '#A78BFA' : (isDark ? '#94A3B8' : '#64748B')} />
                               ) : (
-                                <HelpCircle size={22} color={isSelected ? '#A78BFA' : '#94A3B8'} />
+                                <HelpCircle size={22} color={isSelected ? '#A78BFA' : (isDark ? '#94A3B8' : '#64748B')} />
                               )}
-                              <Text className="text-white font-bold text-xs mt-1.5" numberOfLines={1}>
+                              <Text className={`font-bold text-xs mt-1.5 ${isDark ? 'text-white' : 'text-slate-800'}`} numberOfLines={1}>
                                 {m}
                               </Text>
                             </TouchableOpacity>
@@ -836,50 +873,64 @@ export const CartScreen = () => {
 
                       {/* Cash Return Change Calculator (if Cash is selected) */}
                       {selectedMethod === 'CASH' && (
-                        <View className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 mb-4">
+                        <View className={`p-3.5 rounded-2xl border mb-4 ${
+                          isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                        }`}>
                           <View className="mb-2.5">
                             <Text className="text-slate-400 text-xs font-semibold mb-2">Cash Handed by Customer:</Text>
                             <View className="flex-row flex-wrap gap-2 mb-2">
                               <TouchableOpacity
                                 onPress={() => setCashTendered(cartTotal.toFixed(0))}
-                                className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 active:bg-slate-700"
+                                className={`px-3 py-1.5 rounded-xl border ${
+                                  isDark ? 'bg-slate-800 border-slate-700 active:bg-slate-700' : 'bg-slate-200 border-slate-300 active:bg-slate-300'
+                                }`}
                               >
-                                <Text className="text-purple-300 text-xs font-bold">Exact (₹{cartTotal.toFixed(0)})</Text>
+                                <Text className="text-purple-400 text-xs font-bold">Exact (₹{cartTotal.toFixed(0)})</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => setCashTendered('500')}
-                                className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 active:bg-slate-700"
+                                className={`px-3 py-1.5 rounded-xl border ${
+                                  isDark ? 'bg-slate-800 border-slate-700 active:bg-slate-700' : 'bg-slate-200 border-slate-300 active:bg-slate-300'
+                                }`}
                               >
-                                <Text className="text-slate-200 text-xs font-bold">₹500</Text>
+                                <Text className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>₹500</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => setCashTendered('1000')}
-                                className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 active:bg-slate-700"
+                                className={`px-3 py-1.5 rounded-xl border ${
+                                  isDark ? 'bg-slate-800 border-slate-700 active:bg-slate-700' : 'bg-slate-200 border-slate-300 active:bg-slate-300'
+                                }`}
                               >
-                                <Text className="text-slate-200 text-xs font-bold">₹1000</Text>
+                                <Text className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>₹1000</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => setCashTendered('2000')}
-                                className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 active:bg-slate-700"
+                                className={`px-3 py-1.5 rounded-xl border ${
+                                  isDark ? 'bg-slate-800 border-slate-700 active:bg-slate-700' : 'bg-slate-200 border-slate-300 active:bg-slate-300'
+                                }`}
                               >
-                                <Text className="text-slate-200 text-xs font-bold">₹2000</Text>
+                                <Text className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>₹2000</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
 
                           <TextInput
                             placeholder={`e.g. ${cartTotal.toFixed(0)}`}
-                            placeholderTextColor="#64748B"
+                            placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                             keyboardType="numeric"
                             value={cashTendered}
                             onChangeText={setCashTendered}
-                            className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-sm"
+                            className={`border rounded-xl px-3 py-2 font-bold text-sm ${
+                              isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                            }`}
                           />
 
                           {parseFloat(cashTendered) > cartTotal && (
-                            <View className="flex-row justify-between items-center mt-2 pt-2 border-t border-slate-850">
-                              <Text className="text-amber-400 font-bold text-xs">Return Change:</Text>
-                              <Text className="text-amber-400 font-black text-sm">
+                            <View className={`flex-row justify-between items-center mt-2 pt-2 border-t ${
+                              isDark ? 'border-slate-850' : 'border-slate-200'
+                            }`}>
+                              <Text className="text-amber-500 font-bold text-xs">Return Change:</Text>
+                              <Text className="text-amber-500 font-black text-sm">
                                 ₹{(parseFloat(cashTendered) - cartTotal).toFixed(2)}
                               </Text>
                             </View>
@@ -888,121 +939,89 @@ export const CartScreen = () => {
                       )}
 
                       {/* Summary Card */}
-                      <View className="bg-slate-950/40 p-3 rounded-2xl border border-slate-800/80 mb-5 flex-row justify-between items-center">
-                        <Text className="text-slate-400 text-xs">Full Payment via <Text className="text-white font-bold">{selectedMethod}</Text></Text>
-                        <Text className="text-emerald-400 font-black text-lg">₹{cartTotal.toFixed(2)}</Text>
+                      <View className={`p-3 rounded-2xl border mb-5 flex-row justify-between items-center ${
+                        isDark ? 'bg-slate-950/40 border-slate-800/80' : 'bg-slate-100 border-slate-200'
+                      }`}>
+                        <Text className="text-slate-400 text-xs">Full Payment via <Text className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedMethod}</Text></Text>
+                        <Text className="text-emerald-500 font-black text-lg">₹{cartTotal.toFixed(2)}</Text>
                       </View>
 
-                      {/* CTA Action Buttons */}
-                      {tableNo !== 0 ? (
-                        <View className="flex-row gap-3">
-                          {/* Button 1: Print Bill Only (Dispatches thermal print; leaves table running) */}
-                          <TouchableOpacity
-                            onPress={handlePrintBillOnly}
-                            disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
-                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
-                              ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
-                              : 'bg-slate-850 border-slate-800 opacity-50'
-                              }`}
-                          >
-                            {isPrintingBillOnly ? (
-                              <ActivityIndicator size="small" color="#A5B4FC" />
-                            ) : (
-                              <View className="flex-row items-center">
-                                <Printer size={18} color="#A5B4FC" />
-                                <Text className="text-indigo-200 font-black text-sm ml-2">
-                                  Print Bill
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
+                      {/* CTA Action Buttons - Responsive Mobile Stacking (Same Settle & Print in Pick Up and Dine In) */}
+                      <View className="flex-col sm:flex-row gap-2.5 sm:gap-3">
+                        {/* Button 1: Print Bill Only (Dispatches thermal print; leaves table running for dine-in) */}
+                        <TouchableOpacity
+                          onPress={handlePrintBillOnly}
+                          disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
+                          className={`flex-1 py-3.5 sm:py-4 px-3 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
+                            ? isDark ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700' : 'bg-indigo-50 border-indigo-300 active:bg-indigo-100'
+                            : isDark ? 'bg-slate-850 border-slate-800 opacity-50' : 'bg-slate-100 border-slate-200 opacity-50'
+                            }`}
+                        >
+                          {isPrintingBillOnly ? (
+                            <ActivityIndicator size="small" color="#6366F1" />
+                          ) : (
+                            <View className="flex-row items-center">
+                              <Printer size={16} color={isDark ? '#A5B4FC' : '#4F46E5'} />
+                              <Text
+                                className={`font-black text-xs sm:text-sm ml-2 ${isDark ? 'text-indigo-200' : 'text-indigo-700'}`}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                Print Bill
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
 
-                          {/* Button 2: Save & Settle Table (Saves order, records payment, frees table) */}
-                          <TouchableOpacity
-                            onPress={() => handleSaveAndSettle(false)}
-                            disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
-                            className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
-                              ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
-                              : 'bg-slate-800 opacity-60'
-                              }`}
-                          >
-                            {isSettling ? (
-                              <ActivityIndicator size="small" color="white" />
-                            ) : (
-                              <View className="flex-row items-center">
-                                <CheckCircle2 size={18} color="white" />
-                                <Text className="text-white font-black text-sm ml-2">
-                                  Save & Settle
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View className="flex-row gap-3">
-                          {/* Takeaway/Counter: Print Bill Preview */}
-                          <TouchableOpacity
-                            onPress={handlePrintBillOnly}
-                            disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
-                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
-                              ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
-                              : 'bg-slate-850 border-slate-800 opacity-50'
-                              }`}
-                          >
-                            {isPrintingBillOnly ? (
-                              <ActivityIndicator size="small" color="#A5B4FC" />
-                            ) : (
-                              <View className="flex-row items-center">
-                                <Printer size={18} color="#A5B4FC" />
-                                <Text className="text-indigo-200 font-black text-sm ml-2">
-                                  Print Bill
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-
-                          {/* Takeaway/Counter: Settle & Print Bill */}
-                          <TouchableOpacity
-                            onPress={() => handleSaveAndSettle(true)}
-                            disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
-                            className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
-                              ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
-                              : 'bg-slate-800 opacity-60'
-                              }`}
-                          >
-                            {isSettling ? (
-                              <ActivityIndicator size="small" color="white" />
-                            ) : (
-                              <View className="flex-row items-center">
-                                <Printer size={18} color="white" />
-                                <Text className="text-white font-black text-sm ml-2">
-                                  Settle & Print (₹{cartTotal.toFixed(2)})
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                        {/* Button 2: Settle & Save Bill (Settles payment and saves order to cloud without printing) */}
+                        <TouchableOpacity
+                          onPress={() => handleSaveAndSettle(false)}
+                          disabled={isSettling || isPrintingBillOnly || cartItems.length === 0}
+                          className={`flex-1 sm:flex-[1.3] py-3.5 sm:py-4 px-3 rounded-2xl items-center justify-center flex-row shadow-lg ${cartItems.length > 0
+                            ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                            : isDark ? 'bg-slate-800 opacity-60' : 'bg-slate-200 opacity-60'
+                            }`}
+                        >
+                          {isSettling ? (
+                            <ActivityIndicator size="small" color="white" />
+                          ) : (
+                            <View className="flex-row items-center">
+                              <CheckCircle2 size={16} color="white" />
+                              <Text
+                                className="text-white font-black text-xs sm:text-sm ml-2"
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                Settle & Save (₹{cartTotal.toFixed(2)})
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   ) : (
                     /* MODE B: SPLIT PAYMENT (MULTI-TENDER LEDGER) */
                     <View>
                       {/* Ledger Balance Strip */}
                       <View className="flex-row gap-2 mb-4">
-                        <View className="flex-1 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 items-center">
-                          <Text className="text-slate-500 text-[10px] uppercase font-bold">Total Bill</Text>
-                          <Text className="text-white font-black text-sm mt-0.5">₹{cartTotal.toFixed(2)}</Text>
+                        <View className={`flex-1 p-2.5 rounded-2xl border items-center ${
+                          isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+                        }`}>
+                          <Text className="text-slate-400 text-[10px] uppercase font-bold">Total Bill</Text>
+                          <Text className={`font-black text-sm mt-0.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>₹{cartTotal.toFixed(2)}</Text>
                         </View>
-                        <View className="flex-1 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 items-center">
-                          <Text className="text-slate-500 text-[10px] uppercase font-bold">Recorded</Text>
+                        <View className={`flex-1 p-2.5 rounded-2xl border items-center ${
+                          isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+                        }`}>
+                          <Text className="text-slate-400 text-[10px] uppercase font-bold">Recorded</Text>
                           <Text className="text-indigo-400 font-black text-sm mt-0.5">₹{totalPaid.toFixed(2)}</Text>
                         </View>
                         <View className={`flex-1 p-2.5 rounded-2xl border items-center ${remaining === 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-amber-500/10 border-amber-500/30'
                           }`}>
-                          <Text className={`text-[10px] uppercase font-bold ${remaining === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          <Text className={`text-[10px] uppercase font-bold ${remaining === 0 ? 'text-emerald-500' : 'text-amber-500'}`}>
                             {remaining === 0 ? 'Balance' : 'Remaining'}
                           </Text>
-                          <Text className={`font-black text-sm mt-0.5 ${remaining === 0 ? 'text-emerald-300' : 'text-amber-300'}`}>
+                          <Text className={`font-black text-sm mt-0.5 ${remaining === 0 ? 'text-emerald-500' : 'text-amber-500'}`}>
                             ₹{remaining.toFixed(2)}
                           </Text>
                         </View>
@@ -1010,7 +1029,9 @@ export const CartScreen = () => {
 
                       {/* Add Split Section (only if balance remains) */}
                       {remaining > 0 && (
-                        <View className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 mb-4">
+                        <View className={`p-3.5 rounded-2xl border mb-4 ${
+                          isDark ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                        }`}>
                           <Text className="text-slate-400 text-xs font-bold mb-2">Record Part Payment:</Text>
 
                           {/* Dynamic Split Method Selector */}
@@ -1019,10 +1040,15 @@ export const CartScreen = () => {
                               <TouchableOpacity
                                 key={m}
                                 onPress={() => setSelectedMethod(m)}
-                                className={`flex-1 min-w-[70px] py-1.5 rounded-xl border items-center ${selectedMethod === m ? 'bg-purple-950/60 border-[#5D3FD3]' : 'bg-slate-800 border-slate-700'
-                                  }`}
+                                className={`flex-1 min-w-[70px] py-1.5 rounded-xl border items-center ${
+                                  selectedMethod === m
+                                    ? 'bg-purple-950/60 border-[#5D3FD3]'
+                                    : isDark
+                                      ? 'bg-slate-800 border-slate-700'
+                                      : 'bg-slate-100 border-slate-300'
+                                }`}
                               >
-                                <Text className={`text-[11px] font-bold ${selectedMethod === m ? 'text-purple-300' : 'text-slate-400'}`}>
+                                <Text className={`text-[11px] font-bold ${selectedMethod === m ? 'text-purple-400' : 'text-slate-400'}`}>
                                   {m}
                                 </Text>
                               </TouchableOpacity>
@@ -1031,15 +1057,17 @@ export const CartScreen = () => {
 
                           {/* Part Amount Input & Add Button */}
                           <View className="flex-row gap-2 items-center">
-                            <View className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 flex-row items-center">
+                            <View className={`flex-1 border rounded-xl px-3 py-2 flex-row items-center ${
+                              isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-300'
+                            }`}>
                               <Text className="text-slate-400 font-bold mr-1">₹</Text>
                               <TextInput
                                 placeholder="0.00"
-                                placeholderTextColor="#64748B"
+                                placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                                 keyboardType="numeric"
                                 value={paymentAmount}
                                 onChangeText={setPaymentAmount}
-                                className="flex-1 text-white font-bold text-sm"
+                                className={`flex-1 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}
                               />
                             </View>
                             <TouchableOpacity
@@ -1054,18 +1082,22 @@ export const CartScreen = () => {
 
                       {/* Recorded Splits History List */}
                       {payments.length > 0 && (
-                        <View className="bg-slate-950/50 border border-slate-800 p-3 rounded-2xl mb-4">
+                        <View className={`border p-3 rounded-2xl mb-4 ${
+                          isDark ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50 border-slate-200'
+                        }`}>
                           <Text className="text-slate-400 text-[11px] font-bold uppercase mb-2">
                             Recorded Split Parts ({payments.length}):
                           </Text>
                           {payments.map((p, idx) => (
-                            <View key={idx} className="flex-row justify-between items-center py-1.5 border-b border-slate-850 last:border-b-0">
+                            <View key={idx} className={`flex-row justify-between items-center py-1.5 border-b ${
+                              isDark ? 'border-slate-850' : 'border-slate-200'
+                            } last:border-b-0`}>
                               <View className="flex-row items-center">
                                 <CheckCircle2 size={13} color="#10B981" />
-                                <Text className="text-slate-200 text-xs font-semibold ml-1.5">{p.method}</Text>
+                                <Text className={`text-xs font-semibold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{p.method}</Text>
                               </View>
                               <View className="flex-row items-center gap-2">
-                                <Text className="text-emerald-400 font-bold text-xs">₹{p.amount.toFixed(2)}</Text>
+                                <Text className="text-emerald-500 font-bold text-xs">₹{p.amount.toFixed(2)}</Text>
                                 <TouchableOpacity
                                   onPress={() => handleRemovePayment(idx)}
                                   className="p-1 rounded bg-rose-500/20"
@@ -1078,96 +1110,58 @@ export const CartScreen = () => {
                         </View>
                       )}
 
-                      {/* CTA Action Buttons */}
-                      {tableNo !== 0 ? (
-                        <View className="flex-row gap-3">
-                          {/* Button 1: Print Bill Only */}
-                          <TouchableOpacity
-                            onPress={handlePrintBillOnly}
-                            disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
-                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
-                              ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
-                              : 'bg-slate-850 border-slate-800 opacity-50'
-                              }`}
-                          >
-                            {isPrintingBillOnly ? (
-                              <ActivityIndicator size="small" color="#A5B4FC" />
-                            ) : (
-                              <View className="flex-row items-center">
-                                <Printer size={18} color="#A5B4FC" />
-                                <Text className="text-indigo-200 font-black text-sm ml-2">
-                                  Print Bill
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
+                      {/* CTA Action Buttons - Responsive Mobile Stacking (Same Settle & Print in Pick Up and Dine In) */}
+                      <View className="flex-col sm:flex-row gap-2.5 sm:gap-3">
+                        {/* Button 1: Print Bill Only */}
+                        <TouchableOpacity
+                          onPress={handlePrintBillOnly}
+                          disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
+                          className={`flex-1 py-3.5 sm:py-4 px-3 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
+                            ? isDark ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700' : 'bg-indigo-50 border-indigo-300 active:bg-indigo-100'
+                            : isDark ? 'bg-slate-850 border-slate-800 opacity-50' : 'bg-slate-100 border-slate-200 opacity-50'
+                            }`}
+                        >
+                          {isPrintingBillOnly ? (
+                            <ActivityIndicator size="small" color="#6366F1" />
+                          ) : (
+                            <View className="flex-row items-center">
+                              <Printer size={16} color={isDark ? '#A5B4FC' : '#4F46E5'} />
+                              <Text
+                                className={`font-black text-xs sm:text-sm ml-2 ${isDark ? 'text-indigo-200' : 'text-indigo-700'}`}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                Print Bill
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
 
-                          {/* Button 2: Save & Settle Table */}
-                          <TouchableOpacity
-                            onPress={() => handleSaveAndSettle(false)}
-                            disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
-                            className={`flex-[1.25] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${remaining === 0 && cartItems.length > 0
-                              ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
-                              : 'bg-slate-800 opacity-60'
-                              }`}
-                          >
-                            {isSettling ? (
-                              <ActivityIndicator size="small" color="white" />
-                            ) : (
-                              <View className="flex-row items-center">
-                                <CheckCircle2 size={18} color="white" />
-                                <Text className="text-white font-black text-sm ml-2">
-                                  {remaining === 0 ? 'Save & Settle' : `Pending ₹${remaining.toFixed(2)}`}
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View className="flex-row gap-3">
-                          {/* Takeaway/Counter: Print Bill Preview */}
-                          <TouchableOpacity
-                            onPress={handlePrintBillOnly}
-                            disabled={isPrintingBillOnly || isSettling || cartItems.length === 0}
-                            className={`flex-1 py-4 rounded-2xl items-center justify-center flex-row border ${cartItems.length > 0
-                              ? 'bg-slate-800 border-indigo-500/50 active:bg-slate-700'
-                              : 'bg-slate-850 border-slate-800 opacity-50'
-                              }`}
-                          >
-                            {isPrintingBillOnly ? (
-                              <ActivityIndicator size="small" color="#A5B4FC" />
-                            ) : (
-                              <View className="flex-row items-center">
-                                <Printer size={18} color="#A5B4FC" />
-                                <Text className="text-indigo-200 font-black text-sm ml-2">
-                                  Print Bill
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-
-                          {/* Takeaway/Counter: Settle & Print Bill */}
-                          <TouchableOpacity
-                            onPress={() => handleSaveAndSettle(true)}
-                            disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
-                            className={`flex-[1.3] py-4 rounded-2xl items-center justify-center flex-row shadow-lg ${remaining === 0 && cartItems.length > 0
-                              ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
-                              : 'bg-slate-800 opacity-60'
-                              }`}
-                          >
-                            {isSettling ? (
-                              <ActivityIndicator size="small" color="white" />
-                            ) : (
-                              <View className="flex-row items-center">
-                                <Printer size={18} color="white" />
-                                <Text className="text-white font-black text-sm ml-2">
-                                  {remaining === 0 ? 'Settle & Print' : `Pending ₹${remaining.toFixed(2)}`}
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                        {/* Button 2: Settle & Save Bill (Settles remaining split balance without printing) */}
+                        <TouchableOpacity
+                          onPress={() => handleSaveAndSettle(false)}
+                          disabled={isSettling || isPrintingBillOnly || remaining > 0 || cartItems.length === 0}
+                          className={`flex-1 sm:flex-[1.3] py-3.5 sm:py-4 px-3 rounded-2xl items-center justify-center flex-row shadow-lg ${remaining === 0 && cartItems.length > 0
+                            ? 'bg-emerald-600 shadow-emerald-600/30 active:opacity-90'
+                            : isDark ? 'bg-slate-800 opacity-60' : 'bg-slate-200 opacity-60'
+                            }`}
+                        >
+                          {isSettling ? (
+                            <ActivityIndicator size="small" color="white" />
+                          ) : (
+                            <View className="flex-row items-center">
+                              <CheckCircle2 size={16} color="white" />
+                              <Text
+                                className="text-white font-black text-xs sm:text-sm ml-2"
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                {remaining === 0 ? 'Settle & Save' : `Pending ₹${remaining.toFixed(2)}`}
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   )}
                 </View>

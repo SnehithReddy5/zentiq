@@ -105,27 +105,27 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Action / Stepper */}
         {isOutOfStock ? (
-          <View className="bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl">
-            <Text className="text-rose-400 font-bold text-xs uppercase">Out of Stock</Text>
+          <View className="bg-slate-800/80 border border-slate-700 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl">
+            <Text className="text-rose-400 font-bold text-[10px] sm:text-xs uppercase">Out of Stock</Text>
           </View>
         ) : cartQty > 0 && isDirectAdd ? (
           <View
-            className={`flex-row items-center rounded-2xl p-1 border ${
+            className={`flex-row items-center rounded-xl sm:rounded-2xl p-0.5 sm:p-1 border ${
               isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-300'
             }`}
           >
             <TouchableOpacity
-              className={`w-10 h-10 rounded-xl items-center justify-center border active:opacity-75 ${
+              className={`w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl items-center justify-center border active:opacity-75 ${
                 isDark ? 'bg-slate-800 border-slate-750' : 'bg-white border-slate-300'
               }`}
               onPress={() => onDecrement(item, cartQty)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Minus size={18} color={isDark ? '#FFFFFF' : '#0F172A'} />
+              <Minus size={14} color={isDark ? '#FFFFFF' : '#0F172A'} />
             </TouchableOpacity>
 
             <Text
-              className={`w-8 text-center font-black text-sm ${
+              className={`w-6 sm:w-8 text-center font-black text-xs sm:text-sm ${
                 isDark ? 'text-white' : 'text-slate-900'
               }`}
             >
@@ -133,27 +133,27 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </Text>
 
             <TouchableOpacity
-              className="w-10 h-10 rounded-xl bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-md shadow-purple-500/30"
+              className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-md shadow-purple-500/30"
               onPress={() => onIncrement(item, cartQty)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Plus size={18} color="white" />
+              <Plus size={14} color="white" />
             </TouchableOpacity>
           </View>
         ) : (
           <View
-            className={`px-4 py-2.5 rounded-xl flex-row items-center gap-1.5 ${
+            className={`px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-xl flex-row items-center gap-1.5 ${
               isDark ? 'bg-[#5D3FD3]' : 'bg-[#5D3FD3]'
             } shadow-md shadow-purple-500/20`}
           >
             {isVariant ? (
-              <Layers size={14} color="white" />
+              <Layers size={13} color="white" />
             ) : isCustomizable ? (
-              <Sparkles size={14} color="white" />
+              <Sparkles size={13} color="white" />
             ) : (
-              <Plus size={14} color="white" />
+              <Plus size={13} color="white" />
             )}
-            <Text className="text-white font-black text-xs">
+            <Text className="text-white font-black text-[11px] sm:text-xs">
               {cartQty > 0
                 ? `${cartQty} in cart`
                 : isVariant
@@ -168,14 +168,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     );
   }
 
-  // Grid View Card (iPad Tablet First: Large touch area, min 125pt height)
+  // Grid View Card (iPad Tablet & Mobile Responsive)
   return (
-    <View style={{ width: cardWidth || '100%', padding: 4 }}>
+    <View style={{ width: cardWidth || '100%', padding: 3 }}>
       <TouchableOpacity
         activeOpacity={isOutOfStock ? 1 : 0.75}
         onPress={handleCardPress}
         disabled={isOutOfStock}
-        className={`rounded-2xl p-3.5 justify-between border shadow-sm transition-all min-h-[130px] ${
+        className={`rounded-2xl p-2.5 sm:p-3.5 justify-between border shadow-sm transition-all min-h-[115px] sm:min-h-[130px] ${
           isOutOfStock
             ? isDark
               ? 'bg-slate-900/50 border-rose-950/40 opacity-60'
@@ -190,16 +190,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         }`}
       >
         {/* Top: Name & Badges */}
-        <View className="flex-row items-start justify-between mb-2">
+        <View className="flex-row items-start justify-between mb-1.5">
           <View className="flex-1 mr-1">
             <View className="flex-row items-center flex-wrap gap-1">
               {item.isFavorite && (
                 <View className="mr-0.5 bg-amber-500/20 px-1 py-0.5 rounded">
-                  <Star size={10} color="#FBBF24" fill="#FBBF24" />
+                  <Star size={9} color="#FBBF24" fill="#FBBF24" />
                 </View>
               )}
               <Text
-                className={`font-black text-sm sm:text-base leading-snug ${
+                className={`font-black text-xs sm:text-base leading-snug ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}
                 numberOfLines={2}
@@ -211,55 +211,55 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {isOutOfStock ? (
               <Text className="text-rose-400 font-bold text-[9px] uppercase mt-1">Out of Stock</Text>
             ) : lowStockText ? (
-              <Text className="text-amber-400 font-bold text-[10px] mt-0.5">{lowStockText}</Text>
+              <Text className="text-amber-400 font-bold text-[9px] sm:text-[10px] mt-0.5">{lowStockText}</Text>
             ) : null}
           </View>
 
           {/* Cart Quantity Indicator Badge */}
           {cartQty > 0 && (
-            <View className="bg-[#5D3FD3] px-2 py-0.5 rounded-full shrink-0 shadow-sm shadow-purple-500/30">
-              <Text className="text-white text-[11px] font-black">{cartQty}</Text>
+            <View className="bg-[#5D3FD3] px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 shadow-sm shadow-purple-500/30">
+              <Text className="text-white text-[10px] sm:text-[11px] font-black">{cartQty}</Text>
             </View>
           )}
         </View>
 
         {/* Bottom Row: Price & Large Touch Stepper or Action Pill */}
-        <View className="flex-row items-end justify-between mt-auto pt-2">
+        <View className="flex-row items-end justify-between mt-auto pt-1 sm:pt-2">
           <View>
             <Text
-              className={`font-black text-lg sm:text-xl tracking-tight ${
+              className={`font-black text-sm sm:text-xl tracking-tight ${
                 isDark ? 'text-emerald-400' : 'text-emerald-600'
               }`}
             >
               ₹{item.price}
             </Text>
             {isVariant && (
-              <Text className="text-indigo-400 text-[10px] font-bold">Sizes ▾</Text>
+              <Text className="text-indigo-400 text-[9px] sm:text-[10px] font-bold">Sizes ▾</Text>
             )}
             {isCustomizable && (
-              <Text className="text-purple-400 text-[10px] font-bold">Options ✨</Text>
+              <Text className="text-purple-400 text-[9px] sm:text-[10px] font-bold">Options ✨</Text>
             )}
           </View>
 
           {/* Direct Add Inline Stepper (When added to cart) */}
           {cartQty > 0 && isDirectAdd ? (
             <View
-              className={`flex-row items-center rounded-2xl p-0.5 border ${
+              className={`flex-row items-center rounded-xl sm:rounded-2xl p-0.5 border ${
                 isDark ? 'bg-slate-900/90 border-slate-700' : 'bg-slate-100 border-slate-300'
               }`}
             >
               <TouchableOpacity
-                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl items-center justify-center border active:opacity-75 ${
-                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                className={`w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl items-center justify-center border active:opacity-75 ${
+                  isDark ? 'bg-slate-800 border-slate-750' : 'bg-white border-slate-300'
                 }`}
                 onPress={() => onDecrement(item, cartQty)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Minus size={18} color={isDark ? '#FFFFFF' : '#0F172A'} />
+                <Minus size={13} color={isDark ? '#FFFFFF' : '#0F172A'} />
               </TouchableOpacity>
 
               <Text
-                className={`w-7 text-center font-black text-sm ${
+                className={`w-5 sm:w-7 text-center font-black text-xs sm:text-sm ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}
               >
@@ -267,33 +267,33 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               </Text>
 
               <TouchableOpacity
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-md shadow-purple-500/30"
+                className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-md shadow-purple-500/30"
                 onPress={() => onIncrement(item, cartQty)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Plus size={18} color="white" />
+                <Plus size={13} color="white" />
               </TouchableOpacity>
             </View>
           ) : isOutOfStock ? (
-            <View className="bg-slate-800/80 border border-slate-700 px-2.5 py-1 rounded-xl">
-              <Text className="text-rose-400 font-bold text-[10px] uppercase">Out</Text>
+            <View className="bg-slate-800/80 border border-slate-700 px-2 py-1 rounded-xl">
+              <Text className="text-rose-400 font-bold text-[9px] sm:text-[10px] uppercase">Out</Text>
             </View>
           ) : (
             <View
-              className={`px-3 py-1.5 rounded-xl flex-row items-center gap-1 shadow-sm ${
+              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl flex-row items-center gap-1 shadow-sm ${
                 cartQty > 0
                   ? 'bg-purple-600/30 border border-purple-500/50'
                   : 'bg-[#5D3FD3] shadow-purple-500/20'
               }`}
             >
               {isVariant ? (
-                <Layers size={13} color="white" />
+                <Layers size={12} color="white" />
               ) : isCustomizable ? (
-                <Sparkles size={13} color="white" />
+                <Sparkles size={12} color="white" />
               ) : (
-                <Plus size={14} color="white" />
+                <Plus size={12} color="white" />
               )}
-              <Text className="text-white font-black text-xs">
+              <Text className="text-white font-black text-[11px] sm:text-xs">
                 {cartQty > 0
                   ? `${cartQty}`
                   : isVariant
