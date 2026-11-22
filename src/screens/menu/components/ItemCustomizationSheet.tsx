@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, TextInput } from 'react-native';
 import { X, Check, Plus, Minus, Sparkles, CheckSquare, Square, Circle, CheckCircle2 } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MenuItem, CustomizationGroup, CustomizationOption } from '../../../types/menu.types';
 import { SelectedCustomizationOption } from '../../../types/order.types';
 import { useThemeStore } from '../../../store/theme.store';
@@ -27,6 +28,7 @@ export const ItemCustomizationSheet: React.FC<ItemCustomizationSheetProps> = ({
   onAddToCart,
   getAvailableStock,
 }) => {
+  const insets = useSafeAreaInsets();
   const { themeMode } = useThemeStore();
   const isDark = themeMode === 'dark';
 
@@ -152,48 +154,54 @@ export const ItemCustomizationSheet: React.FC<ItemCustomizationSheetProps> = ({
 
   return (
     <Modal visible={isVisible} transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 justify-center items-center bg-black/75 p-4 z-50">
+      <View className="flex-1 justify-end sm:justify-center items-center bg-black/60 sm:p-4 z-50">
+        <TouchableOpacity
+          className="absolute inset-0"
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
         <View
-          className={`w-full max-w-xl rounded-3xl p-6 shadow-2xl border ${
-            isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'
+          className={`w-full sm:max-w-lg rounded-t-[32px] sm:rounded-3xl px-5 pt-3 pb-5 sm:p-6 shadow-2xl border ${
+            isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-100'
           }`}
+          style={{ paddingBottom: Math.max(insets.bottom + 8, 20) }}
         >
+          {/* Pull handle indicator on mobile */}
+          <View className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 self-center mb-3 sm:hidden" />
+
           {/* Header */}
-          <View className="flex-row items-start justify-between pb-3.5 border-b border-slate-800/60 mb-3">
+          <View className="flex-row items-center justify-between pb-3.5 border-b border-slate-800/60 mb-3">
             <View className="flex-1 mr-3">
-              <View className="flex-row items-center gap-2 mb-1">
-                <View className="p-1 rounded-md bg-[#5D3FD3]/20">
-                  <Sparkles size={14} color="#A855F7" />
+              <View className="flex-row items-center gap-1.5 mb-1">
+                <View className="px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/20 flex-row items-center gap-1">
+                  <Sparkles size={11} color="#A855F7" />
+                  <Text className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                    Customize
+                  </Text>
                 </View>
-                <Text
-                  className={`text-xs font-bold uppercase tracking-wider ${
-                    isDark ? 'text-purple-400' : 'text-purple-600'
-                  }`}
-                >
-                  Customize Item
-                </Text>
               </View>
               <Text
-                className={`text-xl font-black leading-tight ${
+                className={`text-base sm:text-lg font-black leading-snug ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}
-                numberOfLines={2}
+                numberOfLines={1}
               >
                 {item.name}
               </Text>
-              <Text className="text-emerald-400 font-bold text-xs mt-0.5">
+              <Text className="text-emerald-500 font-bold text-xs mt-0.5">
                 Base Price: ₹{item.price}
               </Text>
             </View>
 
             <TouchableOpacity
               onPress={onClose}
-              className={`p-2.5 rounded-full border ${
-                isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-100 border-slate-300'
-              } active:opacity-80`}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              className={`w-8 h-8 rounded-full items-center justify-center border ${
+                isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+              } active:opacity-70`}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <X size={20} color={isDark ? '#94A3B8' : '#64748B'} />
+              <X size={16} color={isDark ? '#94A3B8' : '#64748B'} />
             </TouchableOpacity>
           </View>
 
@@ -212,8 +220,8 @@ export const ItemCustomizationSheet: React.FC<ItemCustomizationSheetProps> = ({
                 return (
                   <View
                     key={group.id}
-                    className={`p-4 rounded-2xl border mb-3 ${
-                      isDark ? 'bg-slate-850/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    className={`p-3.5 rounded-2xl border mb-3 ${
+                      isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'
                     }`}
                   >
                     {/* Group Title & Badge */}
@@ -281,7 +289,7 @@ export const ItemCustomizationSheet: React.FC<ItemCustomizationSheetProps> = ({
                                   isSelected
                                     ? isDark
                                       ? 'text-white'
-                                      : 'text-purple-950'
+                                      : 'text-purple-950 font-black'
                                     : isDark
                                     ? 'text-slate-200'
                                     : 'text-slate-800'
@@ -314,7 +322,7 @@ export const ItemCustomizationSheet: React.FC<ItemCustomizationSheetProps> = ({
             {/* Special Instructions Input */}
             <View
               className={`p-3 rounded-2xl border mb-2 ${
-                isDark ? 'bg-slate-850/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'
               }`}
             >
               <Text className={`font-bold text-xs mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -340,47 +348,57 @@ export const ItemCustomizationSheet: React.FC<ItemCustomizationSheetProps> = ({
           )}
 
           {/* Quantity Stepper & Final Add Action */}
-          <View className="flex-row items-center gap-3">
+          <View className="flex-row items-center gap-2.5 pt-1">
+            {/* Smooth Pill Capsule Stepper */}
             <View
-              className={`flex-row items-center bg-slate-800/80 rounded-2xl border p-1 ${
-                isDark ? 'border-slate-700' : 'border-slate-300 bg-slate-100'
+              className={`flex-row items-center rounded-full border px-1.5 py-1 ${
+                isDark
+                  ? 'bg-slate-900 border-slate-800'
+                  : 'bg-slate-100 border-slate-200'
               }`}
             >
               <TouchableOpacity
                 onPress={() => setQty((prev) => Math.max(1, prev - 1))}
                 disabled={qty <= 1}
-                className="w-11 h-11 rounded-xl items-center justify-center bg-slate-700/60 active:opacity-80"
+                className={`w-8 h-8 rounded-full items-center justify-center ${
+                  qty <= 1
+                    ? 'opacity-30'
+                    : isDark
+                    ? 'bg-slate-800 active:bg-slate-700'
+                    : 'bg-white border border-slate-200 shadow-xs active:bg-slate-200'
+                }`}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Minus size={18} color={isDark ? '#FFFFFF' : '#0F172A'} />
+                <Minus size={14} color={isDark ? '#FFFFFF' : '#0F172A'} strokeWidth={2.5} />
               </TouchableOpacity>
+
               <Text
-                className={`w-9 text-center font-black text-lg ${
+                className={`w-7 text-center font-black text-sm ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}
               >
                 {qty}
               </Text>
+
               <TouchableOpacity
                 onPress={() => setQty((prev) => prev + 1)}
-                className="w-11 h-11 rounded-xl items-center justify-center bg-[#5D3FD3] active:opacity-80"
+                className="w-8 h-8 rounded-full items-center justify-center bg-[#5D3FD3] active:bg-[#4D32B8] shadow-sm shadow-purple-500/30"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Plus size={18} color="white" />
+                <Plus size={14} color="white" strokeWidth={2.5} />
               </TouchableOpacity>
             </View>
 
+            {/* Elevated Add Action Button */}
             <TouchableOpacity
               onPress={handleConfirm}
               disabled={Boolean(validationError)}
-              className={`flex-1 py-3.5 px-3 rounded-2xl flex-row items-center justify-center shadow-xl ${
-                validationError
-                  ? 'bg-slate-800 border border-slate-700 opacity-50'
-                  : 'bg-[#5D3FD3] active:bg-[#4D32B8] shadow-purple-500/30'
+              className={`flex-1 h-11 sm:h-12 rounded-full bg-[#5D3FD3] active:bg-[#4D32B8] flex-row items-center justify-center px-4 shadow-md shadow-purple-500/30 ${
+                validationError ? 'opacity-50' : ''
               }`}
             >
               <Text
-                className="text-white font-black text-xs sm:text-base shrink text-center"
+                className="text-white font-black text-xs sm:text-sm tracking-wide shrink text-center"
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >

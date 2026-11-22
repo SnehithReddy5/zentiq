@@ -110,22 +110,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </View>
         ) : cartQty > 0 && isDirectAdd ? (
           <View
-            className={`flex-row items-center rounded-xl sm:rounded-2xl p-0.5 sm:p-1 border ${
-              isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-100 border-slate-300'
+            className={`flex-row items-center rounded-full px-1 py-0.5 border shadow-sm ${
+              isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
             }`}
           >
             <TouchableOpacity
-              className={`w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl items-center justify-center border active:opacity-75 ${
-                isDark ? 'bg-slate-800 border-slate-750' : 'bg-white border-slate-300'
+              className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full items-center justify-center active:opacity-75 ${
+                isDark ? 'bg-slate-800' : 'bg-slate-100'
               }`}
               onPress={() => onDecrement(item, cartQty)}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Minus size={14} color={isDark ? '#FFFFFF' : '#0F172A'} />
+              <Minus size={12} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
             </TouchableOpacity>
 
             <Text
-              className={`w-6 sm:w-8 text-center font-black text-xs sm:text-sm ${
+              className={`w-5 sm:w-6 text-center font-black text-xs sm:text-sm ${
                 isDark ? 'text-white' : 'text-slate-900'
               }`}
             >
@@ -133,11 +133,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </Text>
 
             <TouchableOpacity
-              className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-md shadow-purple-500/30"
+              className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
               onPress={() => onIncrement(item, cartQty)}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Plus size={14} color="white" />
+              <Plus size={12} color="white" strokeWidth={2.5} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -241,25 +241,25 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             )}
           </View>
 
-          {/* Direct Add Inline Stepper (When added to cart) */}
+          {/* Direct Add Inline Capsule Stepper */}
           {cartQty > 0 && isDirectAdd ? (
             <View
-              className={`flex-row items-center rounded-xl sm:rounded-2xl p-0.5 border ${
-                isDark ? 'bg-slate-900/90 border-slate-700' : 'bg-slate-100 border-slate-300'
+              className={`flex-row items-center rounded-full px-1 py-0.5 border shadow-sm ${
+                isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
               }`}
             >
               <TouchableOpacity
-                className={`w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl items-center justify-center border active:opacity-75 ${
-                  isDark ? 'bg-slate-800 border-slate-750' : 'bg-white border-slate-300'
+                className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full items-center justify-center active:opacity-75 ${
+                  isDark ? 'bg-slate-800' : 'bg-slate-100'
                 }`}
                 onPress={() => onDecrement(item, cartQty)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Minus size={13} color={isDark ? '#FFFFFF' : '#0F172A'} />
+                <Minus size={12} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
               </TouchableOpacity>
 
               <Text
-                className={`w-5 sm:w-7 text-center font-black text-xs sm:text-sm ${
+                className={`w-5 sm:w-6 text-center font-black text-xs sm:text-sm ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}
               >
@@ -267,11 +267,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               </Text>
 
               <TouchableOpacity
-                className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-md shadow-purple-500/30"
+                className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
                 onPress={() => onIncrement(item, cartQty)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Plus size={13} color="white" />
+                <Plus size={12} color="white" strokeWidth={2.5} />
               </TouchableOpacity>
             </View>
           ) : isOutOfStock ? (

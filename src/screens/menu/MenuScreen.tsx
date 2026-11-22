@@ -5,7 +5,7 @@ import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, M
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List, Menu as MenuIcon, MapPin, Receipt, Bike, TrendingUp, Sun, Moon } from 'lucide-react-native';
+import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List, Menu as MenuIcon, MapPin, Receipt, Bike, TrendingUp, Sun, Moon, Minus, Plus } from 'lucide-react-native';
 import { HamburgerMenu } from '../../components/common/HamburgerMenu';
 import { ProductCard } from './components/ProductCard';
 import { VariantSelectionSheet } from './components/VariantSelectionSheet';
@@ -743,15 +743,15 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                       </Text>
                     </View>
 
-                    {/* Quantity Stepper with Large Touch Targets (Min 44-48pt) */}
+                    {/* Smooth Capsule Quantity Stepper */}
                     <View
-                      className={`flex-row items-center rounded-xl p-0.5 border ${
-                        isDark ? 'bg-slate-800/90 border-slate-700' : 'bg-slate-100 border-slate-300'
+                      className={`flex-row items-center rounded-full px-1 py-0.5 border shadow-sm ${
+                        isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
                       }`}
                     >
                       <TouchableOpacity
-                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg items-center justify-center active:opacity-75 ${
-                          isDark ? 'bg-slate-700' : 'bg-white border border-slate-200'
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full items-center justify-center active:opacity-75 ${
+                          isDark ? 'bg-slate-800' : 'bg-slate-100'
                         }`}
                         onPress={() => {
                           if (!checkCanEditCart()) return;
@@ -774,13 +774,11 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                         }}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <Text className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                          -
-                        </Text>
+                        <Minus size={12} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
                       </TouchableOpacity>
 
                       <Text
-                        className={`w-7 text-center font-black text-sm ${
+                        className={`w-6 sm:w-7 text-center font-black text-xs sm:text-sm ${
                           isDark ? 'text-white' : 'text-slate-900'
                         }`}
                       >
@@ -788,11 +786,11 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                       </Text>
 
                       <TouchableOpacity
-                        className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
+                        className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
                         onPress={() => handleIncrementCartItem(item)}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <Text className="text-white font-black text-sm">+</Text>
+                        <Plus size={12} color="white" strokeWidth={2.5} />
                       </TouchableOpacity>
                     </View>
                   </View>
