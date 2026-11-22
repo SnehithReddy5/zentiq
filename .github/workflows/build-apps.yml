@@ -14,7 +14,7 @@ on:
           - ios
           - all
       profile:
-        description: 'EAS Build Profile (for Android/iOS)'
+        description: 'EAS Build Profile (for iOS)'
         required: true
         default: 'preview'
         type: choice
@@ -32,6 +32,7 @@ on:
       - 'eas.json'
       - 'package.json'
       - 'electron/**'
+      - '.github/workflows/build-apps.yml'
 
 jobs:
   # Fast code health check that runs automatically on push without consuming cloud build credits
@@ -55,9 +56,11 @@ jobs:
         run: npx tsc --noEmit
 
   build-android:
-    name: Build Android APK
+    name: Build Android APK (Free GitHub Actions)
     needs: typecheck
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: |
       (github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'android')) ||
       (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-android]') || contains(github.event.head_commit.message, '[build-all]') || contains(github.event.head_commit.message, '[build-apps]')))
@@ -71,45 +74,81 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Setup EAS CLI
-        run: npm install -g eas-cli
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Android
-        run: eas build --platform android --profile ${{ inputs.profile || 'preview' }} --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-  build-ios:
-    name: Build iOS App
-    needs: typecheck
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    if: |
-      (github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'ios')) ||
-      (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-ios]') || contains(github.event.head_commit.message, '[build-all]') || contains(github.event.head_commit.message, '[build-apps]')))
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
-          node-version: 20
-          cache: npm
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Setup EAS CLI
-        run: npm install -g eas-cli
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build iOS
-        run: eas build --platform ios --profile ${{ inputs.profile || 'preview' }} --non-interactive
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build Android APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon -x lint || ./gradlew assembleDebug --no-daemon -x lint
+
+      - name: Collect Android APK
+        run: |
+          mkdir -p dist-android
+          find android/app/build/outputs/apk -name "*.apk" -exec cp {} dist-android/Zentiq-POS.apk \;
+          ls -la dist-android/
+
+      - name: Upload Android APK (Workflow Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zentiq-pos-android-apk
+          path: dist-android/Zentiq-POS.apk
+          retention-days: 30
+
+      # Public Release: 1-click anonymous direct download on phones/tablets without any login
+      - name: Publish Android APK to Public GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: pos-android-latest
+          name: Zentiq POS Android Latest (.apk)
+          files: dist-android/Zentiq-POS.apk
+          draft: false
+          prerelease: false
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # # build-ios:
+  #   name: Build iOS App
+  #   needs: typecheck
+  #   runs-on: ubuntu-latest
+  #   continue-on-error: true
+  #   if: |
+  #     (github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'ios')) ||
+  #     (github.event_name == 'push' && (contains(github.event.head_commit.message, '[build-ios]') || contains(github.event.head_commit.message, '[build-all]') || contains(github.event.head_commit.message, '[build-apps]')))
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #         cache: npm
+  #
+  #     - name: Setup EAS CLI
+  #       run: npm install -g eas-cli
+  #
+  #     - name: Install dependencies
+  #       run: npm ci
+  #
+  #     - name: Build iOS
+  #       run: eas build --platform ios --profile ${{ inputs.profile || 'preview' }} --non-interactive
+  #       env:
+  #         EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
   build-windows:
     name: Build Windows Desktop (.exe)
