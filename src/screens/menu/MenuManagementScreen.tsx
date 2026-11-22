@@ -2,12 +2,14 @@ import { toast } from '../../utils/toast';
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, Alert, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check, Package, Scale, Layers, MoreVertical, Ban, CheckCircle2, Download } from 'lucide-react-native';
+import { Plus, Trash2, Pencil, Search, FileSpreadsheet, Star, Sparkles, X, Check, Package, Scale, Layers, MoreVertical, Ban, CheckCircle2, Download, ChevronLeft, ChevronRight, Building, MapPin } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { useMenuStore } from '../../store/menu.store';
 import { useTenantStore } from '../../store/tenant.store';
+import { useAuthStore } from '../../store/auth.store';
+import { useThemeStore } from '../../store/theme.store';
 import { DBServices } from '../../services/firebase/db';
 import { MenuExcelImportModal } from './MenuExcelImportModal';
 import { MenuExcelService } from '../../services/excel/menuExcel.service';
@@ -17,7 +19,16 @@ import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 export const MenuManagementScreen = () => {
   const insets = useSafeAreaInsets();
   const { categories, items, subscribeToMenu } = useMenuStore();
-  const { tenant, activeLocationId } = useTenantStore();
+  const { tenant, locations, activeLocationId, setActiveLocationId } = useTenantStore();
+  const { user } = useAuthStore();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
+
+  const userAssigned = user?.assignedLocationId;
+  const hasMultiBranchAccess = (user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'PLATFORM_ADMIN') && (!userAssigned || (user?.locationIds && user.locationIds.includes('*')));
+
+  const categoryScrollRef = React.useRef<any>(null);
+  const categoryScrollOffset = React.useRef<number>(0);
   const { isPhone } = useResponsiveLayout();
   const [actionKebabItem, setActionKebabItem] = useState<MenuItem | null>(null);
   const [itemIsAvailable, setItemIsAvailable] = useState<boolean>(true);
@@ -417,7 +428,7 @@ export const MenuManagementScreen = () => {
     .filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
       <Header
         title="Menu Management"
         subtitle={`${items.length} Items • ${categories.length} Categories • ${favoriteCount} Favorites`}
@@ -465,44 +476,127 @@ export const MenuManagementScreen = () => {
         }
       />
 
+      {/* Multi-Branch Scope Switcher */}
+      {hasMultiBranchAccess && locations.length > 1 && (
+        <View className={`px-4 py-2 border-b flex-row items-center justify-between ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <View className="flex-row items-center mr-3">
+            <Building size={14} color="#5D3FD3" />
+            <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-300' : 'text-slate-750'}`}>
+              Editing Menu For:
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingVertical: 2 }}>
+            {locations.map(loc => {
+              const isSelected = activeLocationId === loc.id;
+              return (
+                <TouchableOpacity
+                  key={loc.id}
+                  onPress={() => setActiveLocationId(loc.id)}
+                  className={`px-3 py-1 rounded-full border flex-row items-center ${isSelected
+                    ? 'bg-[#5D3FD3] border-purple-500 shadow-sm'
+                    : isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <MapPin size={11} color={isSelected ? 'white' : '#94A3B8'} />
+                  <Text className={`text-xs font-bold ml-1 ${isSelected ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {loc.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Search Bar */}
-      <View className="px-4 py-2.5 bg-[#090D1A]">
-        <View className="flex-row items-center bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
-          <Search size={16} color="#64748B" />
+      <View className={`px-4 py-2.5 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
+        <View
+          className={`flex-row items-center rounded-xl px-3 py-1.5 border ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
+          <Search size={16} color={isDark ? '#64748B' : '#94A3B8'} />
           <TextInput
             placeholder="Search items to edit..."
-            placeholderTextColor="#64748B"
+            placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            className="flex-1 ml-2 text-xs text-white"
+            className={`flex-1 ml-2 text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}
+            style={{ outlineStyle: 'none' } as any}
           />
         </View>
       </View>
 
       {/* Sub-menu Category Bar with Favorites */}
-      <View className="py-2 bg-[#0A0F1D] border-b border-slate-800">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4">
+      <View
+        className={`py-2 px-1 sm:px-2 border-b flex-row items-center ${
+          isDark ? 'bg-[#0A0F1D] border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+        }`}
+      >
+        {/* Scroll Left Button */}
+        <TouchableOpacity
+          onPress={() => {
+            categoryScrollOffset.current = Math.max(0, categoryScrollOffset.current - 240);
+            categoryScrollRef.current?.scrollTo({ x: categoryScrollOffset.current, animated: true });
+          }}
+          className={`p-1.5 rounded-full mr-1 items-center justify-center border shadow-xs ${
+            isDark
+              ? 'bg-slate-900 border-slate-800 active:bg-slate-800'
+              : 'bg-slate-100 border-slate-200 active:bg-slate-200'
+          }`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel="Scroll categories left"
+        >
+          <ChevronLeft size={16} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
+        </TouchableOpacity>
+
+        <ScrollView
+          ref={categoryScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          onScroll={(e) => {
+            categoryScrollOffset.current = e.nativeEvent.contentOffset.x;
+          }}
+          scrollEventThrottle={16}
+          className="px-1"
+          contentContainerStyle={{ flexDirection: 'row', alignItems: 'center' }}
+          {...({
+            onWheel: (e: any) => {
+              const delta = e?.nativeEvent?.deltaY || e?.deltaY;
+              if (delta && categoryScrollRef.current) {
+                categoryScrollOffset.current = Math.max(0, categoryScrollOffset.current + delta);
+                categoryScrollRef.current.scrollTo({ x: categoryScrollOffset.current, animated: false });
+              }
+            }
+          } as any)}
+        >
           <TouchableOpacity
             onPress={() => setActiveCategory('favorites')}
-            className={`mr-2 px-3 py-1.5 rounded-full flex-row items-center border ${activeCategory === 'favorites'
+            className={`mr-2 px-3 py-1.5 rounded-full flex-row items-center border ${
+              activeCategory === 'favorites'
                 ? 'bg-amber-500/20 border-amber-500'
-                : 'bg-slate-900 border-slate-800'
-              }`}
+                : isDark
+                ? 'bg-slate-900 border-slate-800'
+                : 'bg-slate-100 border-slate-200'
+            }`}
           >
             <Star size={12} color="#F59E0B" fill={activeCategory === 'favorites' ? '#F59E0B' : 'transparent'} />
-            <Text className={`text-xs ml-1 font-bold ${activeCategory === 'favorites' ? 'text-amber-400' : 'text-slate-400'}`}>
+            <Text className={`text-xs ml-1 font-bold ${activeCategory === 'favorites' ? 'text-amber-500' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               Favorites ({favoriteCount})
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => setActiveCategory('all')}
-            className={`mr-2 px-3.5 py-1.5 rounded-full border ${activeCategory === 'all'
+            className={`mr-2 px-3.5 py-1.5 rounded-full border ${
+              activeCategory === 'all'
                 ? 'bg-[#5D3FD3] border-[#5D3FD3]'
-                : 'bg-slate-900 border-slate-800'
-              }`}
+                : isDark
+                ? 'bg-slate-900 border-slate-800'
+                : 'bg-slate-100 border-slate-200'
+            }`}
           >
-            <Text className={`text-xs font-semibold ${activeCategory === 'all' ? 'text-white' : 'text-slate-400'}`}>
+            <Text className={`text-xs font-semibold ${activeCategory === 'all' ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               All ({items.length})
             </Text>
           </TouchableOpacity>
@@ -513,17 +607,20 @@ export const MenuManagementScreen = () => {
             return (
               <View
                 key={cat.id}
-                className={`mr-2 px-3 py-1.5 rounded-full border flex-row items-center ${isActive
+                className={`mr-2 px-3 py-1.5 rounded-full border flex-row items-center ${
+                  isActive
                     ? 'bg-[#5D3FD3] border-[#5D3FD3]'
-                    : 'bg-slate-900 border-slate-800'
-                  }`}
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800'
+                    : 'bg-slate-100 border-slate-200'
+                }`}
               >
                 <TouchableOpacity
                   onPress={() => setActiveCategory(cat.id)}
                   onLongPress={() => confirmDeleteCategory(cat)}
                   activeOpacity={0.7}
                 >
-                  <Text className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-slate-400'}`}>
+                  <Text className={`text-xs font-semibold ${isActive ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     {cat.name} ({count})
                   </Text>
                 </TouchableOpacity>
@@ -562,20 +659,41 @@ export const MenuManagementScreen = () => {
               setCatName('');
               setCategoryModalOpen(true);
             }}
-            className="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 flex-row items-center mr-2 active:bg-slate-700"
+            className={`px-3 py-1.5 rounded-full border flex-row items-center mr-2 ${
+              isDark
+                ? 'bg-slate-800 border-slate-700 active:bg-slate-700'
+                : 'bg-slate-100 border-slate-200 active:bg-slate-200'
+            }`}
           >
             <Plus size={13} color="#818CF8" />
-            <Text className="text-indigo-300 text-xs font-bold ml-1">+ Category</Text>
+            <Text className="text-indigo-500 font-bold text-xs ml-1">+ Category</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => setManageCategoriesOpen(true)}
-            className="px-3 py-1.5 rounded-full bg-purple-900/30 border border-purple-500/40 flex-row items-center mr-4 active:bg-purple-900/50"
+            className="px-3 py-1.5 rounded-full bg-purple-900/30 border border-purple-500/40 flex-row items-center mr-2 active:bg-purple-900/50"
           >
             <Layers size={13} color="#C084FC" />
-            <Text className="text-purple-300 text-xs font-bold ml-1">Manage All Categories</Text>
+            <Text className="text-purple-400 text-xs font-bold ml-1">Manage Categories</Text>
           </TouchableOpacity>
         </ScrollView>
+
+        {/* Scroll Right Button */}
+        <TouchableOpacity
+          onPress={() => {
+            categoryScrollOffset.current += 240;
+            categoryScrollRef.current?.scrollTo({ x: categoryScrollOffset.current, animated: true });
+          }}
+          className={`p-1.5 rounded-full ml-1 items-center justify-center border shadow-xs ${
+            isDark
+              ? 'bg-slate-900 border-slate-800 active:bg-slate-800'
+              : 'bg-slate-100 border-slate-200 active:bg-slate-200'
+          }`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel="Scroll categories right"
+        >
+          <ChevronRight size={16} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
+        </TouchableOpacity>
       </View>
 
       {/* Items List */}
@@ -590,33 +708,45 @@ export const MenuManagementScreen = () => {
         renderItem={({ item }) => {
           const isOutOfStock = item.isAvailable === false;
           return (
-            <View className={`bg-slate-900 border p-4 rounded-2xl mb-2.5 flex-row items-center justify-between shadow-lg ${isOutOfStock ? 'border-rose-900/50 opacity-90' : 'border-slate-800'
-              }`}>
+            <View
+              className={`border p-4 rounded-2xl mb-2.5 flex-row items-center justify-between ${
+                isDark
+                  ? 'bg-slate-900 border-slate-800'
+                  : 'bg-white border-slate-200 shadow-sm'
+              } ${isOutOfStock ? 'border-rose-500/40 opacity-80' : ''}`}
+            >
               <View className="flex-1 mr-3">
                 <View className="flex-row items-center flex-wrap gap-1.5">
                   <TouchableOpacity onPress={() => handleToggleFavorite(item)} className="mr-1">
                     <Star
                       size={18}
-                      color={item.isFavorite ? '#F59E0B' : '#475569'}
+                      color={item.isFavorite ? '#F59E0B' : '#94A3B8'}
                       fill={item.isFavorite ? '#F59E0B' : 'transparent'}
                     />
                   </TouchableOpacity>
-                  <Text className={`font-bold text-base flex-1 ${isOutOfStock ? 'text-slate-300' : 'text-white'}`} numberOfLines={1}>
+                  <Text
+                    className={`font-black text-base flex-1 ${
+                      isDark ? (isOutOfStock ? 'text-slate-400' : 'text-white') : (isOutOfStock ? 'text-slate-400' : 'text-slate-900')
+                    }`}
+                    numberOfLines={1}
+                  >
                     {item.name}
                   </Text>
                   {isOutOfStock && (
-                    <View className="bg-rose-500/20 border border-rose-500/40 px-2 py-0.5 rounded-md">
-                      <Text className="text-rose-400 font-black text-[10px] tracking-wider uppercase">OUT OF STOCK</Text>
+                    <View className="bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-md">
+                      <Text className="text-rose-500 font-black text-[10px] tracking-wider uppercase">OUT OF STOCK</Text>
                     </View>
                   )}
                 </View>
 
                 {item.variants && item.variants.length > 0 ? (
-                  <Text className="text-indigo-400 text-xs mt-1">
+                  <Text className="text-indigo-400 text-xs mt-1 font-semibold">
                     {item.variants.length} Variants: {item.variants.map(v => `${v.name} (₹${v.price})`).join(', ')}
                   </Text>
                 ) : (
-                  <Text className="text-slate-400 text-xs mt-1">Price: ₹{item.price}</Text>
+                  <Text className={`text-xs mt-1 font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Price: ₹{item.price}
+                  </Text>
                 )}
               </View>
 

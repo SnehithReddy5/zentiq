@@ -9,14 +9,32 @@ import { usePrinterStore } from '../../store/printer.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useToastStore } from '../../store/toast.store';
+import { useThemeStore } from '../../store/theme.store';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { PrinterWorkflowMode } from '../../types/printer.types';
-import { Printer, CheckCircle2, Check, Save, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw } from 'lucide-react-native';
+import { Printer, CheckCircle2, Check, Save, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw, MapPin, Building, ShieldCheck } from 'lucide-react-native';
 
 export const PrinterSettingsScreen = () => {
   const insets = useSafeAreaInsets();
   const { settings, setSettings } = usePrinterStore();
+  const { tenant, locations, activeLocationId, setActiveLocationId } = useTenantStore();
+  const { user } = useAuthStore();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
+
+  const userAssigned = user?.assignedLocationId;
+  const hasMultiBranchAccess = (user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'PLATFORM_ADMIN') && (!userAssigned || (user?.locationIds && user.locationIds.includes('*')));
+
+  const [selectedLocId, setSelectedLocId] = useState<string>(
+    userAssigned || activeLocationId || locations[0]?.id || ''
+  );
+
+  useEffect(() => {
+    if (activeLocationId && (!selectedLocId || !locations.some(l => l.id === selectedLocId))) {
+      setSelectedLocId(activeLocationId);
+    }
+  }, [activeLocationId]);
 
   const [paperWidth, setPaperWidth] = useState<'80mm_48' | '80mm_42' | '58mm_32'>(settings.paperWidth || '80mm_48');
   const [workflowMode, setWorkflowMode] = useState<PrinterWorkflowMode>(
@@ -125,24 +143,25 @@ export const PrinterSettingsScreen = () => {
       kitchenPort: parseInt(kitchenPort, 10) || 9100,
     };
 
-    setSettings(newSettings);
+    const effectiveLocId = selectedLocId || activeLocationId;
+    setSettings(newSettings, effectiveLocId);
 
-    // Save to Cloud Firestore scoped to this user/station
-    const { tenant, activeLocationId } = useTenantStore.getState();
+    // Save to Cloud Firestore scoped to this branch & user
+    const { tenant } = useTenantStore.getState();
     const { user } = useAuthStore.getState();
     if (tenant?.id) {
-      await usePrinterStore.getState().saveSettingsToCloud(tenant.id, activeLocationId, user?.id);
+      await usePrinterStore.getState().saveSettingsToCloud(tenant.id, effectiveLocId, user?.id);
     }
+
+    const branchName = locations.find(l => l.id === effectiveLocId)?.name || 'this branch';
 
     useToastStore.getState().showToast({
       type: 'success',
       title: 'Printer Settings Saved',
-      message: isDualMode
-        ? 'Dual Printer configured (Counter Bill + Kitchen KOT).'
-        : 'Single Printer configured successfully.',
+      message: `Printers configured and isolated for ${branchName}.`,
       duration: 3500,
     });
-    toast.success('Thermal printer configuration has been saved and synced.', 'Settings Saved');
+    toast.success(`Thermal printer configuration saved for ${branchName}.`, 'Settings Saved');
     setIsSaving(false);
   };
 
@@ -338,7 +357,7 @@ export const PrinterSettingsScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
       <Header
         title="Thermal Printers & Workflow"
         subtitle="Configure Cash Counter Bill & Kitchen KOT Printers"
@@ -372,6 +391,66 @@ export const PrinterSettingsScreen = () => {
         }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Branch Context & Switcher Banner */}
+        {locations.length > 0 && (
+          <View
+            className={`border rounded-3xl p-4 mb-4 ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+            }`}
+          >
+            <View className="flex-row items-center justify-between mb-2">
+              <View className="flex-row items-center">
+                <MapPin size={18} color="#5D3FD3" />
+                <Text className={`font-black text-sm ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Branch Printer Configuration
+                </Text>
+              </View>
+              <View className="bg-[#5D3FD3]/10 px-2.5 py-1 rounded-full border border-[#5D3FD3]/30">
+                <Text className="text-[#5D3FD3] font-bold text-xs">
+                  {locations.find(l => l.id === selectedLocId)?.name || 'Default Branch'}
+                </Text>
+              </View>
+            </View>
+            <Text className={`text-xs mb-3 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              Printers configured here are strictly isolated to this branch. Changes will not overwrite other branches.
+            </Text>
+
+            {/* Branch Pills if multi-branch access */}
+            {hasMultiBranchAccess && locations.length > 1 && (
+              <View className="flex-row flex-wrap gap-2 mt-1">
+                {locations.map((loc) => {
+                  const isSelected = loc.id === selectedLocId;
+                  return (
+                    <TouchableOpacity
+                      key={loc.id}
+                      onPress={() => {
+                        setSelectedLocId(loc.id);
+                        usePrinterStore.getState().switchLocation(loc.id, tenant?.id);
+                      }}
+                      className={`px-3 py-2 rounded-xl border flex-row items-center ${
+                        isSelected
+                          ? 'bg-[#5D3FD3] border-[#5D3FD3]'
+                          : isDark
+                          ? 'bg-slate-950 border-slate-800'
+                          : 'bg-slate-100 border-slate-200'
+                      }`}
+                    >
+                      <Building size={13} color={isSelected ? 'white' : '#94A3B8'} />
+                      <Text
+                        className={`text-xs font-bold ml-1.5 ${
+                          isSelected ? 'text-white' : isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}
+                      >
+                        {loc.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Test Result Alert Banner */}
         {testResult && (
           <View
@@ -394,18 +473,24 @@ export const PrinterSettingsScreen = () => {
               >
                 {testResult.success ? 'Print Job Dispatched' : 'Printer Error'}
               </Text>
-              <Text className="text-white text-xs mt-0.5">{testResult.message}</Text>
+              <Text className={`text-xs mt-0.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>{testResult.message}</Text>
             </View>
           </View>
         )}
 
         {/* 1. Workflow Operational Mode */}
-        <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
+        <View
+          className={`p-5 rounded-3xl mb-5 border ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
           <View className="flex-row items-center mb-1">
             <Utensils size={18} color="#A78BFA" />
-            <Text className="text-white font-black text-base ml-2">Printing Operational Mode</Text>
+            <Text className={`font-black text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              Printing Operational Mode
+            </Text>
           </View>
-          <Text className="text-slate-400 text-xs mb-4">
+          <Text className={`text-xs mb-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Choose how customer receipts and kitchen tickets should be routed:
           </Text>
 
@@ -486,12 +571,22 @@ export const PrinterSettingsScreen = () => {
         </View>
 
         {/* Paper Roll Width Configuration */}
-        <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-          <Text className="text-white font-black text-sm mb-1">Thermal Receipt Roll Width</Text>
-          <Text className="text-slate-400 text-xs mb-3">
+        <View
+          className={`p-5 rounded-3xl mb-5 border ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
+          <Text className={`font-black text-sm mb-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            Thermal Receipt Roll Width
+          </Text>
+          <Text className={`text-xs mb-3 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Sets the printable character column count to ensure receipts fill the roll edge-to-edge:
           </Text>
-          <View className="flex-row bg-slate-950 p-1 rounded-2xl border border-slate-800">
+          <View
+            className={`flex-row p-1 rounded-2xl border ${
+              isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+            }`}
+          >
             {[
               { id: '80mm_48', label: '80mm Wide (48 Cols)' },
               { id: '80mm_42', label: '80mm Standard (42 Cols)' },
@@ -501,12 +596,14 @@ export const PrinterSettingsScreen = () => {
                 key={p.id}
                 onPress={() => setPaperWidth(p.id as any)}
                 className={`flex-1 py-2 rounded-xl items-center ${
-                  paperWidth === p.id ? 'bg-[#5D3FD3]' : 'bg-transparent'
+                  paperWidth === p.id ? 'bg-[#5D3FD3] shadow-sm' : 'bg-transparent'
                 }`}
               >
-                <Text className={`text-[11px] font-bold ${
-                  paperWidth === p.id ? 'text-white' : 'text-slate-400'
-                }`}>
+                <Text
+                  className={`text-[11px] font-bold ${
+                    paperWidth === p.id ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'
+                  }`}
+                >
                   {p.label}
                 </Text>
               </TouchableOpacity>
@@ -515,11 +612,19 @@ export const PrinterSettingsScreen = () => {
         </View>
 
         {/* 2. Billing Counter Printer (Used by all modes) */}
-        <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-          <View className="flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-3 pb-2 border-b border-slate-800">
+        <View
+          className={`p-5 rounded-3xl mb-5 border ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
+          <View
+            className={`flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-3 pb-2 border-b ${
+              isDark ? 'border-slate-800' : 'border-slate-100'
+            }`}
+          >
             <View className="flex-row items-center flex-1 mr-2 min-w-[160px]">
               <Printer size={18} color="#818CF8" />
-              <Text className="text-white font-black text-sm sm:text-base ml-2">
+              <Text className={`font-black text-sm sm:text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 {isDualMode
                   ? 'Counter Bill Printer'
                   : isCombinedMode
@@ -671,22 +776,38 @@ export const PrinterSettingsScreen = () => {
 
         {/* 3. Kitchen Thermal KOT Printer (Only visible when Dual Printer mode is active) */}
         {isDualMode && (
-          <View className="bg-slate-900 border border-slate-800 p-5 rounded-3xl mb-5 shadow-md">
-            <View className="flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-3 pb-2 border-b border-slate-800">
+          <View
+            className={`p-5 rounded-3xl mb-5 border ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+            }`}
+          >
+            <View
+              className={`flex-row items-start sm:items-center justify-between flex-wrap gap-2 mb-3 pb-2 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-100'
+              }`}
+            >
               <View className="flex-row items-center flex-1 mr-2 min-w-[160px]">
                 <Printer size={18} color="#F59E0B" />
-                <Text className="text-white font-black text-sm sm:text-base ml-2">Kitchen KOT Printer</Text>
+                <Text className={`font-black text-sm sm:text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Kitchen KOT Printer
+                </Text>
               </View>
               <View className="bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20 shrink-0 self-start sm:self-auto">
-                <Text className="text-amber-400 font-black text-[10px]">
+                <Text className="text-amber-500 font-black text-[10px]">
                   {kitchenPrinterType === 'USB' ? 'USB KITCHEN' : 'LAN KITCHEN'}
                 </Text>
               </View>
             </View>
 
             {/* Kitchen Connection Type Switcher */}
-            <Text className="text-slate-300 font-bold text-xs mb-2">Kitchen Connection Interface</Text>
-            <View className="flex-row bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-4">
+            <Text className={`font-bold text-xs mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              Kitchen Connection Interface
+            </Text>
+            <View
+              className={`flex-row p-1 rounded-2xl border mb-4 ${
+                isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+              }`}
+            >
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => setKitchenPrinterType('LAN')}
@@ -801,9 +922,15 @@ export const PrinterSettingsScreen = () => {
         />
 
         {/* 4. Live Diagnostics Console */}
-        <View className="bg-slate-900/90 border border-indigo-500/30 p-5 rounded-3xl shadow-lg">
-          <Text className="text-white font-black text-sm mb-1">Live Thermal Printer Diagnostics</Text>
-          <Text className="text-slate-400 text-xs mb-4">
+        <View
+          className={`p-5 rounded-3xl border ${
+            isDark ? 'bg-slate-900 border-indigo-500/30' : 'bg-white border-indigo-200 shadow-sm'
+          }`}
+        >
+          <Text className={`font-black text-sm mb-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            Live Thermal Printer Diagnostics
+          </Text>
+          <Text className={`text-xs mb-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Test print dispatch matching your active profile ({workflowMode}):
           </Text>
 

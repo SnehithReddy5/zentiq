@@ -40,6 +40,7 @@ import {
 import { Header } from '../../components/common/Header';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
+import { useThemeStore } from '../../store/theme.store';
 import { useCentralKitchenStore } from '../../store/centralKitchen.store';
 import { toast } from '../../utils/toast';
 import { B2BInvoicePdfService } from '../../services/invoice/b2bInvoicePdf.service';
@@ -140,6 +141,8 @@ export const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
 
 export const CentralKitchenOrderingScreen = () => {
   const insets = useSafeAreaInsets();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
   const { tenant, activeLocationId, branding } = useTenantStore();
   const { user } = useAuthStore();
 
@@ -302,7 +305,7 @@ export const CentralKitchenOrderingScreen = () => {
   }, [connectedCKMenuItems, selectedCategory, searchQuery]);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
       <Header
         title="Central Kitchen Ordering"
         subtitle={connectedCK ? `Supplied by: ${connectedCK.businessName}` : 'Connect & Order Bulk Prepared Food'}

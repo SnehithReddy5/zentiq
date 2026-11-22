@@ -245,6 +245,28 @@ async function createWindow() {
     }
   });
 
+  // Eliminate rectangular outline rings on Windows input fields in Chromium renderer
+  mainWindow.webContents.on('did-finish-load', () => {
+    try {
+      mainWindow.webContents.insertCSS(`
+        input, textarea, select, [contenteditable="true"] {
+          outline: none !important;
+          outline-style: none !important;
+          box-shadow: none !important;
+        }
+        input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus,
+        input:focus-visible, textarea:focus-visible, select:focus-visible {
+          outline: none !important;
+          outline-style: none !important;
+          box-shadow: none !important;
+        }
+        *:focus-visible {
+          outline: none !important;
+        }
+      `);
+    } catch (_) { }
+  });
+
   const distDir = path.join(__dirname, '../dist');
 
   if (fs.existsSync(distDir)) {

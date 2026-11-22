@@ -7,6 +7,34 @@ if (Platform.OS !== 'web') {
   enableScreens(true);
 }
 
+// Eliminate harsh rectangular Chromium outline focus rings on Windows / Web input fields
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  try {
+    const styleId = 'pos-web-global-focus-reset';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        input, textarea, select, [contenteditable="true"] {
+          outline: none !important;
+          outline-style: none !important;
+          box-shadow: none !important;
+        }
+        input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus,
+        input:focus-visible, textarea:focus-visible, select:focus-visible {
+          outline: none !important;
+          outline-style: none !important;
+          box-shadow: none !important;
+        }
+        *:focus-visible {
+          outline: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  } catch (_) {}
+}
+
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

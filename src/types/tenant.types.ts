@@ -39,6 +39,7 @@ export interface TenantBranding {
   whatsappReportsPhone?: string;
   whatsappReportFrequency?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
   whatsappSenderPhone?: string;
+  autoMenuImagesEnabled?: boolean;
 }
 
 export interface TenantFeatures {
@@ -63,6 +64,7 @@ export interface TenantFeatures {
   whatsappReportsPhone?: string;
   whatsappReportFrequency?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
   whatsappSenderPhone?: string;
+  autoMenuImagesEnabled?: boolean;
 }
 
 export type LocationStatus = 'REQUESTED' | 'APPROVED' | 'ACTIVE' | 'DISABLED' | 'SUSPENDED' | 'DEACTIVATED';
@@ -74,6 +76,8 @@ export interface Location {
   address: string;
   phone: string;
   status: LocationStatus;
+  features?: Partial<TenantFeatures>;
+  printerSettings?: any;
   createdAt?: any;
   updatedAt?: any;
 }

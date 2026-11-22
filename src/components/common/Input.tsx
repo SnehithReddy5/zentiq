@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, TextInput, Text, TextInputProps } from 'react-native';
+import { useThemeStore } from '../../store/theme.store';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -18,16 +19,29 @@ export const Input: React.FC<InputProps> = ({
   className = '',
   containerClassName = '',
   textClassName = '',
+  style,
   ...props
 }) => {
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
+
   return (
     <View className={`w-full mb-3 ${className}`}>
-      {label && <Text className="text-slate-300 font-semibold text-xs mb-1.5">{label}</Text>}
-      <View className={`flex-row items-center bg-slate-800/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 ${error ? 'border-red-500' : ''} ${containerClassName}`}>
+      {label && (
+        <Text className={`font-semibold text-xs mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+          {label}
+        </Text>
+      )}
+      <View
+        className={`flex-row items-center rounded-xl px-3.5 py-2.5 border ${
+          isDark ? 'bg-slate-800/80 border-slate-700/80' : 'bg-slate-50 border-slate-300'
+        } ${error ? 'border-red-500' : ''} ${containerClassName}`}
+      >
         {leftIcon && <View className="mr-2.5">{leftIcon}</View>}
         <TextInput
-          className={`flex-1 text-white text-base py-0 ${textClassName}`}
-          placeholderTextColor="#64748B"
+          className={`flex-1 text-base py-0 ${isDark ? 'text-white' : 'text-slate-900'} ${textClassName}`}
+          placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+          style={[{ outlineStyle: 'none' } as any, style]}
           {...props}
         />
         {rightIcon && <View className="ml-2.5">{rightIcon}</View>}

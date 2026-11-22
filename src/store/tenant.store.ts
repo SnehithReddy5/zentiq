@@ -8,6 +8,7 @@ import { db } from '../services/firebase/config';
 interface TenantState {
   tenant: TenantProfile | null;
   branding: TenantBranding | null;
+  tenantFeatures: TenantFeatures;
   features: TenantFeatures;
   locations: Location[];
   activeLocationId: string | null;
@@ -20,8 +21,23 @@ interface TenantState {
   setLoading: (loading: boolean) => void;
   resetTenant: () => void;
   getActiveLocation: () => Location | null;
+  getEffectiveFeatures: (locationId?: string | null) => TenantFeatures;
   subscribeToActiveTenant: (tenantId: string) => () => void;
 }
+
+export const computeEffectiveFeatures = (
+  baseFeatures: TenantFeatures,
+  location?: Location | null
+): TenantFeatures => {
+  if (!location || !location.features) {
+    return { ...defaultFeatures, ...baseFeatures };
+  }
+  return {
+    ...defaultFeatures,
+    ...baseFeatures,
+    ...location.features,
+  };
+};
 
 const defaultFeatures: TenantFeatures = {
   tablesEnabled: true,
@@ -39,6 +55,7 @@ const defaultFeatures: TenantFeatures = {
   gstType: 'INCLUSIVE',
   cgstRate: 2.5,
   sgstRate: 2.5,
+  autoMenuImagesEnabled: false,
 };
 
 const defaultBranding: TenantBranding = {
@@ -53,6 +70,7 @@ const defaultBranding: TenantBranding = {
   gstType: 'INCLUSIVE',
   cgstRate: 2.5,
   sgstRate: 2.5,
+  autoMenuImagesEnabled: false,
 };
 
 export const useTenantStore = create<TenantState>()(
@@ -60,6 +78,7 @@ export const useTenantStore = create<TenantState>()(
     (set, get) => ({
       tenant: null,
       branding: defaultBranding,
+      tenantFeatures: defaultFeatures,
       features: defaultFeatures,
       locations: [],
       activeLocationId: null,
@@ -67,17 +86,42 @@ export const useTenantStore = create<TenantState>()(
 
       setTenant: (tenant) => set({ tenant }),
       setBranding: (branding) => set({ branding: branding ? { ...defaultBranding, ...branding } : defaultBranding }),
-      setFeatures: (features) => set({ features: { ...get().features, ...features } }),
+      setFeatures: (newFeat) => {
+        const currentActive = get().activeLocationId;
+        const currentFeatures = get().features;
+        const mergedFeatures = { ...currentFeatures, ...newFeat };
+        if (currentActive) {
+          const updatedLocs = get().locations.map(loc =>
+            loc.id === currentActive
+              ? { ...loc, features: { ...(loc.features || {}), ...newFeat } }
+              : loc
+          );
+          set({ features: mergedFeatures, locations: updatedLocs });
+        } else {
+          set({
+            tenantFeatures: { ...get().tenantFeatures, ...newFeat },
+            features: mergedFeatures,
+          });
+        }
+      },
       setLocations: (locations) => {
         const currentActive = get().activeLocationId;
         const validActive = locations.find(l => l.id === currentActive);
+        const finalActive = validActive ? currentActive : (locations[0]?.id || null);
+        const activeLoc = locations.find(l => l.id === finalActive) || null;
         set({
           locations,
-          activeLocationId: validActive ? currentActive : (locations[0]?.id || null)
+          activeLocationId: finalActive,
+          features: computeEffectiveFeatures(get().tenantFeatures, activeLoc),
         });
       },
       setActiveLocationId: (activeLocationId) => {
-        set({ activeLocationId });
+        const activeLoc = get().locations.find(l => l.id === activeLocationId) || null;
+        const effective = computeEffectiveFeatures(get().tenantFeatures, activeLoc);
+        set({
+          activeLocationId,
+          features: effective,
+        });
         try {
           const { user } = require('./auth.store').useAuthStore.getState();
           const currentTenantId = get().tenant?.id || user?.tenantId;
@@ -85,7 +129,7 @@ export const useTenantStore = create<TenantState>()(
             if (currentTenantId) {
               setDoc(doc(db, 'tenants', currentTenantId, 'users', user.id), { lastActiveLocationId: activeLocationId }, { merge: true }).catch(() => {});
               const { usePrinterStore } = require('./printer.store');
-              usePrinterStore.getState().fetchSettingsFromCloud(currentTenantId, activeLocationId);
+              usePrinterStore.getState().switchLocation(activeLocationId, currentTenantId);
             }
             setDoc(doc(db, 'users', user.id), { lastActiveLocationId: activeLocationId }, { merge: true }).catch(() => {});
           }
@@ -95,6 +139,7 @@ export const useTenantStore = create<TenantState>()(
       resetTenant: () => set({
         tenant: null,
         branding: defaultBranding,
+        tenantFeatures: defaultFeatures,
         features: defaultFeatures,
         locations: [],
         activeLocationId: null,
@@ -102,6 +147,11 @@ export const useTenantStore = create<TenantState>()(
       getActiveLocation: () => {
         const { locations, activeLocationId } = get();
         return locations.find(l => l.id === activeLocationId) || locations[0] || null;
+      },
+      getEffectiveFeatures: (locationId) => {
+        const targetId = locationId || get().activeLocationId;
+        const loc = get().locations.find(l => l.id === targetId) || null;
+        return computeEffectiveFeatures(get().tenantFeatures, loc);
       },
 
       // Real-time listener: immediately syncs status changes (DEACTIVATED/ACTIVE), features (tablesEnabled), and branding
@@ -118,7 +168,12 @@ export const useTenantStore = create<TenantState>()(
         const unsubFeatures = onSnapshot(doc(db, 'tenants', tenantId, 'features', 'config'), (featSnap) => {
           if (featSnap.exists()) {
             const fData = featSnap.data() as TenantFeatures;
-            set((state) => ({ features: { ...state.features, ...fData } }));
+            const updatedTenantFeat = { ...get().tenantFeatures, ...fData };
+            const activeLoc = get().getActiveLocation();
+            set({
+              tenantFeatures: updatedTenantFeat,
+              features: computeEffectiveFeatures(updatedTenantFeat, activeLoc),
+            });
           }
         });
 
@@ -137,30 +192,40 @@ export const useTenantStore = create<TenantState>()(
           snap.forEach(d => locs.push({ ...d.data(), id: d.id } as Location));
           const currentActive = get().activeLocationId;
           const { user } = require('./auth.store').useAuthStore.getState();
-          const isClientAdmin = user?.role === 'CLIENT_ADMIN' || user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'admin';
-          const assigned = user?.assignedLocationId || (user?.locationIds && user.locationIds[0] !== '*' ? user.locationIds[0] : null);
+          const userAssigned = user?.assignedLocationId;
+          const hasGlobalWildcard = user?.locationIds?.includes('*');
+          const isBranchScoped = !!userAssigned && !hasGlobalWildcard;
 
           let finalActive = currentActive;
-          if (!finalActive && user?.lastActiveLocationId && locs.some(l => l.id === user.lastActiveLocationId)) {
+          if (isBranchScoped && locs.some(l => l.id === userAssigned)) {
+            // Strictly enforce branch assignment for branch-scoped admins and staff
+            finalActive = userAssigned;
+          } else if (!finalActive && user?.lastActiveLocationId && locs.some(l => l.id === user.lastActiveLocationId)) {
             finalActive = user.lastActiveLocationId;
-          } else if (!isClientAdmin && assigned) {
-            finalActive = assigned;
+          } else if (userAssigned && !finalActive && locs.some(l => l.id === userAssigned)) {
+            finalActive = userAssigned;
           } else if (!locs.some(l => l.id === finalActive)) {
             finalActive = (user?.lastActiveLocationId && locs.some(l => l.id === user.lastActiveLocationId))
               ? user.lastActiveLocationId
-              : (locs[0]?.id || null);
+              : (userAssigned && locs.some(l => l.id === userAssigned))
+                ? userAssigned
+                : (locs[0]?.id || null);
           }
+
+          const activeLoc = locs.find(l => l.id === finalActive) || locs[0] || null;
+          const effectiveFeat = computeEffectiveFeatures(get().tenantFeatures, activeLoc);
 
           set({
             locations: locs,
-            activeLocationId: finalActive
+            activeLocationId: finalActive,
+            features: effectiveFeat,
           });
 
           // Cloud sync printer settings for the active location
           if (finalActive && tenantId) {
             try {
               const { usePrinterStore } = require('./printer.store');
-              usePrinterStore.getState().fetchSettingsFromCloud(tenantId, finalActive);
+              usePrinterStore.getState().switchLocation(finalActive, tenantId);
             } catch (err) {}
           }
         });

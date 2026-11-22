@@ -33,11 +33,14 @@ import {
   ArrowRight,
   Filter,
   SlidersHorizontal,
+  Building,
+  MapPin,
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { useInventoryStore } from '../../store/inventory.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
+import { useThemeStore } from '../../store/theme.store';
 import { DBServices } from '../../services/firebase/db';
 import { toast } from '../../utils/toast';
 import { InventoryItem, InventoryLog } from '../../types/inventory.types';
@@ -57,9 +60,14 @@ const COMMON_UNITS = ['kg', 'packets', 'litres', 'grams', 'cans', 'boxes', 'pcs'
 export const InventoryScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
   const { items, logs, isLoading, subscribeToInventory } = useInventoryStore();
-  const { tenant, activeLocationId } = useTenantStore();
+  const { tenant, locations, activeLocationId, setActiveLocationId } = useTenantStore();
   const { user } = useAuthStore();
+
+  const userAssigned = user?.assignedLocationId;
+  const hasMultiBranchAccess = (user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'PLATFORM_ADMIN') && (!userAssigned || (user?.locationIds && user.locationIds.includes('*')));
 
   const [activeTab, setActiveTab] = useState<'BALANCE' | 'STOCK_IN_LOGS' | 'KITCHEN_ISSUE_LOGS'>('BALANCE');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -337,19 +345,19 @@ export const InventoryScreen = () => {
 
   if (!isManagerOrAbove) {
     return (
-      <SafeAreaView className="flex-1 bg-[#090D1A]">
+      <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
         <Header title="Kitchen Inventory" subtitle="Access Control" />
         <View className="flex-1 items-center justify-center p-6">
           <View className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/20 items-center justify-center mb-4">
             <ShieldAlert size={36} color="#F43F5E" />
           </View>
-          <Text className="text-white font-black text-xl text-center">Store Manager Access Required</Text>
-          <Text className="text-slate-400 text-xs text-center mt-2 max-w-sm leading-5">
+          <Text className={`font-black text-xl text-center ${isDark ? 'text-white' : 'text-slate-900'}`}>Store Manager Access Required</Text>
+          <Text className={`text-xs text-center mt-2 max-w-sm leading-5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Kitchen inventory balance, bulk load reception, and usage ledgers are restricted to Store Managers and Restaurant Administrators only.
           </Text>
-          <View className="bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl mt-4">
-            <Text className="text-slate-400 text-xs">
-              Your Current Role: <Text className="text-amber-400 font-bold uppercase">{user?.role || 'Staff'}</Text>
+          <View className={`border px-3.5 py-1.5 rounded-xl mt-4 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+            <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              Your Current Role: <Text className="text-amber-500 font-bold uppercase">{user?.role || 'Staff'}</Text>
             </Text>
           </View>
           <TouchableOpacity
@@ -365,7 +373,7 @@ export const InventoryScreen = () => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
       <Header
         title="Kitchen Inventory & Store"
         subtitle="Bulk Loads, Kitchen Consumption & Live Ledger"
@@ -384,58 +392,98 @@ export const InventoryScreen = () => {
         }
       />
 
+      {/* Multi-Branch Inventory Scope Switcher */}
+      {hasMultiBranchAccess && locations.length > 1 && (
+        <View className={`px-4 py-2 border-b flex-row items-center justify-between ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+          <View className="flex-row items-center mr-3">
+            <Building size={14} color="#5D3FD3" />
+            <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              Inventory Scope:
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingVertical: 2 }}>
+            {locations.map(loc => {
+              const isSelected = activeLocationId === loc.id;
+              return (
+                <TouchableOpacity
+                  key={loc.id}
+                  onPress={() => setActiveLocationId(loc.id)}
+                  className={`px-3 py-1 rounded-full border flex-row items-center ${isSelected
+                    ? 'bg-[#5D3FD3] border-purple-500 shadow-sm'
+                    : isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <MapPin size={11} color={isSelected ? 'white' : '#94A3B8'} />
+                  <Text className={`text-xs font-bold ml-1 ${isSelected ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {loc.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Top 4 KPI Metric Cards */}
-      <View className="px-4 pt-3 pb-2 bg-slate-900 border-b border-slate-800">
+      <View className={`px-4 pt-3 pb-2 border-b ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <View className="flex-row flex-wrap gap-2">
           {/* Total Items */}
-          <View className="bg-slate-950/80 border border-slate-800 p-2.5 rounded-2xl flex-1 min-w-[80px]">
+          <View className={`border p-2.5 rounded-2xl flex-1 min-w-[80px] ${isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
             <View className="flex-row items-center justify-between">
-              <Text className="text-slate-400 text-[10px] font-bold uppercase">Items</Text>
+              <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Items</Text>
               <Boxes size={13} color="#818CF8" />
             </View>
-            <Text className="text-white font-black text-lg mt-0.5">{totalItemsCount}</Text>
+            <Text className={`font-black text-lg mt-0.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>{totalItemsCount}</Text>
           </View>
 
           {/* Healthy Stock */}
           <TouchableOpacity
             onPress={() => setStatusFilter(statusFilter === 'ALL' ? 'ALL' : 'ALL')}
-            className="bg-emerald-950/20 border border-emerald-500/30 p-2.5 rounded-2xl flex-1 min-w-[80px]"
+            className={`border p-2.5 rounded-2xl flex-1 min-w-[80px] ${
+              isDark ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'
+            }`}
           >
             <View className="flex-row items-center justify-between">
-              <Text className="text-emerald-400 text-[10px] font-bold uppercase">Good Stock</Text>
-              <CheckCircle2 size={13} color="#34D399" />
+              <Text className="text-emerald-500 dark:text-emerald-400 text-[10px] font-bold uppercase">Good Stock</Text>
+              <CheckCircle2 size={13} color="#10B981" />
             </View>
-            <Text className="text-emerald-300 font-black text-lg mt-0.5">{healthyStockCount}</Text>
+            <Text className="text-emerald-600 dark:text-emerald-300 font-black text-lg mt-0.5">{healthyStockCount}</Text>
           </TouchableOpacity>
 
           {/* Low Stock Alerts */}
           <TouchableOpacity
             onPress={() => setStatusFilter(statusFilter === 'LOW_STOCK' ? 'ALL' : 'LOW_STOCK')}
-            className={`p-2.5 rounded-2xl flex-1 min-w-[80px] border ${statusFilter === 'LOW_STOCK'
+            className={`p-2.5 rounded-2xl flex-1 min-w-[80px] border ${
+              statusFilter === 'LOW_STOCK'
                 ? 'bg-amber-500/30 border-amber-400'
-                : 'bg-amber-950/20 border-amber-500/30'
-              }`}
+                : isDark
+                ? 'bg-amber-950/20 border-amber-500/30'
+                : 'bg-amber-50 border-amber-200'
+            }`}
           >
             <View className="flex-row items-center justify-between">
-              <Text className="text-amber-400 text-[10px] font-bold uppercase">Low Stock</Text>
-              <AlertTriangle size={13} color="#FBBF24" />
+              <Text className="text-amber-500 dark:text-amber-400 text-[10px] font-bold uppercase">Low Stock</Text>
+              <AlertTriangle size={13} color="#F59E0B" />
             </View>
-            <Text className="text-amber-300 font-black text-lg mt-0.5">{lowStockCount}</Text>
+            <Text className="text-amber-600 dark:text-amber-300 font-black text-lg mt-0.5">{lowStockCount}</Text>
           </TouchableOpacity>
 
           {/* Out of Stock */}
           <TouchableOpacity
             onPress={() => setStatusFilter(statusFilter === 'OUT_OF_STOCK' ? 'ALL' : 'OUT_OF_STOCK')}
-            className={`p-2.5 rounded-2xl flex-1 min-w-[80px] border ${statusFilter === 'OUT_OF_STOCK'
+            className={`p-2.5 rounded-2xl flex-1 min-w-[80px] border ${
+              statusFilter === 'OUT_OF_STOCK'
                 ? 'bg-rose-500/30 border-rose-400'
-                : 'bg-rose-950/20 border-rose-500/30'
-              }`}
+                : isDark
+                ? 'bg-rose-950/20 border-rose-500/30'
+                : 'bg-rose-50 border-rose-200'
+            }`}
           >
             <View className="flex-row items-center justify-between">
-              <Text className="text-rose-400 text-[10px] font-bold uppercase">Out of Stock</Text>
+              <Text className="text-rose-500 dark:text-rose-400 text-[10px] font-bold uppercase">Out of Stock</Text>
               <TrendingDown size={13} color="#F43F5E" />
             </View>
-            <Text className="text-rose-300 font-black text-lg mt-0.5">{outOfStockCount}</Text>
+            <Text className="text-rose-600 dark:text-rose-300 font-black text-lg mt-0.5">{outOfStockCount}</Text>
           </TouchableOpacity>
         </View>
 
@@ -448,33 +496,54 @@ export const InventoryScreen = () => {
         >
           <TouchableOpacity
             onPress={() => setActiveTab('BALANCE')}
-            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'BALANCE' ? 'bg-[#5D3FD3]' : 'bg-slate-950 border border-slate-800'
-              }`}
+            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center border ${
+              activeTab === 'BALANCE'
+                ? 'bg-[#5D3FD3] border-[#5D3FD3]'
+                : isDark
+                ? 'bg-slate-950 border-slate-800'
+                : 'bg-slate-50 border-slate-200'
+            }`}
           >
-            <Package size={14} color={activeTab === 'BALANCE' ? '#FFFFFF' : '#94A3B8'} />
-            <Text className={`text-xs font-black ml-1.5 ${activeTab === 'BALANCE' ? 'text-white' : 'text-slate-400'}`}>
+            <Package size={14} color={activeTab === 'BALANCE' ? '#FFFFFF' : isDark ? '#94A3B8' : '#64748B'} />
+            <Text className={`text-xs font-black ml-1.5 ${
+              activeTab === 'BALANCE' ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'
+            }`}>
               Stock Balance ({items.length})
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => setActiveTab('STOCK_IN_LOGS')}
-            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'STOCK_IN_LOGS' ? 'bg-emerald-600' : 'bg-slate-950 border border-slate-800'
-              }`}
+            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center border ${
+              activeTab === 'STOCK_IN_LOGS'
+                ? 'bg-emerald-600 border-emerald-600'
+                : isDark
+                ? 'bg-slate-950 border-slate-800'
+                : 'bg-slate-50 border-slate-200'
+            }`}
           >
-            <Truck size={14} color={activeTab === 'STOCK_IN_LOGS' ? '#FFFFFF' : '#94A3B8'} />
-            <Text className={`text-xs font-black ml-1.5 ${activeTab === 'STOCK_IN_LOGS' ? 'text-white' : 'text-slate-400'}`}>
+            <Truck size={14} color={activeTab === 'STOCK_IN_LOGS' ? '#FFFFFF' : isDark ? '#94A3B8' : '#64748B'} />
+            <Text className={`text-xs font-black ml-1.5 ${
+              activeTab === 'STOCK_IN_LOGS' ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'
+            }`}>
               Received Loads ({stockInLogs.length})
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => setActiveTab('KITCHEN_ISSUE_LOGS')}
-            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center ${activeTab === 'KITCHEN_ISSUE_LOGS' ? 'bg-amber-600' : 'bg-slate-950 border border-slate-800'
-              }`}
+            className={`px-3.5 py-2.5 rounded-2xl flex-row items-center border ${
+              activeTab === 'KITCHEN_ISSUE_LOGS'
+                ? 'bg-amber-600 border-amber-600'
+                : isDark
+                ? 'bg-slate-950 border-slate-800'
+                : 'bg-slate-50 border-slate-200'
+            }`}
           >
-            <Utensils size={14} color={activeTab === 'KITCHEN_ISSUE_LOGS' ? '#FFFFFF' : '#94A3B8'} />
-            <Text className={`text-xs font-black ml-1.5 ${activeTab === 'KITCHEN_ISSUE_LOGS' ? 'text-white' : 'text-slate-400'}`}>
+            <Utensils size={14} color={activeTab === 'KITCHEN_ISSUE_LOGS' ? '#FFFFFF' : isDark ? '#94A3B8' : '#64748B'} />
+            <Text className={`text-xs font-black ml-1.5 ${
+              activeTab === 'KITCHEN_ISSUE_LOGS' ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'
+            }`}>
               Kitchen Usage ({kitchenIssueLogs.length})
             </Text>
           </TouchableOpacity>
@@ -485,20 +554,22 @@ export const InventoryScreen = () => {
       {activeTab === 'BALANCE' && (
         <View className="flex-1">
           {/* Search & Filter Bar */}
-          <View className="bg-slate-900/60 px-4 py-2.5 border-b border-slate-800 gap-2">
-            <View className="flex-row items-center bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2">
-              <Search size={15} color="#94A3B8" />
+          <View className={`px-4 py-2.5 border-b gap-2 ${isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'}`}>
+            <View className={`flex-row items-center border rounded-2xl px-3.5 py-2 ${
+              isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <Search size={15} color={isDark ? '#94A3B8' : '#64748B'} />
               <TextInput
                 placeholder="Search raw items (e.g. Rice, Oil, Spices, Onions)..."
-                placeholderTextColor="#64748B"
+                placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                className="flex-1 text-white text-xs ml-2 py-0"
+                className={`flex-1 text-xs ml-2 py-0 ${isDark ? 'text-white' : 'text-slate-900'}`}
                 autoCorrect={false}
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <X size={15} color="#94A3B8" />
+                  <X size={15} color={isDark ? '#94A3B8' : '#64748B'} />
                 </TouchableOpacity>
               )}
             </View>
@@ -509,10 +580,19 @@ export const InventoryScreen = () => {
                 <TouchableOpacity
                   key={cat}
                   onPress={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1 rounded-full border ${selectedCategory === cat ? 'bg-indigo-600/30 border-indigo-400' : 'bg-slate-950 border-slate-800'
-                    }`}
+                  className={`px-3 py-1 rounded-full border ${
+                    selectedCategory === cat
+                      ? 'bg-indigo-600/30 border-indigo-400'
+                      : isDark
+                      ? 'bg-slate-950 border-slate-800'
+                      : 'bg-slate-100 border-slate-200'
+                  }`}
                 >
-                  <Text className={`text-xs font-bold ${selectedCategory === cat ? 'text-indigo-300' : 'text-slate-400'}`}>
+                  <Text className={`text-xs font-bold ${
+                    selectedCategory === cat
+                      ? isDark ? 'text-indigo-300' : 'text-indigo-600'
+                      : isDark ? 'text-slate-400' : 'text-slate-600'
+                  }`}>
                     {cat}
                   </Text>
                 </TouchableOpacity>
@@ -524,7 +604,7 @@ export const InventoryScreen = () => {
           {isLoading ? (
             <View className="flex-1 items-center justify-center">
               <ActivityIndicator size="large" color="#5D3FD3" />
-              <Text className="text-slate-400 text-xs font-semibold mt-3">Loading store inventory...</Text>
+              <Text className={`text-xs font-semibold mt-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading store inventory...</Text>
             </View>
           ) : (
             <FlatList
@@ -553,21 +633,27 @@ export const InventoryScreen = () => {
                 const pct = totalIn > 0 ? Math.min(100, Math.max(0, (stock / totalIn) * 100)) : (stock > 0 ? 100 : 0);
 
                 return (
-                  <View className="bg-slate-900 border border-slate-800 rounded-3xl p-4 mb-3 shadow-md">
+                  <View className={`border rounded-3xl p-4 mb-3 shadow-sm ${
+                    isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+                  }`}>
                     {/* Item Header */}
                     <View className="flex-row items-start justify-between">
                       <View className="flex-1 mr-2">
                         <View className="flex-row items-center flex-wrap gap-1.5 mb-1">
-                          <Text className="text-white font-black text-lg">{item.name}</Text>
-                          <View className="bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 rounded">
-                            <Text className="text-indigo-300 text-[10px] font-bold uppercase">{item.category}</Text>
+                          <Text className={`font-black text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.name}</Text>
+                          <View className={`border px-2 py-0.5 rounded ${
+                            isDark ? 'bg-indigo-500/15 border-indigo-500/30' : 'bg-indigo-50 border-indigo-200'
+                          }`}>
+                            <Text className={`text-[10px] font-bold uppercase ${
+                              isDark ? 'text-indigo-300' : 'text-indigo-600'
+                            }`}>{item.category}</Text>
                           </View>
                         </View>
 
                         {/* Status Badge */}
                         <View className="flex-row items-center gap-1.5">
                           <View className={`w-2 h-2 rounded-full ${isOutOfStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                          <Text className={`text-[11px] font-bold uppercase tracking-wider ${isOutOfStock ? 'text-rose-400' : isLowStock ? 'text-amber-300' : 'text-emerald-400'
+                          <Text className={`text-[11px] font-bold uppercase tracking-wider ${isOutOfStock ? 'text-rose-500 dark:text-rose-400' : isLowStock ? 'text-amber-500 dark:text-amber-300' : 'text-emerald-500 dark:text-emerald-400'
                             }`}>
                             {isOutOfStock ? 'OUT OF STOCK' : isLowStock ? `LOW STOCK (Min: ${min} ${item.unit})` : 'HEALTHY BALANCE'}
                           </Text>
@@ -575,18 +661,22 @@ export const InventoryScreen = () => {
                       </View>
 
                       {/* Current Active Balance Highlight */}
-                      <View className="items-end bg-slate-950/80 border border-slate-800 px-3.5 py-2 rounded-2xl">
-                        <Text className="text-slate-400 text-[10px] font-bold uppercase">Store Balance</Text>
-                        <Text className={`text-2xl font-black ${isOutOfStock ? 'text-rose-400' : isLowStock ? 'text-amber-300' : 'text-emerald-400'
+                      <View className={`items-end border px-3.5 py-2 rounded-2xl ${
+                        isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Store Balance</Text>
+                        <Text className={`text-2xl font-black ${isOutOfStock ? 'text-rose-500 dark:text-rose-400' : isLowStock ? 'text-amber-500 dark:text-amber-300' : 'text-emerald-500 dark:text-emerald-400'
                           }`}>
-                          {stock} <Text className="text-xs text-slate-400 font-bold">{item.unit}</Text>
+                          {stock} <Text className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{item.unit}</Text>
                         </Text>
                       </View>
                     </View>
 
                     {/* Stock Meter Progress Bar */}
                     <View className="mt-3">
-                      <View className="h-2 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                      <View className={`h-2 w-full rounded-full overflow-hidden border ${
+                        isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+                      }`}>
                         <View
                           style={{ width: `${pct}%` }}
                           className={`h-full rounded-full ${isOutOfStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'
@@ -596,42 +686,46 @@ export const InventoryScreen = () => {
                     </View>
 
                     {/* Summary Stats Row */}
-                    <View className="flex-row items-center justify-between mt-3 pt-2.5 border-t border-slate-800/80">
+                    <View className={`flex-row items-center justify-between mt-3 pt-2.5 border-t ${
+                      isDark ? 'border-slate-800/80' : 'border-slate-200'
+                    }`}>
                       <View className="flex-row items-center">
-                        <Truck size={12} color="#34D399" />
-                        <Text className="text-slate-400 text-xs ml-1.5">
-                          Total Received: <Text className="text-slate-200 font-bold">{totalIn} {item.unit}</Text>
+                        <Truck size={12} color="#10B981" />
+                        <Text className={`text-xs ml-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Total Received: <Text className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{totalIn} {item.unit}</Text>
                         </Text>
                       </View>
 
                       <View className="flex-row items-center">
                         <Utensils size={12} color="#F59E0B" />
-                        <Text className="text-slate-400 text-xs ml-1.5">
-                          Taken to Kitchen: <Text className="text-slate-200 font-bold">{totalOut} {item.unit}</Text>
+                        <Text className={`text-xs ml-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Taken to Kitchen: <Text className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{totalOut} {item.unit}</Text>
                         </Text>
                       </View>
                     </View>
 
                     {/* Activity Tracking: When updated or deducted */}
-                    <View className="mt-2.5 pt-2 border-t border-slate-800/60 flex-row items-center justify-between flex-wrap gap-2">
+                    <View className={`mt-2.5 pt-2 border-t flex-row items-center justify-between flex-wrap gap-2 ${
+                      isDark ? 'border-slate-800/60' : 'border-slate-200'
+                    }`}>
                       <View className="flex-row items-center">
-                        <Clock size={11} color="#94A3B8" />
-                        <Text className="text-slate-400 text-[11px] ml-1">
-                          Last Updated: <Text className="text-slate-200 font-bold">{formatLogDate(item.lastIssuedAt || item.lastRestockedAt || item.updatedAt)}</Text>
+                        <Clock size={11} color={isDark ? '#94A3B8' : '#64748B'} />
+                        <Text className={`text-[11px] ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Last Updated: <Text className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{formatLogDate(item.lastIssuedAt || item.lastRestockedAt || item.updatedAt)}</Text>
                         </Text>
                       </View>
 
                       {item.lastIssuedAt ? (
                         <View className="bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/25 flex-row items-center">
-                          <Utensils size={10} color="#FBBF24" />
-                          <Text className="text-amber-400 text-[10px] font-bold ml-1">
+                          <Utensils size={10} color="#F59E0B" />
+                          <Text className="text-amber-500 font-bold text-[10px] ml-1">
                             Deducted: {formatLogDate(item.lastIssuedAt)}
                           </Text>
                         </View>
                       ) : item.lastRestockedAt ? (
                         <View className="bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/25 flex-row items-center">
-                          <Truck size={10} color="#34D399" />
-                          <Text className="text-emerald-400 text-[10px] font-bold ml-1">
+                          <Truck size={10} color="#10B981" />
+                          <Text className="text-emerald-500 font-bold text-[10px] ml-1">
                             Received: {formatLogDate(item.lastRestockedAt)}
                           </Text>
                         </View>
@@ -645,8 +739,8 @@ export const InventoryScreen = () => {
                         onPress={() => handleOpenReceiveStock(item)}
                         className="flex-1 bg-emerald-600/20 border border-emerald-500/40 py-2.5 rounded-2xl flex-row items-center justify-center active:bg-emerald-600/30"
                       >
-                        <Plus size={14} color="#34D399" />
-                        <Text className="text-emerald-300 font-black text-xs ml-1">+ Load Stock</Text>
+                        <Plus size={14} color="#10B981" />
+                        <Text className="text-emerald-600 dark:text-emerald-300 font-black text-xs ml-1">+ Load Stock</Text>
                       </TouchableOpacity>
 
                       {/* - Take to Kitchen Button */}
@@ -654,21 +748,23 @@ export const InventoryScreen = () => {
                         onPress={() => handleOpenKitchenIssue(item)}
                         disabled={isOutOfStock}
                         className={`flex-1 py-2.5 rounded-2xl flex-row items-center justify-center border ${isOutOfStock
-                            ? 'bg-slate-800/40 border-slate-800 opacity-40'
+                            ? isDark ? 'bg-slate-800/40 border-slate-800 opacity-40' : 'bg-slate-100 border-slate-200 opacity-40'
                             : 'bg-amber-600/20 border-amber-500/40 active:bg-amber-600/30'
                           }`}
                       >
-                        <Utensils size={14} color="#FBBF24" />
-                        <Text className="text-amber-300 font-black text-xs ml-1">🍳 Kitchen Issue</Text>
+                        <Utensils size={14} color="#F59E0B" />
+                        <Text className="text-amber-600 dark:text-amber-300 font-black text-xs ml-1">🍳 Kitchen Issue</Text>
                       </TouchableOpacity>
 
                       {/* Adjust / Reconcile */}
                       <TouchableOpacity
                         onPress={() => handleOpenAdjustStock(item)}
-                        className="p-2.5 bg-slate-800 border border-slate-700 rounded-2xl active:bg-slate-750"
+                        className={`p-2.5 border rounded-2xl ${
+                          isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                        }`}
                         accessibilityLabel="Adjust Stock"
                       >
-                        <SlidersHorizontal size={14} color="#CBD5E1" />
+                        <SlidersHorizontal size={14} color={isDark ? '#CBD5E1' : '#475569'} />
                       </TouchableOpacity>
 
                       {/* Delete */}
@@ -685,9 +781,9 @@ export const InventoryScreen = () => {
               }}
               ListEmptyComponent={
                 <View className="py-20 items-center justify-center">
-                  <Boxes size={48} color="#475569" />
-                  <Text className="text-white font-bold text-base mt-3">No inventory items found</Text>
-                  <Text className="text-slate-500 text-xs mt-1 text-center max-w-xs">
+                  <Boxes size={48} color={isDark ? '#475569' : '#94A3B8'} />
+                  <Text className={`font-bold text-base mt-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>No inventory items found</Text>
+                  <Text className={`text-xs mt-1 text-center max-w-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                     Tap '+ New Item' above to start tracking Rice, Oil, Spices, and kitchen loads.
                   </Text>
                   <TouchableOpacity
@@ -707,8 +803,8 @@ export const InventoryScreen = () => {
       {/* TAB 2: RECEIVED BULK LOADS HISTORY */}
       {activeTab === 'STOCK_IN_LOGS' && (
         <View className="flex-1">
-          <View className="px-4 py-2 bg-slate-900 border-b border-slate-800">
-            <Text className="text-slate-400 text-xs">
+          <View className={`px-4 py-2 border-b ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+            <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               Showing incoming inventory shipments loaded into the store room.
             </Text>
           </View>
@@ -727,17 +823,19 @@ export const InventoryScreen = () => {
               width: '100%',
             }}
             renderItem={({ item }) => (
-              <View className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl mb-2 flex-row items-center justify-between">
+              <View className={`border p-3.5 rounded-2xl mb-2 flex-row items-center justify-between ${
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+              }`}>
                 <View className="flex-row items-center flex-1 mr-3">
                   <View className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 items-center justify-center mr-3 shrink-0">
-                    <Truck size={18} color="#34D399" />
+                    <Truck size={18} color="#10B981" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-white font-black text-sm">{item.itemName}</Text>
-                    <Text className="text-slate-400 text-xs mt-0.5" numberOfLines={1}>
+                    <Text className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.itemName}</Text>
+                    <Text className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} numberOfLines={1}>
                       {item.notes || 'Bulk load received'}
                     </Text>
-                    <Text className="text-slate-500 text-[10px] mt-0.5">
+                    <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                       {formatLogDate(item.createdAt)} • By {item.recordedBy || 'Staff'}
                     </Text>
                   </View>
@@ -745,9 +843,9 @@ export const InventoryScreen = () => {
 
                 <View className="items-end shrink-0">
                   <View className="bg-emerald-500/20 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
-                    <Text className="text-emerald-300 font-black text-sm">+{item.quantity} {item.unit}</Text>
+                    <Text className="text-emerald-600 dark:text-emerald-300 font-black text-sm">+{item.quantity} {item.unit}</Text>
                   </View>
-                  <Text className="text-slate-400 text-[10px] mt-1">
+                  <Text className={`text-[10px] mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     Balance: {item.newStock} {item.unit}
                   </Text>
                 </View>
@@ -755,9 +853,9 @@ export const InventoryScreen = () => {
             )}
             ListEmptyComponent={
               <View className="py-20 items-center justify-center">
-                <Truck size={44} color="#475569" />
-                <Text className="text-slate-400 font-bold text-xs mt-2">No received loads logged yet</Text>
-                <Text className="text-slate-500 text-[11px] mt-0.5">Tap '+ Load Stock' on any item in Stock Balance tab.</Text>
+                <Truck size={44} color={isDark ? '#475569' : '#94A3B8'} />
+                <Text className={`font-bold text-xs mt-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No received loads logged yet</Text>
+                <Text className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Tap '+ Load Stock' on any item in Stock Balance tab.</Text>
               </View>
             }
           />
@@ -767,8 +865,8 @@ export const InventoryScreen = () => {
       {/* TAB 3: KITCHEN USAGE / ISSUES LOG */}
       {activeTab === 'KITCHEN_ISSUE_LOGS' && (
         <View className="flex-1">
-          <View className="px-4 py-2 bg-slate-900 border-b border-slate-800">
-            <Text className="text-slate-400 text-xs">
+          <View className={`px-4 py-2 border-b ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+            <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               Showing raw materials taken to the kitchen floor for active cooking.
             </Text>
           </View>
@@ -787,17 +885,19 @@ export const InventoryScreen = () => {
               width: '100%',
             }}
             renderItem={({ item }) => (
-              <View className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl mb-2 flex-row items-center justify-between">
+              <View className={`border p-3.5 rounded-2xl mb-2 flex-row items-center justify-between ${
+                isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+              }`}>
                 <View className="flex-row items-center flex-1 mr-3">
                   <View className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 items-center justify-center mr-3 shrink-0">
-                    <Utensils size={18} color="#FBBF24" />
+                    <Utensils size={18} color="#F59E0B" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-white font-black text-sm">{item.itemName}</Text>
-                    <Text className="text-amber-300/80 text-xs mt-0.5" numberOfLines={1}>
+                    <Text className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.itemName}</Text>
+                    <Text className="text-amber-500 text-xs mt-0.5" numberOfLines={1}>
                       {item.notes || 'Issued to kitchen for cooking'}
                     </Text>
-                    <Text className="text-slate-500 text-[10px] mt-0.5">
+                    <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                       {formatLogDate(item.createdAt)} • Taken by {item.recordedBy || 'Chef'}
                     </Text>
                   </View>
@@ -805,9 +905,9 @@ export const InventoryScreen = () => {
 
                 <View className="items-end shrink-0">
                   <View className="bg-amber-500/20 px-2.5 py-0.5 rounded-lg border border-amber-500/30">
-                    <Text className="text-amber-300 font-black text-sm">-{item.quantity} {item.unit}</Text>
+                    <Text className="text-amber-600 dark:text-amber-300 font-black text-sm">-{item.quantity} {item.unit}</Text>
                   </View>
-                  <Text className="text-slate-400 text-[10px] mt-1">
+                  <Text className={`text-[10px] mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     Store Left: {item.newStock} {item.unit}
                   </Text>
                 </View>
@@ -815,9 +915,9 @@ export const InventoryScreen = () => {
             )}
             ListEmptyComponent={
               <View className="py-20 items-center justify-center">
-                <Utensils size={44} color="#475569" />
-                <Text className="text-slate-400 font-bold text-xs mt-2">No kitchen issues logged yet</Text>
-                <Text className="text-slate-500 text-[11px] mt-0.5">Tap '🍳 Kitchen Issue' on any item when taking supplies to cook.</Text>
+                <Utensils size={44} color={isDark ? '#475569' : '#94A3B8'} />
+                <Text className={`font-bold text-xs mt-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No kitchen issues logged yet</Text>
+                <Text className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Tap '🍳 Kitchen Issue' on any item when taking supplies to cook.</Text>
               </View>
             }
           />
@@ -833,78 +933,90 @@ export const InventoryScreen = () => {
           onRequestClose={() => setStockInModalOpen(false)}
         >
           <View className="flex-1 bg-black/80 items-center justify-center p-4">
-            <View className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 shadow-2xl">
-              <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
+            <View className={`border rounded-3xl w-full max-w-md p-5 shadow-2xl ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <View className={`flex-row items-center justify-between pb-3 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}>
                 <View className="flex-row items-center">
                   <View className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 items-center justify-center mr-2.5">
-                    <Truck size={18} color="#34D399" />
+                    <Truck size={18} color="#10B981" />
                   </View>
                   <View>
-                    <Text className="text-white font-black text-base">Receive Bulk Load</Text>
-                    <Text className="text-slate-400 text-xs">{selectedItem.name}</Text>
+                    <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>Receive Bulk Load</Text>
+                    <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{selectedItem.name}</Text>
                   </View>
                 </View>
                 <TouchableOpacity onPress={() => setStockInModalOpen(false)}>
-                  <X size={18} color="#94A3B8" />
+                  <X size={18} color={isDark ? '#94A3B8' : '#64748B'} />
                 </TouchableOpacity>
               </View>
 
               <View className="my-4 gap-3">
-                <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex-row items-center justify-between">
-                  <Text className="text-slate-400 text-xs">Current Store Balance:</Text>
-                  <Text className="text-white font-black text-sm">{selectedItem.currentStock} {selectedItem.unit}</Text>
+                <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${
+                  isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Current Store Balance:</Text>
+                  <Text className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedItem.currentStock} {selectedItem.unit}</Text>
                 </View>
 
                 <View>
-                  <Text className="text-slate-300 text-xs font-bold mb-1">Load Quantity Received ({selectedItem.unit}) *</Text>
+                  <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Load Quantity Received ({selectedItem.unit}) *</Text>
                   <TextInput
                     placeholder={`e.g. 100`}
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     keyboardType="numeric"
                     value={actionQuantity}
                     onChangeText={setActionQuantity}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-3 text-white text-base font-bold"
+                    className={`border rounded-xl px-3.5 py-3 text-base font-bold ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </View>
 
                 <View>
-                  <Text className="text-slate-300 text-xs font-bold mb-1">Supplier / Delivery Invoice Note</Text>
+                  <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Supplier / Delivery Invoice Note</Text>
                   <TextInput
                     placeholder="e.g. Received from Metro Cash & Carry - Batch #42"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     value={actionNotes}
                     onChangeText={setActionNotes}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white text-xs"
+                    className={`border rounded-xl px-3.5 py-2.5 text-xs ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </View>
 
                 <View>
-                  <Text className="text-slate-300 text-xs font-bold mb-1">Received By (Staff Name)</Text>
+                  <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Received By (Staff Name)</Text>
                   <TextInput
                     placeholder="Staff name"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     value={actionStaff}
                     onChangeText={setActionStaff}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white text-xs"
+                    className={`border rounded-xl px-3.5 py-2.5 text-xs ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </View>
 
                 {parseFloat(actionQuantity) > 0 && (
                   <View className="bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-2xl flex-row items-center justify-between">
-                    <Text className="text-emerald-300 text-xs font-semibold">New Store Balance:</Text>
-                    <Text className="text-emerald-300 font-black text-base">
+                    <Text className="text-emerald-500 dark:text-emerald-300 text-xs font-semibold">New Store Balance:</Text>
+                    <Text className="text-emerald-600 dark:text-emerald-300 font-black text-base">
                       {(Number(selectedItem.currentStock) + parseFloat(actionQuantity)).toFixed(1)} {selectedItem.unit}
                     </Text>
                   </View>
                 )}
               </View>
 
-              <View className="flex-row gap-2 pt-2 border-t border-slate-800">
+              <View className={`flex-row gap-2 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                 <TouchableOpacity
                   onPress={() => setStockInModalOpen(false)}
-                  className="flex-1 py-3 bg-slate-800 rounded-xl items-center"
+                  className={`flex-1 py-3 rounded-xl items-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                 >
-                  <Text className="text-slate-300 font-bold text-xs">Cancel</Text>
+                  <Text className={`font-bold text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -933,78 +1045,90 @@ export const InventoryScreen = () => {
           onRequestClose={() => setKitchenIssueModalOpen(false)}
         >
           <View className="flex-1 bg-black/80 items-center justify-center p-4">
-            <View className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 shadow-2xl">
-              <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
+            <View className={`border rounded-3xl w-full max-w-md p-5 shadow-2xl ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <View className={`flex-row items-center justify-between pb-3 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}>
                 <View className="flex-row items-center">
                   <View className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 items-center justify-center mr-2.5">
-                    <Utensils size={18} color="#FBBF24" />
+                    <Utensils size={18} color="#F59E0B" />
                   </View>
                   <View>
-                    <Text className="text-white font-black text-base">Kitchen Issue Entry</Text>
-                    <Text className="text-slate-400 text-xs">{selectedItem.name}</Text>
+                    <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>Kitchen Issue Entry</Text>
+                    <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{selectedItem.name}</Text>
                   </View>
                 </View>
                 <TouchableOpacity onPress={() => setKitchenIssueModalOpen(false)}>
-                  <X size={18} color="#94A3B8" />
+                  <X size={18} color={isDark ? '#94A3B8' : '#64748B'} />
                 </TouchableOpacity>
               </View>
 
               <View className="my-4 gap-3">
-                <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex-row items-center justify-between">
-                  <Text className="text-slate-400 text-xs">Current Store Balance:</Text>
-                  <Text className="text-emerald-400 font-black text-sm">{selectedItem.currentStock} {selectedItem.unit}</Text>
+                <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${
+                  isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Current Store Balance:</Text>
+                  <Text className="text-emerald-500 dark:text-emerald-400 font-black text-sm">{selectedItem.currentStock} {selectedItem.unit}</Text>
                 </View>
 
                 <View>
-                  <Text className="text-slate-300 text-xs font-bold mb-1">Quantity Taken to Kitchen ({selectedItem.unit}) *</Text>
+                  <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Quantity Taken to Kitchen ({selectedItem.unit}) *</Text>
                   <TextInput
                     placeholder={`e.g. 10`}
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     keyboardType="numeric"
                     value={actionQuantity}
                     onChangeText={setActionQuantity}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-3 text-white text-base font-bold"
+                    className={`border rounded-xl px-3.5 py-3 text-base font-bold ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </View>
 
                 <View>
-                  <Text className="text-slate-300 text-xs font-bold mb-1">Kitchen Cooking Purpose Note</Text>
+                  <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Kitchen Cooking Purpose Note</Text>
                   <TextInput
                     placeholder="e.g. Lunch shift biryani & curry preparation"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     value={actionNotes}
                     onChangeText={setActionNotes}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white text-xs"
+                    className={`border rounded-xl px-3.5 py-2.5 text-xs ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </View>
 
                 <View>
-                  <Text className="text-slate-300 text-xs font-bold mb-1">Taken By (Chef / Cook Name)</Text>
+                  <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Taken By (Chef / Cook Name)</Text>
                   <TextInput
                     placeholder="Chef name"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     value={actionStaff}
                     onChangeText={setActionStaff}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white text-xs"
+                    className={`border rounded-xl px-3.5 py-2.5 text-xs ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </View>
 
                 {parseFloat(actionQuantity) > 0 && (
                   <View className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex-row items-center justify-between">
-                    <Text className="text-amber-300 text-xs font-semibold">Remaining in Store:</Text>
-                    <Text className="text-amber-300 font-black text-base">
+                    <Text className="text-amber-500 dark:text-amber-300 text-xs font-semibold">Remaining in Store:</Text>
+                    <Text className="text-amber-600 dark:text-amber-300 font-black text-base">
                       {Math.max(0, Number(selectedItem.currentStock) - parseFloat(actionQuantity)).toFixed(1)} {selectedItem.unit}
                     </Text>
                   </View>
                 )}
               </View>
 
-              <View className="flex-row gap-2 pt-2 border-t border-slate-800">
+              <View className={`flex-row gap-2 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                 <TouchableOpacity
                   onPress={() => setKitchenIssueModalOpen(false)}
-                  className="flex-1 py-3 bg-slate-800 rounded-xl items-center"
+                  className={`flex-1 py-3 rounded-xl items-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                 >
-                  <Text className="text-slate-300 font-bold text-xs">Cancel</Text>
+                  <Text className={`font-bold text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1033,43 +1157,56 @@ export const InventoryScreen = () => {
           onRequestClose={() => setAddItemModalOpen(false)}
         >
           <View className="flex-1 bg-black/80 items-center justify-center p-4">
-            <View className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 shadow-2xl">
-              <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
+            <View className={`border rounded-3xl w-full max-w-md p-5 shadow-2xl ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <View className={`flex-row items-center justify-between pb-3 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}>
                 <View className="flex-row items-center">
                   <View className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 items-center justify-center mr-2.5">
-                    <Plus size={18} color="#818CF8" />
+                    <Plus size={18} color="#6366F1" />
                   </View>
-                  <Text className="text-white font-black text-base">Add Raw Inventory Item</Text>
+                  <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>Add Raw Inventory Item</Text>
                 </View>
                 <TouchableOpacity onPress={() => setAddItemModalOpen(false)}>
-                  <X size={18} color="#94A3B8" />
+                  <X size={18} color={isDark ? '#94A3B8' : '#64748B'} />
                 </TouchableOpacity>
               </View>
 
               <ScrollView className="my-3 max-h-[400px]" showsVerticalScrollIndicator={false}>
                 <View className="gap-3">
                   <View>
-                    <Text className="text-slate-300 text-xs font-bold mb-1">Item Name *</Text>
+                    <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Item Name *</Text>
                     <TextInput
                       placeholder="e.g. Basmati Rice, Sunflower Oil, Garam Masala"
-                      placeholderTextColor="#64748B"
+                      placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                       value={formName}
                       onChangeText={setFormName}
-                      className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white text-xs font-bold"
+                      className={`border rounded-xl px-3.5 py-2.5 text-xs font-bold ${
+                        isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                      }`}
                     />
                   </View>
 
                   <View>
-                    <Text className="text-slate-300 text-xs font-bold mb-1">Category</Text>
+                    <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Category</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6 }}>
                       {COMMON_CATEGORIES.filter((c) => c !== 'All').map((c) => (
                         <TouchableOpacity
                           key={c}
                           onPress={() => setFormCategory(c)}
-                          className={`px-3 py-1.5 rounded-xl border ${formCategory === c ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-950 border-slate-800'
-                            }`}
+                          className={`px-3 py-1.5 rounded-xl border ${
+                            formCategory === c
+                              ? 'bg-indigo-600 border-indigo-500'
+                              : isDark
+                              ? 'bg-slate-950 border-slate-800'
+                              : 'bg-slate-100 border-slate-200'
+                          }`}
                         >
-                          <Text className={`text-xs font-bold ${formCategory === c ? 'text-white' : 'text-slate-400'}`}>
+                          <Text className={`text-xs font-bold ${
+                            formCategory === c ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'
+                          }`}>
                             {c}
                           </Text>
                         </TouchableOpacity>
@@ -1078,16 +1215,23 @@ export const InventoryScreen = () => {
                   </View>
 
                   <View>
-                    <Text className="text-slate-300 text-xs font-bold mb-1">Measurement Unit</Text>
+                    <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Measurement Unit</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6 }}>
                       {COMMON_UNITS.map((u) => (
                         <TouchableOpacity
                           key={u}
                           onPress={() => setFormUnit(u)}
-                          className={`px-3.5 py-1.5 rounded-xl border ${formUnit === u ? 'bg-[#5D3FD3] border-indigo-400' : 'bg-slate-950 border-slate-800'
-                            }`}
+                          className={`px-3.5 py-1.5 rounded-xl border ${
+                            formUnit === u
+                              ? 'bg-[#5D3FD3] border-indigo-400'
+                              : isDark
+                              ? 'bg-slate-950 border-slate-800'
+                              : 'bg-slate-100 border-slate-200'
+                          }`}
                         >
-                          <Text className={`text-xs font-bold ${formUnit === u ? 'text-white' : 'text-slate-400'}`}>
+                          <Text className={`text-xs font-bold ${
+                            formUnit === u ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'
+                          }`}>
                             {u}
                           </Text>
                         </TouchableOpacity>
@@ -1097,26 +1241,30 @@ export const InventoryScreen = () => {
 
                   <View className="flex-row gap-2">
                     <View className="flex-1">
-                      <Text className="text-slate-300 text-xs font-bold mb-1">Initial Opening Load</Text>
+                      <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Initial Opening Load</Text>
                       <TextInput
                         placeholder="100"
-                        placeholderTextColor="#64748B"
+                        placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                         keyboardType="numeric"
                         value={formStock}
                         onChangeText={setFormStock}
-                        className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white text-xs font-bold"
+                        className={`border rounded-xl px-3.5 py-2.5 text-xs font-bold ${
+                          isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                        }`}
                       />
                     </View>
 
                     <View className="flex-1">
-                      <Text className="text-slate-300 text-xs font-bold mb-1">Low Stock Alert Min</Text>
+                      <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Low Stock Alert Min</Text>
                       <TextInput
                         placeholder="15"
-                        placeholderTextColor="#64748B"
+                        placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                         keyboardType="numeric"
                         value={formMinThreshold}
                         onChangeText={setFormMinThreshold}
-                        className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white text-xs font-bold"
+                        className={`border rounded-xl px-3.5 py-2.5 text-xs font-bold ${
+                          isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                        }`}
                       />
                     </View>
                   </View>
@@ -1124,12 +1272,12 @@ export const InventoryScreen = () => {
                 </View>
               </ScrollView>
 
-              <View className="flex-row gap-2 pt-2 border-t border-slate-800">
+              <View className={`flex-row gap-2 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                 <TouchableOpacity
                   onPress={() => setAddItemModalOpen(false)}
-                  className="flex-1 py-3 bg-slate-800 rounded-xl items-center"
+                  className={`flex-1 py-3 rounded-xl items-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                 >
-                  <Text className="text-slate-300 font-bold text-xs">Cancel</Text>
+                  <Text className={`font-bold text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1158,58 +1306,68 @@ export const InventoryScreen = () => {
           onRequestClose={() => setAdjustModalOpen(false)}
         >
           <View className="flex-1 bg-black/80 items-center justify-center p-4">
-            <View className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-5 shadow-2xl">
-              <View className="flex-row items-center justify-between pb-3 border-b border-slate-800">
+            <View className={`border rounded-3xl w-full max-w-md p-5 shadow-2xl ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <View className={`flex-row items-center justify-between pb-3 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}>
                 <View className="flex-row items-center">
                   <View className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 items-center justify-center mr-2.5">
-                    <SlidersHorizontal size={18} color="#C084FC" />
+                    <SlidersHorizontal size={18} color="#A855F7" />
                   </View>
                   <View>
-                    <Text className="text-white font-black text-base">Reconcile / Adjust</Text>
-                    <Text className="text-slate-400 text-xs">{selectedItem.name}</Text>
+                    <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>Reconcile / Adjust</Text>
+                    <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{selectedItem.name}</Text>
                   </View>
                 </View>
                 <TouchableOpacity onPress={() => setAdjustModalOpen(false)}>
-                  <X size={18} color="#94A3B8" />
+                  <X size={18} color={isDark ? '#94A3B8' : '#64748B'} />
                 </TouchableOpacity>
               </View>
 
               <View className="my-4 gap-3">
-                <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex-row items-center justify-between">
-                  <Text className="text-slate-400 text-xs">Recorded System Stock:</Text>
-                  <Text className="text-white font-black text-sm">{selectedItem.currentStock} {selectedItem.unit}</Text>
+                <View className={`p-3 rounded-2xl border flex-row items-center justify-between ${
+                  isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Recorded System Stock:</Text>
+                  <Text className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedItem.currentStock} {selectedItem.unit}</Text>
                 </View>
 
                 <View>
-                  <Text className="text-slate-300 text-xs font-bold mb-1">New Physical Count ({selectedItem.unit})</Text>
+                  <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>New Physical Count ({selectedItem.unit})</Text>
                   <TextInput
                     placeholder="Enter actual physical count"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     keyboardType="numeric"
                     value={actionQuantity}
                     onChangeText={setActionQuantity}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-3 text-white text-base font-bold"
+                    className={`border rounded-xl px-3.5 py-3 text-base font-bold ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </View>
 
                 <View>
-                  <Text className="text-slate-300 text-xs font-bold mb-1">Reason / Audit Note</Text>
+                  <Text className={`text-xs font-bold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Reason / Audit Note</Text>
                   <TextInput
                     placeholder="e.g. Month-end physical count check or spoilage"
-                    placeholderTextColor="#64748B"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     value={actionNotes}
                     onChangeText={setActionNotes}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white text-xs"
+                    className={`border rounded-xl px-3.5 py-2.5 text-xs ${
+                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
                   />
                 </View>
               </View>
 
-              <View className="flex-row gap-2 pt-2 border-t border-slate-800">
+              <View className={`flex-row gap-2 pt-2 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                 <TouchableOpacity
                   onPress={() => setAdjustModalOpen(false)}
-                  className="flex-1 py-3 bg-slate-800 rounded-xl items-center"
+                  className={`flex-1 py-3 rounded-xl items-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                 >
-                  <Text className="text-slate-300 font-bold text-xs">Cancel</Text>
+                  <Text className={`font-bold text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity

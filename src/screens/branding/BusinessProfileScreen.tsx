@@ -21,7 +21,9 @@ import {
   KeyRound,
   ShieldCheck,
   MessageSquare,
-  Send
+  Send,
+  Sparkles,
+  MapPin
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Button } from '../../components/common/Button';
@@ -29,15 +31,33 @@ import { Input } from '../../components/common/Input';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useOrderStore } from '../../store/order.store';
+import { useThemeStore } from '../../store/theme.store';
 import { DBServices } from '../../services/firebase/db';
 import { WhatsAppReportService } from '../../services/whatsapp/whatsappReport.service';
 import { OrderSummaryExcelService } from '../../services/excel/orderSummaryExcel.service';
+import { TenantFeatures } from '../../types/tenant.types';
 
 export const BusinessProfileScreen = () => {
   const insets = useSafeAreaInsets();
-  const { tenant, branding, features, setTenant, setBranding, setFeatures } = useTenantStore();
+  const { tenant, branding, tenantFeatures, features, locations, activeLocationId, setActiveLocationId, setTenant, setBranding, setFeatures } = useTenantStore();
   const { user, setUser } = useAuthStore();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
   const isClientAdmin = user?.role === 'ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'CLIENT_ADMIN';
+
+  const userAssigned = user?.assignedLocationId;
+  const hasMultiBranchAccess = (user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'PLATFORM_ADMIN') && (!userAssigned || (user?.locationIds && user.locationIds.includes('*')));
+
+  // Selected branch for configuration (defaults to user's assigned branch or active branch)
+  const [selectedLocId, setSelectedLocId] = useState<string>(
+    userAssigned || activeLocationId || locations[0]?.id || 'ALL'
+  );
+
+  useEffect(() => {
+    if (activeLocationId && !userAssigned && selectedLocId === 'ALL' && locations.some(l => l.id === activeLocationId)) {
+      setSelectedLocId(activeLocationId);
+    }
+  }, [activeLocationId]);
 
   // Admin login credentials
   const initialAdminUsername = tenant?.adminUsername || (isClientAdmin ? user?.id : '') || '';
@@ -81,6 +101,9 @@ export const BusinessProfileScreen = () => {
   );
   const [pickupEnabled, setPickupEnabled] = useState(
     features.pickupEnabled !== undefined ? features.pickupEnabled : true
+  );
+  const [autoMenuImagesEnabled, setAutoMenuImagesEnabled] = useState(
+    features.autoMenuImagesEnabled !== undefined ? features.autoMenuImagesEnabled : false
   );
 
   // Payment Methods Configuration
@@ -132,6 +155,31 @@ export const BusinessProfileScreen = () => {
   ) : 0);
 
   const canEnableSplit = paymentsEnabled && activeMethodsCount >= 2;
+
+  // Branch-specific settings loader
+  const populateForBranch = (locId: string) => {
+    let effective: TenantFeatures;
+    if (locId && locId !== 'ALL') {
+      const loc = locations.find(l => l.id === locId);
+      effective = loc?.features ? { ...(tenantFeatures || features), ...loc.features } : (locId === activeLocationId ? features : (tenantFeatures || features));
+    } else {
+      effective = tenantFeatures || features;
+    }
+
+    setDineInTablesEnabled(effective.tablesEnabled !== undefined ? effective.tablesEnabled : true);
+    setPickupEnabled(effective.pickupEnabled !== undefined ? effective.pickupEnabled : true);
+    setAutoMenuImagesEnabled(effective.autoMenuImagesEnabled !== undefined ? effective.autoMenuImagesEnabled : false);
+    setPaymentsEnabled(effective.paymentsEnabled !== undefined ? effective.paymentsEnabled : true);
+    setCashEnabled(effective.cashEnabled !== undefined ? effective.cashEnabled : true);
+    setUpiEnabled(effective.upiEnabled !== undefined ? effective.upiEnabled : true);
+    setCardEnabled(effective.cardEnabled !== undefined ? effective.cardEnabled : true);
+    setCustomMethods(effective.customPaymentMethods || []);
+    setSplitPaymentsEnabled(effective.splitPaymentsEnabled !== undefined ? effective.splitPaymentsEnabled : true);
+  };
+
+  useEffect(() => {
+    populateForBranch(selectedLocId);
+  }, [selectedLocId]);
 
   // Preset GST rate applicator
   const applyGstPreset = (totalPercent: number) => {
@@ -238,6 +286,7 @@ export const BusinessProfileScreen = () => {
         cardEnabled: cardEnabled,
         customPaymentMethods: customMethods,
         splitPaymentsEnabled: canEnableSplit ? splitPaymentsEnabled : false,
+        autoMenuImagesEnabled,
         gstEnabled,
         gstType,
         cgstRate: parseFloat(cgstRate) || 0,
@@ -246,8 +295,28 @@ export const BusinessProfileScreen = () => {
         whatsappReportsPhone: whatsappReportsPhone.trim(),
         whatsappReportFrequency,
       };
-      await DBServices.updateTenantFeatures(tenant.id, featuresPayload);
-      setFeatures({ ...features, ...featuresPayload });
+
+      const isSpecificBranch = selectedLocId && selectedLocId !== 'ALL';
+      if (isSpecificBranch) {
+        // Save to branch-specific location config
+        await DBServices.updateLocationFeatures(tenant.id, selectedLocId, featuresPayload);
+        // If this is currently active location, update store's effective features
+        if (selectedLocId === activeLocationId) {
+          setFeatures(featuresPayload);
+        } else {
+          // Update the location in store's locations array
+          const updatedLocs = locations.map(l =>
+            l.id === selectedLocId
+              ? { ...l, features: { ...(l.features || {}), ...featuresPayload } }
+              : l
+          );
+          useTenantStore.getState().setLocations(updatedLocs);
+        }
+      } else {
+        // Save tenant global defaults
+        await DBServices.updateTenantFeatures(tenant.id, featuresPayload);
+        setFeatures(featuresPayload);
+      }
 
       // 3. Update Client Admin credentials if changed
       let credMessage = '';
@@ -283,7 +352,11 @@ export const BusinessProfileScreen = () => {
         }
       }
 
-      toast.success(`Store settings updated successfully!${credMessage}`, 'Settings Saved');
+      const branchName = locations.find(l => l.id === selectedLocId)?.name;
+      const targetScopeDesc = isSpecificBranch
+        ? `Settings saved for ${branchName}! Tables, pickup, and tenders are isolated to this branch.`
+        : 'Company default settings updated successfully!';
+      toast.success(`${targetScopeDesc}${credMessage}`, 'Settings Saved');
     } catch (e: any) {
       toast.error(e.message, 'Save Error');
     } finally {
@@ -294,7 +367,7 @@ export const BusinessProfileScreen = () => {
   const currentTotalGst = (parseFloat(cgstRate) || 0) + (parseFloat(sgstRate) || 0);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
       <Header
         title="Store & Payment Settings"
         subtitle="Configure ordering modes, payment methods & receipt branding"
@@ -329,13 +402,108 @@ export const BusinessProfileScreen = () => {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 1. PAYMENT METHODS CARD (Clean Header, No Overflowing Pills) */}
-        <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-sm">
+        {/* Branch Context & Isolation Switcher */}
+        {locations.length > 0 && (
+          <View
+            className={`border rounded-3xl p-5 mb-5 ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+            }`}
+          >
+            <View className="flex-row items-center justify-between mb-2">
+              <View className="flex-row items-center">
+                <MapPin size={18} color="#5D3FD3" />
+                <Text className={`font-black text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Store Settings Scope
+                </Text>
+              </View>
+              <View className="bg-[#5D3FD3]/10 px-3 py-1 rounded-full border border-[#5D3FD3]/30">
+                <Text className="text-[#5D3FD3] font-bold text-xs">
+                  {selectedLocId === 'ALL'
+                    ? 'All Branches (Company Defaults)'
+                    : locations.find((l) => l.id === selectedLocId)?.name || 'Branch'}
+                </Text>
+              </View>
+            </View>
+
+            <Text className={`text-xs mb-3.5 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              {selectedLocId === 'ALL'
+                ? 'Configuring company-wide fallback defaults. Selecting a specific branch below isolates Dine-In tables, pickup, and payment tenders.'
+                : `Configuring operational settings strictly for "${locations.find((l) => l.id === selectedLocId)?.name}". Toggling tables, pickup, or payment methods here will NOT affect other branches.`}
+            </Text>
+
+            {/* Branch Pills: multi-branch super admin can switch between branches; branch-assigned staff sees locked badge */}
+            {hasMultiBranchAccess && locations.length > 0 ? (
+              <View className="flex-row flex-wrap gap-2">
+                <TouchableOpacity
+                  onPress={() => setSelectedLocId('ALL')}
+                  className={`px-3.5 py-2 rounded-xl border flex-row items-center ${
+                    selectedLocId === 'ALL'
+                      ? 'bg-[#5D3FD3] border-[#5D3FD3]'
+                      : isDark
+                      ? 'bg-slate-950 border-slate-800'
+                      : 'bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <Building size={13} color={selectedLocId === 'ALL' ? 'white' : '#94A3B8'} />
+                  <Text
+                    className={`text-xs font-bold ml-1.5 ${
+                      selectedLocId === 'ALL' ? 'text-white' : isDark ? 'text-slate-300' : 'text-slate-700'
+                    }`}
+                  >
+                    Company Defaults
+                  </Text>
+                </TouchableOpacity>
+
+                {locations.map((loc) => {
+                  const isSelected = loc.id === selectedLocId;
+                  return (
+                    <TouchableOpacity
+                      key={loc.id}
+                      onPress={() => setSelectedLocId(loc.id)}
+                      className={`px-3.5 py-2 rounded-xl border flex-row items-center ${
+                        isSelected
+                          ? 'bg-[#5D3FD3] border-[#5D3FD3]'
+                          : isDark
+                          ? 'bg-slate-950 border-slate-800'
+                          : 'bg-slate-100 border-slate-200'
+                      }`}
+                    >
+                      <MapPin size={13} color={isSelected ? 'white' : '#94A3B8'} />
+                      <Text
+                        className={`text-xs font-bold ml-1.5 ${
+                          isSelected ? 'text-white' : isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}
+                      >
+                        {loc.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <View className="flex-row items-center bg-purple-500/10 px-3.5 py-2 rounded-xl border border-purple-500/20">
+                <ShieldCheck size={14} color="#A855F7" />
+                <Text className="text-purple-300 text-xs font-bold ml-2">
+                  Scoped to Branch: {locations.find((l) => l.id === selectedLocId)?.name || 'Assigned Branch'}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* 1. PAYMENT METHODS CARD */}
+        <View
+          className={`border rounded-3xl p-5 mb-5 ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
           <View className="flex-row items-center mb-1">
             <CreditCard size={18} color="#10B981" />
-            <Text className="text-white font-black text-base ml-2">Payment Methods</Text>
+            <Text className={`font-black text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              Payment Methods
+            </Text>
           </View>
-          <Text className="text-slate-400 text-xs mb-4 leading-relaxed">
+          <Text className={`text-xs mb-4 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Choose which payment tenders are collected at checkout.
           </Text>
 
@@ -491,21 +659,33 @@ export const BusinessProfileScreen = () => {
           )}
         </View>
 
-        {/* 2. GST & TAX CONFIGURATION CARD (Clean Header, No Overflowing Pills) */}
-        <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-sm">
+        {/* 2. GST & TAX CONFIGURATION CARD */}
+        <View
+          className={`border rounded-3xl p-5 mb-5 ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
           <View className="flex-row items-center mb-1">
             <Calculator size={18} color="#38BDF8" />
-            <Text className="text-white font-black text-base ml-2">GST & Tax Rates</Text>
+            <Text className={`font-black text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              GST & Tax Rates
+            </Text>
           </View>
-          <Text className="text-slate-400 text-xs mb-4 leading-relaxed">
+          <Text className={`text-xs mb-4 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Configure how GST is applied and printed on customer receipts.
           </Text>
 
           {/* Master GST Switch */}
-          <View className="flex-row items-center justify-between p-3.5 bg-slate-950/90 border border-slate-800 rounded-2xl mb-4">
+          <View
+            className={`flex-row items-center justify-between p-3.5 rounded-2xl mb-4 border ${
+              isDark ? 'bg-slate-950/90 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}
+          >
             <View className="flex-1 mr-3">
-              <Text className="text-white font-bold text-sm">Enable GST on Bills</Text>
-              <Text className="text-slate-400 text-xs mt-0.5">
+              <Text className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                Enable GST on Bills
+              </Text>
+              <Text className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 {gstEnabled ? 'GST taxes are itemized and printed on thermal receipts.' : 'Bills show flat subtotal with no tax lines.'}
               </Text>
             </View>
@@ -670,24 +850,36 @@ export const BusinessProfileScreen = () => {
           </View>
         </View>
 
-        {/* 3. ORDERING MODES CARD (Clean Header, No Overflowing Pills) */}
-        <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-5 shadow-sm">
+        {/* 3. ORDERING MODES CARD */}
+        <View
+          className={`border rounded-3xl p-5 mb-5 ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
           <View className="flex-row items-center mb-1">
             <Utensils size={18} color="#818CF8" />
-            <Text className="text-white font-black text-base ml-2">Operating Order Modes</Text>
+            <Text className={`font-black text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              Operating Order Modes
+            </Text>
           </View>
-          <Text className="text-slate-400 text-xs mb-4 leading-relaxed">
+          <Text className={`text-xs mb-4 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Enable or disable floor tables and counter takeaway modes.
           </Text>
 
           {/* Toggle 1: Enable Dine-In Tables */}
-          <View className="flex-row items-center justify-between p-3.5 bg-slate-950/80 border border-slate-800 rounded-2xl mb-3">
+          <View
+            className={`flex-row items-center justify-between p-3.5 rounded-2xl mb-3 border ${
+              isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}
+          >
             <View className="flex-1 mr-3">
               <View className="flex-row items-center">
                 <LayoutGrid size={16} color="#10B981" />
-                <Text className="text-white font-bold text-sm ml-2">Enable Dine-In Tables</Text>
+                <Text className={`font-bold text-sm ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Enable Dine-In Tables
+                </Text>
               </View>
-              <Text className="text-slate-400 text-xs mt-0.5">
+              <Text className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 Floor plan, table seating layouts, and dine-in KOT orders.
               </Text>
             </View>
@@ -700,13 +892,19 @@ export const BusinessProfileScreen = () => {
           </View>
 
           {/* Toggle 2: Enable Pick-Up / Takeaway */}
-          <View className="flex-row items-center justify-between p-3.5 bg-slate-950/80 border border-slate-800 rounded-2xl">
+          <View
+            className={`flex-row items-center justify-between p-3.5 rounded-2xl mb-3 border ${
+              isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}
+          >
             <View className="flex-1 mr-3">
               <View className="flex-row items-center">
                 <ShoppingBag size={16} color="#818CF8" />
-                <Text className="text-white font-bold text-sm ml-2">Enable Pick-Up / Takeaway</Text>
+                <Text className={`font-bold text-sm ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Enable Pick-Up / Takeaway
+                </Text>
               </View>
-              <Text className="text-slate-400 text-xs mt-0.5">
+              <Text className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 Takeaway parcels and fast counter orders without table assignment.
               </Text>
             </View>
@@ -717,15 +915,46 @@ export const BusinessProfileScreen = () => {
               thumbColor={pickupEnabled ? '#FFFFFF' : '#94A3B8'}
             />
           </View>
+
+          {/* Toggle 3: Auto Food Images for Menu Cards (Quick Sale & Visual POS) */}
+          <View
+            className={`flex-row items-center justify-between p-3.5 rounded-2xl border ${
+              isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
+            }`}
+          >
+            <View className="flex-1 mr-3">
+              <View className="flex-row items-center">
+                <Sparkles size={16} color="#EC4899" />
+                <Text className={`font-bold text-sm ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Auto Food Images for Menu Cards
+                </Text>
+              </View>
+              <Text className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                Automatically displays mouth-watering food photos on menu items. Recommended for Quick Sale and touch billing.
+              </Text>
+            </View>
+            <Switch
+              value={autoMenuImagesEnabled}
+              onValueChange={setAutoMenuImagesEnabled}
+              trackColor={{ false: '#334155', true: '#EC4899' }}
+              thumbColor={autoMenuImagesEnabled ? '#FFFFFF' : '#94A3B8'}
+            />
+          </View>
         </View>
 
         {/* 4. BUSINESS & RECEIPT DETAILS CARD */}
-        <View className="bg-slate-900 border border-slate-800 rounded-3xl p-5 mb-6 shadow-sm">
+        <View
+          className={`border rounded-3xl p-5 mb-6 ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
           <View className="flex-row items-center mb-1">
             <Building size={18} color="#C084FC" />
-            <Text className="text-white font-black text-base ml-2">Receipt & Business Details</Text>
+            <Text className={`font-black text-base ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              Receipt & Business Details
+            </Text>
           </View>
-          <Text className="text-slate-400 text-xs mb-4 leading-relaxed">
+          <Text className={`text-xs mb-4 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Printed on customer bills and shown on POS headers.
           </Text>
 

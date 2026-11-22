@@ -46,6 +46,7 @@ import { Routes } from '../../constants/routes';
 import { Header } from '../../components/common/Header';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
+import { useThemeStore } from '../../store/theme.store';
 import { useCentralKitchenStore } from '../../store/centralKitchen.store';
 import { DBServices } from '../../services/firebase/db';
 import { toast } from '../../utils/toast';
@@ -149,6 +150,8 @@ const CKTimeline = ({ status }: { status: CKOrderStatus }) => {
 
 export const CentralKitchenScreen = () => {
   const insets = useSafeAreaInsets();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
   const { tenant, activeLocationId, branding } = useTenantStore();
   const navigation = useNavigation<any>();
   const { user } = useAuthStore();
@@ -411,7 +414,7 @@ export const CentralKitchenScreen = () => {
   }, [menuItems, selectedCategory, searchQuery]);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
       <Header
         title="Central Kitchen Hub"
         subtitle="B2B Bulk Food Supply & Orders"

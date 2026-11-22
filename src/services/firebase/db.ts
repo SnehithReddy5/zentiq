@@ -101,6 +101,49 @@ export const DBServices = {
     await setDoc(featRef, features, { merge: true });
   },
 
+  async updateLocationFeatures(tenantId: string, locationId: string, features: Partial<TenantFeatures>): Promise<void> {
+    const locRef = doc(db, 'tenants', tenantId, 'locations', locationId);
+    await setDoc(locRef, { features, updatedAt: serverTimestamp() }, { merge: true });
+    // Also save subcollection config for direct listeners/fallbacks
+    const featRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'features', 'config');
+    await setDoc(featRef, { ...features, updatedAt: serverTimestamp() }, { merge: true });
+  },
+
+  async getLocationFeatures(tenantId: string, locationId: string): Promise<Partial<TenantFeatures> | null> {
+    const locRef = doc(db, 'tenants', tenantId, 'locations', locationId);
+    const snap = await getDoc(locRef);
+    if (snap.exists() && snap.data()?.features) {
+      return snap.data().features as Partial<TenantFeatures>;
+    }
+    const featRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'features', 'config');
+    const fSnap = await getDoc(featRef);
+    if (fSnap.exists()) {
+      return fSnap.data() as Partial<TenantFeatures>;
+    }
+    return null;
+  },
+
+  async updateLocationPrinterSettings(tenantId: string, locationId: string, settings: any): Promise<void> {
+    const locRef = doc(db, 'tenants', tenantId, 'locations', locationId);
+    await setDoc(locRef, { printerSettings: settings, updatedAt: serverTimestamp() }, { merge: true });
+    const pRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'settings', 'printer');
+    await setDoc(pRef, { ...settings, updatedAt: serverTimestamp() }, { merge: true });
+  },
+
+  async getLocationPrinterSettings(tenantId: string, locationId: string): Promise<any | null> {
+    const locRef = doc(db, 'tenants', tenantId, 'locations', locationId);
+    const snap = await getDoc(locRef);
+    if (snap.exists() && snap.data()?.printerSettings) {
+      return snap.data().printerSettings;
+    }
+    const pRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'settings', 'printer');
+    const pSnap = await getDoc(pRef);
+    if (pSnap.exists()) {
+      return pSnap.data();
+    }
+    return null;
+  },
+
   // 2. Locations & Licensing
   async requestLocation(tenantId: string, requestData: { locationName: string; address: string; phone: string; requestedByUserId: string }): Promise<void> {
     const reqRef = doc(collection(db, 'tenants', tenantId, 'locationRequests'));
@@ -112,6 +155,130 @@ export const DBServices = {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+  },
+
+  async createLocationWithAdmin(
+    tenantId: string,
+    locationData: {
+      name: string;
+      address: string;
+      phone: string;
+    },
+    branchAdminData?: {
+      name: string;
+      mobile: string;
+      password: string;
+    },
+    cloneFromLocationId?: string
+  ): Promise<string> {
+    const locCol = collection(db, 'tenants', tenantId, 'locations');
+    const locRef = doc(locCol);
+    const locId = locRef.id;
+
+    // 1. Create Location document with isolated defaults
+    const newLocationPayload = {
+      id: locId,
+      tenantId,
+      name: locationData.name.trim(),
+      address: locationData.address.trim(),
+      phone: locationData.phone.trim(),
+      status: 'ACTIVE',
+      features: {
+        tablesEnabled: true,
+        dineInEnabled: true,
+        pickupEnabled: true,
+        paymentsEnabled: true,
+        cashEnabled: true,
+        upiEnabled: true,
+        cardEnabled: true,
+        customPaymentMethods: [],
+        splitPaymentsEnabled: true,
+        autoMenuImagesEnabled: false,
+      },
+      printerSettings: {
+        printerType: 'LAN',
+        printerWorkflowMode: 'RESTAURANT',
+        printerName: 'Billing Thermal Printer',
+        ipAddress: '',
+        port: 9100,
+        kitchenPrinterType: 'LAN',
+        kitchenPrinterName: '',
+        kitchenIpAddress: '',
+        kitchenPort: 9100,
+        paperWidth: '80mm_48',
+      },
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    await setDoc(locRef, newLocationPayload);
+
+    // 2. Subcollections for features and printer
+    const featRef = doc(db, 'tenants', tenantId, 'locations', locId, 'features', 'config');
+    await setDoc(featRef, newLocationPayload.features);
+
+    const printerRef = doc(db, 'tenants', tenantId, 'locations', locId, 'settings', 'printer');
+    await setDoc(printerRef, newLocationPayload.printerSettings);
+
+    // 3. Create dedicated Branch Admin account if provided
+    if (branchAdminData && branchAdminData.mobile?.trim() && branchAdminData.password?.trim()) {
+      const cleanUsername = branchAdminData.mobile.trim().toLowerCase();
+      await this.addUser({
+        name: branchAdminData.name.trim() || `${locationData.name} Admin`,
+        mobile: cleanUsername,
+        password: branchAdminData.password.trim(),
+        role: 'ADMIN',
+        tenantId,
+        locationIds: [locId],
+        assignedLocationId: locId,
+      }, tenantId);
+    }
+
+    // 4. Optionally clone menu items as initial starter template
+    if (cloneFromLocationId) {
+      try {
+        await this.copyMenuFromLocation(tenantId, cloneFromLocationId, locId);
+      } catch (cloneErr) {
+        console.warn('Could not copy menu items during branch creation:', cloneErr);
+      }
+    }
+
+    return locId;
+  },
+
+  async copyMenuFromLocation(tenantId: string, sourceLocId: string, targetLocId: string): Promise<number> {
+    const srcCatCol = collection(db, 'tenants', tenantId, 'locations', sourceLocId, 'menuCategories');
+    const srcItemsCol = collection(db, 'tenants', tenantId, 'locations', sourceLocId, 'menuItems');
+    const targetCatCol = collection(db, 'tenants', tenantId, 'locations', targetLocId, 'menuCategories');
+    const targetItemsCol = collection(db, 'tenants', tenantId, 'locations', targetLocId, 'menuItems');
+
+    const catSnap = await getDocs(srcCatCol);
+    const catIdMap: Record<string, string> = {};
+
+    const batch = writeBatch(db);
+    catSnap.forEach(d => {
+      const data = d.data();
+      const newCatRef = doc(targetCatCol);
+      catIdMap[d.id] = newCatRef.id;
+      batch.set(newCatRef, { ...data, id: newCatRef.id });
+    });
+
+    const itemsSnap = await getDocs(srcItemsCol);
+    let count = 0;
+    itemsSnap.forEach(d => {
+      const data = d.data();
+      const newItemRef = doc(targetItemsCol);
+      const mappedCatId = data.categoryId ? (catIdMap[data.categoryId] || data.categoryId) : '';
+      batch.set(newItemRef, {
+        ...data,
+        id: newItemRef.id,
+        categoryId: mappedCatId,
+      });
+      count++;
+    });
+
+    await batch.commit();
+    return count;
   },
 
   async getApprovedLocations(tenantId: string): Promise<Location[]> {

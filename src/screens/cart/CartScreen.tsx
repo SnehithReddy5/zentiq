@@ -21,7 +21,7 @@ import { DBServices } from '../../services/firebase/db';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { Routes } from '../../constants/routes';
-import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2, Utensils, Tag, X } from 'lucide-react-native';
+import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2, Utensils, Tag, X, Plus, Minus, ArrowLeft, ShoppingBag } from 'lucide-react-native';
 
 export const CartScreen = () => {
   const insets = useSafeAreaInsets();
@@ -30,7 +30,7 @@ export const CartScreen = () => {
   const tableNo = route.params?.tableNo ?? 0;
   const orderType = route.params?.orderType || (tableNo === 0 ? 'PICKUP' : 'DINE_IN');
 
-  const { carts, clearCart, markAsSent } = useCartStore();
+  const { carts, clearCart, markAsSent, updateQuantity, removeItem } = useCartStore();
   const { orders } = useOrderStore();
   const { tenant, branding, features, locations, activeLocationId } = useTenantStore();
   const { settings } = usePrinterStore();
@@ -40,6 +40,22 @@ export const CartScreen = () => {
   const isDark = themeMode === 'dark';
 
   const cartItems = useMemo(() => consolidateCartItems(carts[tableNo] || []), [carts, tableNo]);
+
+  const handleIncrement = (item: any) => {
+    updateQuantity(tableNo, item.itemId, item.qty + 1, item.variantName);
+  };
+
+  const handleDecrement = (item: any) => {
+    if (item.qty > 1) {
+      updateQuantity(tableNo, item.itemId, item.qty - 1, item.variantName);
+    } else {
+      removeItem(tableNo, item.itemId, item.variantName);
+    }
+  };
+
+  const handleRemoveItem = (item: any) => {
+    removeItem(tableNo, item.itemId, item.variantName);
+  };
 
   // Keep CartScreen continuously synchronized with live running orders (including customer QR self-orders)
   useEffect(() => {
@@ -588,8 +604,17 @@ export const CartScreen = () => {
   return (
     <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-slate-50'}`}>
       <Header
-        title={tableNo === 0 ? 'Pick Up Checkout' : ('Table ' + tableNo + ' Bill Settlement')}
+        title={tableNo === 0 ? (orderType === 'COUNTER' ? 'Quick Sale Checkout' : 'Pick Up Checkout') : ('Table ' + tableNo + ' Checkout')}
         subtitle={'Total: ₹' + cartTotal.toFixed(2) + ' • ' + totalUnits + ' item' + (totalUnits === 1 ? '' : 's')}
+        rightElement={
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            className="px-3 py-1.5 rounded-xl bg-purple-500/20 border border-purple-500/30 flex-row items-center active:opacity-80 shrink-0"
+          >
+            <Plus size={14} color="#A855F7" />
+            <Text className="text-purple-400 font-bold text-xs ml-1">+ Add Items</Text>
+          </TouchableOpacity>
+        }
       />
 
       <ScrollView
@@ -616,9 +641,14 @@ export const CartScreen = () => {
                   isDark ? 'border-slate-800' : 'border-slate-200'
                 }`}
               >
-                <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  Order Breakdown
-                </Text>
+                <View className="flex-row items-center">
+                  <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Order Breakdown
+                  </Text>
+                  <Text className={`text-xs ml-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    ({cartItems.length} {cartItems.length === 1 ? 'item' : 'items'})
+                  </Text>
+                </View>
                 <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-lg border border-purple-500/30">
                   <Text className="text-purple-400 font-bold text-xs">
                     {orderType === 'PICKUP' ? 'Pick Up' : (orderType === 'COUNTER' ? 'Quick Counter' : ('Table ' + tableNo))}
@@ -627,36 +657,87 @@ export const CartScreen = () => {
               </View>
 
               <View className="mt-3">
-                {cartItems.map((item, idx) => (
-                  <View
-                    key={`${item.itemId || 'cart'}-${item.variantName || ''}-${idx}`}
-                    className={`flex-row justify-between py-2 border-b ${
-                      isDark ? 'border-slate-800/60' : 'border-slate-100'
-                    } last:border-b-0`}
-                  >
-                    <View className="flex-1 mr-3">
-                      <Text className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                        {item.qty}x {getBaseItemName(item.itemName, item.variantName)}
-                      </Text>
-                      {item.variantName && (
-                        <Text className="text-slate-400 text-[11px]">{item.variantName}</Text>
-                      )}
-                      {item.selectedOptions && item.selectedOptions.length > 0 && (
-                        <Text className="text-purple-400 text-[11px] mt-0.5">
-                          + {item.selectedOptions.map(o => o.optionName).join(', ')}
-                        </Text>
-                      )}
-                      {item.note ? (
-                        <Text className="text-amber-400/90 text-[11px] italic mt-0.5">
-                          Note: {item.note}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Text className="text-purple-400 font-bold text-xs">
-                      ₹{(item.price * item.qty).toFixed(2)}
+                {cartItems.length === 0 ? (
+                  <View className="py-8 items-center justify-center">
+                    <ShoppingBag size={32} color={isDark ? '#64748B' : '#94A3B8'} />
+                    <Text className={`font-bold text-sm mt-2 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                      No items in order
                     </Text>
+                    <TouchableOpacity
+                      onPress={() => navigation.goBack()}
+                      className="mt-3 px-4 py-2 bg-[#5D3FD3] rounded-xl"
+                    >
+                      <Text className="text-white font-bold text-xs">← Back to Menu</Text>
+                    </TouchableOpacity>
                   </View>
-                ))}
+                ) : (
+                  cartItems.map((item, idx) => (
+                    <View
+                      key={`${item.itemId || 'cart'}-${item.variantName || ''}-${idx}`}
+                      className={`flex-row items-center justify-between py-2.5 border-b ${
+                        isDark ? 'border-slate-800/60' : 'border-slate-100'
+                      } last:border-b-0`}
+                    >
+                      <View className="flex-1 mr-3 min-w-0">
+                        <Text className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          {getBaseItemName(item.itemName, item.variantName)}
+                        </Text>
+                        {item.variantName && (
+                          <Text className="text-slate-400 text-[11px]">{item.variantName}</Text>
+                        )}
+                        {item.selectedOptions && item.selectedOptions.length > 0 && (
+                          <Text className="text-purple-400 text-[11px] mt-0.5">
+                            + {item.selectedOptions.map(o => o.optionName).join(', ')}
+                          </Text>
+                        )}
+                        {item.note ? (
+                          <Text className="text-amber-400/90 text-[11px] italic mt-0.5">
+                            Note: {item.note}
+                          </Text>
+                        ) : null}
+                        <Text className="text-slate-400 text-[11px] mt-0.5">
+                          ₹{item.price} each • <Text className="font-bold text-purple-400">₹{(item.price * item.qty).toFixed(2)}</Text>
+                        </Text>
+                      </View>
+
+                      <View className="flex-row items-center gap-1.5 shrink-0">
+                        <View className={`flex-row items-center rounded-full px-1 py-0.5 border ${
+                          isDark ? 'bg-slate-950 border-slate-700' : 'bg-slate-100 border-slate-300'
+                        }`}>
+                          <TouchableOpacity
+                            className={`w-6 h-6 rounded-full items-center justify-center active:opacity-75 ${
+                              isDark ? 'bg-slate-800' : 'bg-white'
+                            }`}
+                            onPress={() => handleDecrement(item)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Minus size={11} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
+                          </TouchableOpacity>
+
+                          <Text className={`w-5 text-center font-black text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            {item.qty}
+                          </Text>
+
+                          <TouchableOpacity
+                            className="w-6 h-6 rounded-full bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-xs"
+                            onPress={() => handleIncrement(item)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Plus size={11} color="white" strokeWidth={2.5} />
+                          </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => handleRemoveItem(item)}
+                          className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 active:opacity-75"
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Trash2 size={13} color="#F43F5E" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
               </View>
 
               {/* Total Calculation */}

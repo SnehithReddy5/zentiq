@@ -1,10 +1,10 @@
 import { toast } from '../../utils/toast';
 import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Plus, LayoutGrid, Users, Trash2, CheckCircle2, Clock, QrCode, Smartphone } from 'lucide-react-native';
+import { Plus, LayoutGrid, Users, Trash2, CheckCircle2, Clock, QrCode, Smartphone, Building, MapPin } from 'lucide-react-native';
 import { TableQrDownloadModal } from './TableQrDownloadModal';
 import { Header } from '../../components/common/Header';
 import { useThemeStore } from '../../store/theme.store';
@@ -13,6 +13,7 @@ import { useCartStore } from '../../store/cart.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { useOrderStore } from '../../store/order.store';
 import { usePrinterStore } from '../../store/printer.store';
+import { useAuthStore } from '../../store/auth.store';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
@@ -25,12 +26,16 @@ export const TablesScreen = () => {
   const navigation = useNavigation<any>();
   const { tables, isLoading, subscribeToTables } = useTableStore();
   const carts = useCartStore(state => state.carts);
-  const { tenant, branding, activeLocationId } = useTenantStore();
+  const { tenant, branding, locations, activeLocationId, setActiveLocationId } = useTenantStore();
+  const { user } = useAuthStore();
   const { orders, subscribeToOrders } = useOrderStore();
   const { settings } = usePrinterStore();
   const { tableGridColumns, isLargePOS } = useResponsiveLayout();
   const { themeMode } = useThemeStore();
   const isDark = themeMode === 'dark';
+
+  const userAssigned = user?.assignedLocationId;
+  const hasMultiBranchAccess = (user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'PLATFORM_ADMIN') && (!userAssigned || (user?.locationIds && user.locationIds.includes('*')));
 
   const [isAdding, setIsAdding] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -240,6 +245,38 @@ export const TablesScreen = () => {
           </View>
         }
       />
+
+      {/* Multi-Branch Floor Plan Switcher */}
+      {hasMultiBranchAccess && locations.length > 1 && (
+        <View className={`px-4 py-2 border-b flex-row items-center justify-between ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+          <View className="flex-row items-center mr-3">
+            <Building size={14} color="#5D3FD3" />
+            <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              Floor Plan For:
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingVertical: 2 }}>
+            {locations.map(loc => {
+              const isSelected = activeLocationId === loc.id;
+              return (
+                <TouchableOpacity
+                  key={loc.id}
+                  onPress={() => setActiveLocationId(loc.id)}
+                  className={`px-3 py-1 rounded-full border flex-row items-center ${isSelected
+                    ? 'bg-[#5D3FD3] border-purple-500 shadow-sm'
+                    : isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <MapPin size={11} color={isSelected ? 'white' : '#94A3B8'} />
+                  <Text className={`text-xs font-bold ml-1 ${isSelected ? 'text-white' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {loc.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Floor Status & Filter Ribbon */}
       <View className={`px-4 py-3 border-b flex-row items-center justify-between ${

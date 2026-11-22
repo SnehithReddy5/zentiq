@@ -21,7 +21,8 @@ import {
   Sparkles,
   ShieldAlert,
   Sun,
-  Moon
+  Moon,
+  Check
 } from 'lucide-react-native';
 import { Routes } from '../../constants/routes';
 import { useAuthStore } from '../../store/auth.store';
@@ -38,7 +39,7 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { logout, user } = useAuthStore();
-  const { tenant, branding, features, getActiveLocation } = useTenantStore();
+  const { tenant, branding, features, locations, activeLocationId, setActiveLocationId, getActiveLocation } = useTenantStore();
   const { themeMode, toggleTheme } = useThemeStore();
   const isDark = themeMode === 'dark';
 
@@ -53,6 +54,9 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
   const isManager = isSuperAdmin || user?.role === 'MANAGER' || user?.role === 'manager';
   const isBiller = isManager || user?.role === 'BILLER' || user?.role === 'CASHIER';
   const isKitchenStaff = user?.role === 'KITCHEN' || user?.role === 'KITCHEN_STAFF';
+
+  const userAssigned = user?.assignedLocationId;
+  const hasMultiBranchAccess = isSuperAdmin && (!userAssigned || (user?.locationIds && user.locationIds.includes('*')));
 
   const activeLocation = getActiveLocation();
   const businessName = branding?.displayName || branding?.businessName || tenant?.businessName || 'Zentiq POS';
@@ -123,6 +127,55 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
                 </Text>
               </View>
             </View>
+
+            {/* Multi-Branch Active Scope Switcher */}
+            {hasMultiBranchAccess && locations.length > 1 && (
+              <View
+                className={`p-3 rounded-2xl mb-3 border ${
+                  isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">
+                    Active Branch Scope
+                  </Text>
+                  <View className="bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20">
+                    <Text className="text-purple-400 text-[9px] font-bold">MULTI-BRANCH</Text>
+                  </View>
+                </View>
+                <View className="space-y-1.5">
+                  {locations.map((loc) => {
+                    const isSelected = activeLocationId === loc.id;
+                    return (
+                      <TouchableOpacity
+                        key={loc.id}
+                        onPress={() => setActiveLocationId(loc.id)}
+                        className={`p-2 rounded-xl border flex-row items-center justify-between ${
+                          isSelected
+                            ? 'bg-[#5D3FD3] border-[#5D3FD3]'
+                            : isDark
+                            ? 'bg-slate-950 border-slate-800'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <View className="flex-row items-center flex-1 mr-2">
+                          <MapPin size={12} color={isSelected ? 'white' : '#94A3B8'} />
+                          <Text
+                            className={`text-xs font-bold ml-1.5 ${
+                              isSelected ? 'text-white' : isDark ? 'text-slate-300' : 'text-slate-700'
+                            }`}
+                            numberOfLines={1}
+                          >
+                            {loc.name}
+                          </Text>
+                        </View>
+                        {isSelected && <Check size={14} color="white" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             {/* Theme Mode Switcher Tile */}
             <TouchableOpacity

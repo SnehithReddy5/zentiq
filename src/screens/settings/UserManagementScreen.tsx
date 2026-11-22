@@ -9,6 +9,7 @@ import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { useTenantStore } from '../../store/tenant.store';
 import { useAuthStore } from '../../store/auth.store';
+import { useThemeStore } from '../../store/theme.store';
 import { DBServices } from '../../services/firebase/db';
 import { UserRole } from '../../types/auth.types';
 
@@ -16,10 +17,20 @@ export const UserManagementScreen = () => {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isMobile = width < 640;
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
   const { tenant, locations } = useTenantStore();
   const { user } = useAuthStore();
   const [users, setUsers] = useState<any[]>([]);
   const [isModalOpen, setModalOpen] = useState(false);
+
+  const userAssigned = user?.assignedLocationId;
+  const isBranchScoped = !!userAssigned && !user?.locationIds?.includes('*');
+
+  // Filter users to branch if admin is branch-scoped
+  const visibleUsers = isBranchScoped
+    ? users.filter(u => u.assignedLocationId === userAssigned || (u.locationIds && u.locationIds.includes(userAssigned)))
+    : users;
 
   // Edit vs Add State
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -28,7 +39,9 @@ export const UserManagementScreen = () => {
   const [password, setPassword] = useState('');
   const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [role, setRole] = useState<UserRole>('WAITER');
-  const [selectedLocId, setSelectedLocId] = useState<string>(locations[0]?.id || '*');
+  const [selectedLocId, setSelectedLocId] = useState<string>(
+    isBranchScoped ? userAssigned : (locations[0]?.id || '*')
+  );
 
   useEffect(() => {
     const unsub = DBServices.subscribeToUsers((u) => setUsers(u), tenant?.id);
@@ -42,7 +55,7 @@ export const UserManagementScreen = () => {
     setPassword('');
     setShowStaffPassword(false);
     setRole('WAITER');
-    setSelectedLocId(locations[0]?.id || '*');
+    setSelectedLocId(isBranchScoped ? userAssigned : (locations[0]?.id || '*'));
     setModalOpen(true);
   };
 
@@ -54,7 +67,7 @@ export const UserManagementScreen = () => {
     setShowStaffPassword(false);
     setRole(item.role || 'WAITER');
     const assignedLoc = item.assignedLocationId || (item.locationIds && item.locationIds[0] ? item.locationIds[0] : (locations[0]?.id || '*'));
-    setSelectedLocId(assignedLoc);
+    setSelectedLocId(isBranchScoped ? userAssigned : assignedLoc);
     setModalOpen(true);
   };
 
@@ -141,13 +154,17 @@ export const UserManagementScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
       <Header
         title="Staff & User Roles"
-        subtitle={`${users.length} staff accounts • Branch access restricted`}
+        subtitle={
+          isBranchScoped
+            ? `${visibleUsers.length} staff in ${locations.find(l => l.id === userAssigned)?.name || 'this branch'}`
+            : `${users.length} staff accounts • Branch access restricted`
+        }
         rightElement={
           <TouchableOpacity
-            className="bg-[#5D3FD3] px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center shrink-0"
+            className="bg-[#5D3FD3] px-2.5 sm:px-3 py-1.5 rounded-xl flex-row items-center shrink-0 shadow-sm"
             onPress={openAddModal}
           >
             <Plus size={15} color="white" />
@@ -163,14 +180,15 @@ export const UserManagementScreen = () => {
         style={{ flex: 1 }}
         removeClippedSubviews={false}
         showsVerticalScrollIndicator={true}
-        data={users}
+        data={visibleUsers}
         keyExtractor={(u) => u.id}
         contentContainerStyle={{ padding: 16, paddingBottom: Math.max(insets.bottom + 36, 52), maxWidth: 1000, alignSelf: "center", width: "100%" }}
         renderItem={({ item }) => (
-          <View className="bg-slate-900 border border-slate-800 p-4 rounded-2xl mb-3 flex-row items-center justify-between">
+          <View className={`p-4 rounded-2xl mb-3 flex-row items-center justify-between border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+            }`}>
             <View className="flex-1 min-w-0 pr-3">
               <View className="flex-row items-center flex-wrap gap-2 mb-1">
-                <Text className="text-white font-bold text-base" numberOfLines={1}>
+                <Text className={`font-bold text-base ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
                   {item.name}
                 </Text>
                 <View className={`px-2 py-0.5 rounded border ${getRoleBadgeColor(item.role)}`}>
@@ -178,13 +196,13 @@ export const UserManagementScreen = () => {
                 </View>
               </View>
 
-              <Text className="text-slate-400 text-xs" numberOfLines={1}>
+              <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`} numberOfLines={1}>
                 ID/Phone: {item.mobile || item.id}
               </Text>
 
               <View className="flex-row items-center mt-1.5">
-                <MapPin size={11} color="#A78BFA" />
-                <Text className="text-purple-300 text-xs font-medium ml-1" numberOfLines={1}>
+                <MapPin size={11} color="#8B5CF6" />
+                <Text className="text-purple-600 dark:text-purple-300 text-xs font-medium ml-1" numberOfLines={1}>
                   {getAssignedBranchName(item)}
                 </Text>
               </View>
@@ -221,8 +239,8 @@ export const UserManagementScreen = () => {
         )}
         ListEmptyComponent={
           <View className="py-16 items-center">
-            <Users size={36} color="#475569" />
-            <Text className="text-slate-400 text-xs mt-3">No staff members created yet.</Text>
+            <Users size={36} color="#94A3B8" />
+            <Text className={`text-xs mt-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No staff members created yet.</Text>
           </View>
         }
       />
@@ -235,7 +253,8 @@ export const UserManagementScreen = () => {
             style={{ padding: isMobile ? 0 : 16 }}
           >
             <View
-              className="bg-slate-900 border border-slate-800 w-full max-w-md shadow-2xl"
+              className={`w-full max-w-md shadow-2xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+                }`}
               style={{
                 height: isMobile ? '92%' : undefined,
                 maxHeight: isMobile ? '92%' : '90%',
@@ -247,17 +266,18 @@ export const UserManagementScreen = () => {
                 paddingBottom: isMobile ? Math.max(insets.bottom + 8, 20) : 20,
               }}
             >
-              <View className="flex-row justify-between items-center mb-4 border-b border-slate-800 pb-3">
+              <View className={`flex-row justify-between items-center mb-4 border-b pb-3 ${isDark ? 'border-slate-800' : 'border-slate-200'
+                }`}>
                 <View>
-                  <Text className="text-white font-black text-lg">
+                  <Text className={`font-black text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>
                     {editingUserId ? 'Edit Staff Member' : 'Add New Staff Member'}
                   </Text>
-                  <Text className="text-slate-400 text-xs">
+                  <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {editingUserId ? 'Update staff info and assigned branch' : 'Setup login credentials and branch permissions'}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={() => setModalOpen(false)}>
-                  <X size={20} color="#94A3B8" />
+                  <X size={20} color={isDark ? '#94A3B8' : '#64748B'} />
                 </TouchableOpacity>
               </View>
 
@@ -291,7 +311,7 @@ export const UserManagementScreen = () => {
 
                 {/* Role Picker */}
                 <View className="mb-4">
-                  <Text className="text-slate-300 font-bold text-xs mb-2">Select Staff Role *</Text>
+                  <Text className={`font-bold text-xs mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Select Staff Role *</Text>
                   <View className="space-y-2">
                     {[
                       { r: 'WAITER', title: 'Waiter / Captain', desc: 'Order entry & KOT printing only' },
@@ -312,17 +332,24 @@ export const UserManagementScreen = () => {
                         }}
                         className={`p-3 rounded-xl border flex-row items-center justify-between ${role === opt.r
                             ? 'bg-indigo-600/20 border-indigo-500'
-                            : 'bg-slate-800/60 border-slate-700'
+                            : isDark
+                              ? 'bg-slate-800/60 border-slate-700'
+                              : 'bg-slate-50 border-slate-200'
                           }`}
                       >
                         <View>
-                          <Text className={`font-bold text-xs ${role === opt.r ? 'text-indigo-300' : 'text-white'}`}>
+                          <Text className={`font-bold text-xs ${role === opt.r
+                              ? 'text-indigo-600 dark:text-indigo-300'
+                              : isDark
+                                ? 'text-white'
+                                : 'text-slate-900'
+                            }`}>
                             {opt.title}
                           </Text>
-                          <Text className="text-slate-400 text-[11px] mt-0.5">{opt.desc}</Text>
+                          <Text className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{opt.desc}</Text>
                         </View>
                         {role === opt.r && (
-                          <View className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+                          <View className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
                         )}
                       </TouchableOpacity>
                     ))}
@@ -331,10 +358,10 @@ export const UserManagementScreen = () => {
 
                 {/* Branch Assignment Section (Staff is locked to this branch) */}
                 <View className="mb-5">
-                  <Text className="text-slate-300 font-bold text-xs mb-1">
+                  <Text className={`font-bold text-xs mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                     Assign Operating Branch *
                   </Text>
-                  <Text className="text-slate-400 text-[11px] mb-2">
+                  <Text className={`text-[11px] mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {role === 'CLIENT_ADMIN'
                       ? 'Client Admins can access all branches or choose a primary branch.'
                       : 'Staff member is strictly locked to this branch and cannot switch.'}
@@ -346,19 +373,28 @@ export const UserManagementScreen = () => {
                         onPress={() => setSelectedLocId('*')}
                         className={`p-3 rounded-xl border flex-row items-center justify-between ${selectedLocId === '*'
                             ? 'bg-purple-600/20 border-purple-500'
-                            : 'bg-slate-800/60 border-slate-700'
+                            : isDark
+                              ? 'bg-slate-800/60 border-slate-700'
+                              : 'bg-slate-50 border-slate-200'
                           }`}
                       >
                         <View className="flex-row items-center">
-                          <Building size={16} color={selectedLocId === '*' ? '#C4B5FD' : '#94A3B8'} />
+                          <Building size={16} color={selectedLocId === '*' ? '#8B5CF6' : isDark ? '#94A3B8' : '#64748B'} />
                           <View className="ml-2">
-                            <Text className={`font-bold text-xs ${selectedLocId === '*' ? 'text-purple-300' : 'text-white'}`}>
+                            <Text className={`font-bold text-xs ${selectedLocId === '*'
+                                ? 'text-purple-600 dark:text-purple-300'
+                                : isDark
+                                  ? 'text-white'
+                                  : 'text-slate-900'
+                              }`}>
                               All Branches (Unrestricted Access)
                             </Text>
-                            <Text className="text-slate-400 text-[10px]">Can switch between any active restaurant location</Text>
+                            <Text className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              Can switch between any active restaurant location
+                            </Text>
                           </View>
                         </View>
-                        {selectedLocId === '*' && <Check size={16} color="#A78BFA" />}
+                        {selectedLocId === '*' && <Check size={16} color="#8B5CF6" />}
                       </TouchableOpacity>
                     )}
 
@@ -373,21 +409,28 @@ export const UserManagementScreen = () => {
                             onPress={() => setSelectedLocId(loc.id)}
                             className={`p-3 rounded-xl border flex-row items-center justify-between ${isSelected
                                 ? 'bg-indigo-600/20 border-indigo-500'
-                                : 'bg-slate-800/60 border-slate-700'
+                                : isDark
+                                  ? 'bg-slate-800/60 border-slate-700'
+                                  : 'bg-slate-50 border-slate-200'
                               }`}
                           >
                             <View className="flex-row items-center flex-1 mr-2">
-                              <MapPin size={16} color={isSelected ? '#818CF8' : '#94A3B8'} />
+                              <MapPin size={16} color={isSelected ? '#6366F1' : isDark ? '#94A3B8' : '#64748B'} />
                               <View className="ml-2 flex-1">
-                                <Text className={`font-bold text-xs ${isSelected ? 'text-indigo-300' : 'text-white'}`} numberOfLines={1}>
+                                <Text className={`font-bold text-xs ${isSelected
+                                    ? 'text-indigo-600 dark:text-indigo-300'
+                                    : isDark
+                                      ? 'text-white'
+                                      : 'text-slate-900'
+                                  }`} numberOfLines={1}>
                                   {loc.name}
                                 </Text>
-                                <Text className="text-slate-400 text-[10px]" numberOfLines={1}>
+                                <Text className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`} numberOfLines={1}>
                                   {loc.address || 'Operating Branch'}
                                 </Text>
                               </View>
                             </View>
-                            {isSelected && <Check size={16} color="#818CF8" />}
+                            {isSelected && <Check size={16} color="#6366F1" />}
                           </TouchableOpacity>
                         );
                       })

@@ -1,11 +1,11 @@
 import { toast } from '../../utils/toast';
 import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Image, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List, Menu as MenuIcon, MapPin, Receipt, Bike, TrendingUp, Sun, Moon, Minus, Plus } from 'lucide-react-native';
+import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronLeft, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List, Menu as MenuIcon, MapPin, Receipt, Bike, TrendingUp, Sun, Moon, Minus, Plus, Trash2 } from 'lucide-react-native';
 import { HamburgerMenu } from '../../components/common/HamburgerMenu';
 import { ProductCard } from './components/ProductCard';
 import { VariantSelectionSheet } from './components/VariantSelectionSheet';
@@ -27,6 +27,7 @@ import { Button } from '../../components/common/Button';
 import { Routes } from '../../constants/routes';
 import { MenuItem, MenuItemVariant, getItemInteractionType } from '../../types/menu.types';
 import { SelectedCustomizationOption } from '../../types/order.types';
+import { getAutoMenuItemImage } from '../../utils/foodImageResolver';
 
 interface MenuScreenProps {
   isDirectHome?: boolean;
@@ -51,8 +52,23 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const tableNo = isDirect ? 0 : (routeParams.tableNo ?? 0);
   const orderType = isDirect ? 'COUNTER' : (routeParams.orderType || (tableNo === 0 ? 'PICKUP' : 'DINE_IN'));
 
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isBranchModalOpen, setBranchModalOpen] = useState(false);
+  const [isCartModalOpen, setIsCartModalOpen] = useState(false);
+  const [showImages, setShowImages] = useState<boolean>(
+    features.autoMenuImagesEnabled !== undefined ? Boolean(features.autoMenuImagesEnabled) : (isDirect ? true : false)
+  );
+
+  useEffect(() => {
+    if (features.autoMenuImagesEnabled !== undefined) {
+      setShowImages(Boolean(features.autoMenuImagesEnabled));
+    }
+  }, [features.autoMenuImagesEnabled]);
+
+  const categoryScrollRef = React.useRef<any>(null);
+  const categoryScrollOffset = React.useRef<number>(0);
 
   const { categories, items, subscribeToMenu } = useMenuStore();
   const paymentsEnabled = features.paymentsEnabled !== false;
@@ -470,6 +486,26 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     updateQuantity(tableNo, cItem.itemId, cItem.qty + 1, cItem.variantId || cItem.variantName);
   };
 
+  const handleDecrementCartItem = (cItem: any) => {
+    if (!checkCanEditCart()) return;
+    if (cItem.qty > 1) {
+      updateQuantity(
+        tableNo,
+        cItem.itemId,
+        cItem.qty - 1,
+        cItem.variantId || cItem.variantName,
+        cItem.customizationKey
+      );
+    } else {
+      removeItem(
+        tableNo,
+        cItem.itemId,
+        cItem.variantId || cItem.variantName,
+        cItem.customizationKey
+      );
+    }
+  };
+
   const handleCardPress = useCallback((item: MenuItem) => {
     if (!checkCanEditCart()) return;
     if (item.isAvailable === false) {
@@ -552,6 +588,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       : null;
 
     const colWidth = `${100 / numColumns}%`;
+    const itemCat = categories.find(c => c.id === item.categoryId);
 
     return (
       <ProductCard
@@ -564,9 +601,11 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         onDecrement={handleDecrementCardItem}
         viewMode="grid"
         cardWidth={colWidth}
+        showImage={showImages}
+        categoryName={itemCat?.name}
       />
     );
-  }, [cartItems, numColumns, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, items]);
+  }, [cartItems, numColumns, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, items, showImages, categories]);
 
   const renderLineCard = useCallback(({ item }: { item: MenuItem }) => {
     const itemNameNorm = (item.name || '').trim().toLowerCase();
@@ -582,6 +621,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     const lowStockText = !isExplicitlyOutOfStock && item.trackInventory && !isOutOfStock && availStock <= (item.lowStockThreshold || 2)
       ? `Low: ${availStock.toFixed(availStock % 1 === 0 ? 0 : 2)} ${item.stockUnit || 'kg'}`
       : null;
+    const itemCat = categories.find(c => c.id === item.categoryId);
 
     return (
       <ProductCard
@@ -593,9 +633,11 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         onIncrement={handleIncrementSimpleItem}
         onDecrement={handleDecrementCardItem}
         viewMode="lines"
+        showImage={showImages}
+        categoryName={itemCat?.name}
       />
     );
-  }, [cartItems, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, items]);
+  }, [cartItems, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, items, showImages, categories]);
 
   // Persistent Right Panel for Tablets & iPad POS (Responsive ~32% Width)
   const renderSplitCartPanel = () => (
@@ -933,10 +975,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             </TouchableOpacity>
           )}
 
-          {/* Mobile Cart Button in Header: Navigates directly to dedicated Cart Screen! */}
+          {/* Cart Button in Header: Opens Dedicated Cart Modal to See Items! */}
           {!isSplitView && (
             <TouchableOpacity
-              onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}
+              onPress={() => setIsCartModalOpen(true)}
               className={`px-2.5 py-1.5 rounded-xl flex-row items-center border shadow-sm active:opacity-80 ${
                 cartItemCount > 0
                   ? 'bg-[#5D3FD3] border-purple-400 shadow-purple-500/30'
@@ -945,6 +987,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                   : 'bg-slate-100 border-slate-300'
               }`}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="View Cart"
             >
               <ShoppingBag size={15} color={cartItemCount > 0 ? '#FFFFFF' : (isDark ? '#94A3B8' : '#64748B')} />
               <Text
@@ -963,7 +1006,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       <View className="flex-1 flex-row">
         {/* Left Section (Menu & Categories ~68% on landscape POS) */}
         <View style={{ flex: isSplitView ? 68 : 100 }}>
-          {/* Search Bar & View Mode Toggle (Grid vs Lines) */}
+          {/* Search Bar & View Mode Toggle (Grid vs Lines) + Food Photos Toggle */}
           <View
             className={`px-4 py-2.5 flex-row items-center gap-2 ${
               isDark ? 'bg-[#090D1A]' : 'bg-slate-50'
@@ -983,6 +1026,28 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 className={`flex-1 ml-2 text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}
               />
             </View>
+
+            {/* Food Photos Toggle Button (Quick Sale & Menu Touchscreens) */}
+            <TouchableOpacity
+              onPress={() => setShowImages(!showImages)}
+              className={`flex-row items-center border rounded-xl px-2.5 py-1.5 gap-1.5 active:opacity-80 ${
+                showImages
+                  ? 'bg-pink-600/20 border-pink-500/40 shadow-xs'
+                  : isDark
+                  ? 'bg-slate-900 border-slate-800'
+                  : 'bg-white border-slate-300'
+              }`}
+              accessibilityLabel="Toggle Food Photos"
+            >
+              <Sparkles size={13} color={showImages ? '#EC4899' : (isDark ? '#94A3B8' : '#64748B')} />
+              <Text
+                className={`text-[11px] font-bold ${
+                  showImages ? 'text-pink-400 font-black' : (isDark ? 'text-slate-400' : 'text-slate-600')
+                }`}
+              >
+                {showImages ? 'Photos ON' : 'Photos'}
+              </Text>
+            </TouchableOpacity>
 
             {/* View Mode Toggle */}
             <View
@@ -1028,14 +1093,45 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
           {/* Sub-menu Horizontal Category Bar with Favorites */}
           <View
-            className={`py-2.5 border-b shadow-sm ${
+            className={`py-2 px-1 sm:px-2 border-b shadow-sm flex-row items-center ${
               isDark ? 'bg-[#0B101E] border-slate-800/80' : 'bg-white border-slate-200'
             }`}
           >
+            {/* Scroll Left Button (Mouse / Touchpad / Desktop Quick Navigation) */}
+            <TouchableOpacity
+              onPress={() => {
+                categoryScrollOffset.current = Math.max(0, categoryScrollOffset.current - 240);
+                categoryScrollRef.current?.scrollTo({ x: categoryScrollOffset.current, animated: true });
+              }}
+              className={`p-1.5 sm:p-2 rounded-full mr-1 items-center justify-center border shadow-xs ${
+                isDark
+                  ? 'bg-slate-900 border-slate-800 active:bg-slate-800'
+                  : 'bg-slate-100 border-slate-200 active:bg-slate-200'
+              }`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Scroll categories left"
+            >
+              <ChevronLeft size={16} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
+            </TouchableOpacity>
+
             <ScrollView
+              ref={categoryScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 }}
+              onScroll={(e) => {
+                categoryScrollOffset.current = e.nativeEvent.contentOffset.x;
+              }}
+              scrollEventThrottle={16}
+              contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}
+              {...({
+                onWheel: (e: any) => {
+                  const delta = e?.nativeEvent?.deltaY || e?.deltaY;
+                  if (delta && categoryScrollRef.current) {
+                    categoryScrollOffset.current = Math.max(0, categoryScrollOffset.current + delta);
+                    categoryScrollRef.current.scrollTo({ x: categoryScrollOffset.current, animated: false });
+                  }
+                }
+              } as any)}
             >
               {/* Starred Favorites Tab */}
               <TouchableOpacity
@@ -1124,6 +1220,23 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 );
               })}
             </ScrollView>
+
+            {/* Scroll Right Button (Mouse / Touchpad / Desktop Quick Navigation) */}
+            <TouchableOpacity
+              onPress={() => {
+                categoryScrollOffset.current += 240;
+                categoryScrollRef.current?.scrollTo({ x: categoryScrollOffset.current, animated: true });
+              }}
+              className={`p-1.5 sm:p-2 rounded-full ml-1 items-center justify-center border shadow-xs ${
+                isDark
+                  ? 'bg-slate-900 border-slate-800 active:bg-slate-800'
+                  : 'bg-slate-100 border-slate-200 active:bg-slate-200'
+              }`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Scroll categories right"
+            >
+              <ChevronRight size={16} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
+            </TouchableOpacity>
           </View>
 
           {/* Items List (Grid or Lines) */}
@@ -1263,29 +1376,276 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}
+                  onPress={() => setIsCartModalOpen(true)}
                   className="flex-1 bg-[#5D3FD3] py-3 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-md shadow-purple-500/30"
                 >
                   <ShoppingBag size={15} color="white" />
                   <Text className="text-white font-black text-xs ml-1.5" numberOfLines={1}>
-                    {paymentsEnabled ? "View Cart & Pay →" : "View & Send KOT →"}
+                    View Cart ({cartItemCount})
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity
-                onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}
+                onPress={() => setIsCartModalOpen(true)}
                 className="flex-1 bg-[#5D3FD3] py-3.5 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-md shadow-purple-500/30"
               >
                 <ShoppingBag size={16} color="white" />
                 <Text className="text-white font-black text-sm ml-2" numberOfLines={1}>
-                  {paymentsEnabled ? `View Cart & Pay (₹${cartTotal.toFixed(2)}) →` : "View Order & Send KOT →"}
+                  {`View Cart (${cartItemCount} item${cartItemCount > 1 ? 's' : ''} • ₹${cartTotal.toFixed(2)}) →`}
                 </Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
       )}
+
+      {/* DEDICATED SEPARATE CART MODAL (See, Review & Edit Items) */}
+      <Modal
+        visible={isCartModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsCartModalOpen(false)}
+      >
+        <View className="flex-1 justify-end sm:justify-center items-center bg-black/80" style={{ padding: isMobile ? 0 : 16 }}>
+          <View
+            className={`w-full max-w-xl shadow-2xl flex-col border ${
+              isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'
+            }`}
+            style={{
+              height: isMobile ? '92%' : '85%',
+              maxHeight: isMobile ? '92%' : 750,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              borderBottomLeftRadius: isMobile ? 0 : 28,
+              borderBottomRightRadius: isMobile ? 0 : 28,
+              overflow: 'hidden',
+            }}
+          >
+            {/* Cart Modal Header */}
+            <View
+              className={`flex-row items-center justify-between p-4 sm:p-5 border-b ${
+                isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <View className="flex-row items-center gap-2.5 flex-1 mr-2">
+                <View className="p-2 rounded-xl bg-[#5D3FD3]/20 border border-purple-500/30">
+                  <ShoppingBag size={20} color="#A855F7" />
+                </View>
+                <View className="flex-1">
+                  <Text className={`font-black text-base sm:text-lg ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
+                    {tableNo === 0
+                      ? isDirect
+                        ? 'Quick Sale Cart'
+                        : orderType === 'PICKUP'
+                        ? 'Pick Up Cart'
+                        : 'Takeaway Cart'
+                      : `Table ${tableNo} Cart`}
+                  </Text>
+                  <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {cartItemCount} item{cartItemCount === 1 ? '' : 's'} in order
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-center gap-2">
+                {cartItems.length > 0 && (
+                  <TouchableOpacity
+                    onPress={handleClearCart}
+                    className="px-3 py-1.5 bg-rose-500/15 border border-rose-500/30 rounded-xl active:opacity-75"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text className="text-rose-400 text-xs font-bold">Clear All</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={() => setIsCartModalOpen(false)}
+                  className={`p-2 rounded-xl border ${
+                    isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-200 border-slate-300'
+                  }`}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Close Cart"
+                >
+                  <X size={18} color={isDark ? '#CBD5E1' : '#475569'} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Cart Modal Items List */}
+            <ScrollView className="flex-1 p-4" showsVerticalScrollIndicator={true}>
+              {cartItems.length === 0 ? (
+                <View className="py-20 items-center justify-center">
+                  <View
+                    className={`w-16 h-16 rounded-full items-center justify-center mb-3 ${
+                      isDark ? 'bg-slate-800/80' : 'bg-slate-100'
+                    }`}
+                  >
+                    <ShoppingBag size={30} color={isDark ? '#64748B' : '#94A3B8'} />
+                  </View>
+                  <Text className={`font-black text-base ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Your Cart is Empty
+                  </Text>
+                  <Text className={`text-xs mt-1 text-center max-w-[240px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Tap dishes from the menu to add them to this order.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setIsCartModalOpen(false)}
+                    className="mt-5 px-5 py-2.5 bg-[#5D3FD3] rounded-xl flex-row items-center shadow-md shadow-purple-500/30"
+                  >
+                    <Text className="text-white font-bold text-xs">← Browse Menu</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                cartItems.map((item, index) => {
+                  const itemTotal = item.price * item.qty;
+                  const itemPhoto = getAutoMenuItemImage(item.itemName, undefined, (item as any).imageUrl || (item as any).image);
+
+                  return (
+                    <View
+                      key={`${item.itemId}_${item.variantId || item.variantName || ''}_${item.customizationKey || ''}_${index}`}
+                      className={`p-3.5 rounded-2xl mb-2.5 border ${
+                        isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+                      }`}
+                    >
+                      <View className="flex-row items-start justify-between">
+                        {/* Food Image Thumbnail */}
+                        {showImages && itemPhoto && (
+                          <View className="w-12 h-12 rounded-xl overflow-hidden mr-3 bg-slate-800 border border-slate-700/50 shrink-0">
+                            <Image source={{ uri: itemPhoto }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                          </View>
+                        )}
+
+                        <View className="flex-1 mr-2 min-w-0">
+                          <Text
+                            className={`text-sm font-bold leading-snug ${isDark ? 'text-white' : 'text-slate-900'}`}
+                            numberOfLines={2}
+                          >
+                            {item.itemName}
+                          </Text>
+
+                          {/* Variant Badge */}
+                          {item.variantName && (
+                            <View className="self-start bg-indigo-500/20 px-2 py-0.5 rounded-md border border-indigo-500/30 mt-1">
+                              <Text className="text-indigo-400 text-[11px] font-bold">{item.variantName}</Text>
+                            </View>
+                          )}
+
+                          {/* Customization Options Badges */}
+                          {item.selectedOptions && item.selectedOptions.length > 0 && (
+                            <View className="flex-row flex-wrap gap-1 mt-1">
+                              {item.selectedOptions.map((opt, oIdx) => (
+                                <View
+                                  key={oIdx}
+                                  className={`px-1.5 py-0.5 rounded border ${
+                                    isDark ? 'bg-purple-950/60 border-purple-500/30' : 'bg-purple-50 border-purple-200'
+                                  }`}
+                                >
+                                  <Text className={`text-[10px] font-semibold ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>
+                                    +{opt.optionName}
+                                    {opt.price > 0 ? ` (₹${opt.price})` : ''}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+
+                          {item.note ? (
+                            <Text className="text-amber-400 text-[11px] italic mt-1">Note: {item.note}</Text>
+                          ) : null}
+
+                          <Text className="text-slate-400 text-xs mt-1">
+                            ₹{item.price} × {item.qty} ={' '}
+                            <Text className={`font-black ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                              ₹{itemTotal.toFixed(2)}
+                            </Text>
+                          </Text>
+                        </View>
+
+                        {/* Interactive Quantity Stepper */}
+                        <View className="items-end gap-1.5 shrink-0">
+                          <View
+                            className={`flex-row items-center rounded-full px-1 py-0.5 border shadow-sm ${
+                              isDark ? 'bg-slate-950 border-slate-700' : 'bg-slate-100 border-slate-300'
+                            }`}
+                          >
+                            <TouchableOpacity
+                              className={`w-7 h-7 rounded-full items-center justify-center active:opacity-75 ${
+                                isDark ? 'bg-slate-800' : 'bg-white'
+                              }`}
+                              onPress={() => handleDecrementCartItem(item)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Minus size={12} color={isDark ? '#CBD5E1' : '#475569'} strokeWidth={2.5} />
+                            </TouchableOpacity>
+
+                            <Text className={`w-6 text-center font-black text-xs sm:text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                              {item.qty}
+                            </Text>
+
+                            <TouchableOpacity
+                              className="w-7 h-7 rounded-full bg-[#5D3FD3] items-center justify-center active:opacity-75 shadow-sm shadow-purple-500/30"
+                              onPress={() => handleIncrementCartItem(item)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Plus size={12} color="white" strokeWidth={2.5} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {/* Cart Modal Footer: Summary & Checkout Navigation */}
+            {cartItems.length > 0 && (
+              <View
+                className={`p-4 sm:p-5 border-t ${
+                  isDark ? 'bg-slate-900/95 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}
+                style={{ paddingBottom: Math.max(insets.bottom + 12, 16) }}
+              >
+                <View className="flex-row items-center justify-between mb-3">
+                  <View>
+                    <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Total Amount ({cartItemCount} item{cartItemCount === 1 ? '' : 's'})
+                    </Text>
+                    <Text className={`font-black text-2xl ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      ₹{cartTotal.toFixed(2)}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setIsCartModalOpen(false)}
+                    className={`px-3 py-2 rounded-xl border ${
+                      isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                    }`}
+                  >
+                    <Text className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                      + Add More Items
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Big Proceed to Checkout Button */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsCartModalOpen(false);
+                    navigation.navigate(Routes.CART, { tableNo, orderType });
+                  }}
+                  className="w-full py-3.5 bg-[#5D3FD3] rounded-2xl flex-row items-center justify-center active:opacity-90 shadow-lg shadow-purple-900/40"
+                >
+                  <CreditCard size={18} color="white" />
+                  <Text className="text-white font-black text-sm sm:text-base ml-2">
+                    {paymentsEnabled ? `Proceed to Checkout & Pay (₹${cartTotal.toFixed(2)}) →` : 'Proceed & Send KOT to Kitchen →'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Branch Selection Modal for Quick Sale Direct Mode */}
       {isDirect && (
