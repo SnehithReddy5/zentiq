@@ -60,6 +60,7 @@ export interface Order {
   tax?: number;
   discount?: number;
   totalAmount: number;
+  isDirect?: boolean;
   specialNote?: string;
   createdBy?: string;
   aggregatorOrderId?: string;

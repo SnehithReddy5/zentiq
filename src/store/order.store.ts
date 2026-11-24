@@ -8,10 +8,10 @@ interface OrderState {
   orders: Order[];
   isLoading: boolean;
   totalOrdersCount: number | null;
-  currentLimit: number;
+  currentLimit: number | null;
   setOrders: (orders: Order[]) => void;
   setLoading: (isLoading: boolean) => void;
-  subscribeToOrders: (specificLocationId?: string | null, customLimit?: number) => () => void;
+  subscribeToOrders: (specificLocationId?: string | null, customLimit?: number | null) => () => void;
   loadMoreOrders: () => void;
   fetchTotalOrdersCount: (locationId?: string | null) => Promise<number>;
 }
@@ -25,7 +25,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   orders: [],
   isLoading: true,
   totalOrdersCount: null,
-  currentLimit: 500,
+  currentLimit: null, // Dynamic / unlimited by default (no hardcoded limits)
   setOrders: (orders) => set({ orders }),
   setLoading: (isLoading) => set({ isLoading }),
 
@@ -87,7 +87,8 @@ export const useOrderStore = create<OrderState>((set, get) => ({
 
   loadMoreOrders: () => {
     const current = get().currentLimit;
-    const nextLimit = current + 250;
+    if (!current) return;
+    const nextLimit = current + 500;
     set({ currentLimit: nextLimit });
     if (activeOrdersUnsub) {
       activeOrdersUnsub();
@@ -98,10 +99,10 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     get().subscribeToOrders(loc, nextLimit);
   },
 
-  subscribeToOrders: (specificLocationId?: string | null, customLimit?: number) => {
+  subscribeToOrders: (specificLocationId?: string | null, customLimit?: number | null) => {
     const { tenant, activeLocationId, locations } = useTenantStore.getState();
     const targetLocId = specificLocationId !== undefined ? specificLocationId : activeLocationId;
-    const orderLimit = customLimit || get().currentLimit || 500;
+    const orderLimit = customLimit !== undefined ? customLimit : get().currentLimit;
 
     if (!tenant?.id) {
       set({ orders: [], isLoading: false, totalOrdersCount: 0 });
@@ -148,11 +149,15 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       const branchOrdersMap: Record<string, Order[]> = {};
 
       activeLocs.forEach(loc => {
-        const branchLimit = Math.max(100, Math.floor(orderLimit / activeLocs.length));
+        const queryConstraints: any[] = [orderBy('createdAt', 'desc')];
+        if (orderLimit && orderLimit > 0) {
+          const branchLimit = Math.max(100, Math.floor(orderLimit / activeLocs.length));
+          queryConstraints.push(limit(branchLimit));
+        }
+
         const q = query(
           collection(db, 'tenants', tenant.id, 'locations', loc.id, 'orders'),
-          orderBy('createdAt', 'desc'),
-          limit(branchLimit)
+          ...queryConstraints
         );
         const unsub = onSnapshot(
           q,
@@ -198,10 +203,14 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     }
 
     const locObj = locations.find(l => l.id === targetLocId);
+    const queryConstraints: any[] = [orderBy('createdAt', 'desc')];
+    if (orderLimit && orderLimit > 0) {
+      queryConstraints.push(limit(orderLimit));
+    }
+
     const q = query(
       collection(db, 'tenants', tenant.id, 'locations', targetLocId, 'orders'),
-      orderBy('createdAt', 'desc'),
-      limit(orderLimit)
+      ...queryConstraints
     );
 
     const unsubscribe = onSnapshot(

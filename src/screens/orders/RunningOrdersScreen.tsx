@@ -661,7 +661,7 @@ const OrdersSummaryDashboard = React.memo(({
 
 export const RunningOrdersScreen = () => {
   const insets = useSafeAreaInsets();
-  const { orders, subscribeToOrders, isLoading, totalOrdersCount: serverTotalCount, loadMoreOrders } = useOrderStore();
+  const { orders, subscribeToOrders, isLoading, totalOrdersCount: serverTotalCount, loadMoreOrders, currentLimit } = useOrderStore();
   const { tenant, locations, activeLocationId, branding, features } = useTenantStore();
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
@@ -739,7 +739,7 @@ export const RunningOrdersScreen = () => {
       // Order type filter
       const oType = String(o.orderType || '').toUpperCase().trim();
       const isOnline = oType.includes('ONLINE') || oType.includes('ZOMATO') || oType.includes('SWIGGY');
-      const isCounter = oType === 'COUNTER' || oType === 'QUICK_SALE' || (!oType && Number(o.tableNo) === 0);
+      const isCounter = oType === 'COUNTER' || oType === 'QUICK_SALE' || oType === 'QUICK' || oType === 'DIRECT' || (o as any).isDirect === true || (!oType && Number(o.tableNo) === 0);
       const isPickup = oType === 'PICKUP' || oType === 'PICK_UP';
       const isTakeaway = oType === 'TAKEAWAY' || oType === 'TAKE_AWAY';
       const isDineIn = (oType === 'DINE_IN' || Number(o.tableNo) > 0) && !isPickup && !isTakeaway && !isOnline && !isCounter;
@@ -866,9 +866,10 @@ export const RunningOrdersScreen = () => {
     const validBaseOrders = baseFilteredOrders.filter(o => !isCancelled(o));
     const validTodayOrders = todayOrders.filter(o => !isCancelled(o));
 
-    const totalOrdersCount = serverTotalCount !== null && serverTotalCount !== undefined
-      ? Math.max(serverTotalCount, validBaseOrders.length)
-      : validBaseOrders.length;
+    const isFiltered = selectedOrderTypeFilter !== 'ALL' || Boolean(search.trim());
+    const totalOrdersCount = isFiltered
+      ? validBaseOrders.length
+      : (validBaseOrders.length > 0 ? validBaseOrders.length : (serverTotalCount ?? 0));
     const totalRevenue = validBaseOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
     const averageOrderValue = validBaseOrders.length > 0 ? totalRevenue / validBaseOrders.length : 0;
 
@@ -879,7 +880,7 @@ export const RunningOrdersScreen = () => {
     const getOrderCategory = (o: any): 'DINE_IN' | 'PICKUP' | 'TAKEAWAY' | 'COUNTER' | 'ONLINE' => {
       const type = String(o?.orderType || '').toUpperCase().trim();
       if (type.includes('ZOMATO') || type.includes('SWIGGY') || type.includes('ONLINE')) return 'ONLINE';
-      if (type === 'COUNTER' || type === 'QUICK_SALE' || type === 'QUICK') return 'COUNTER';
+      if (type === 'COUNTER' || type === 'QUICK_SALE' || type === 'QUICK' || type === 'DIRECT' || o?.isDirect === true) return 'COUNTER';
       if (type === 'PICKUP' || type === 'PICK_UP') return 'PICKUP';
       if (type === 'TAKEAWAY' || type === 'TAKE_AWAY') return 'TAKEAWAY';
       if (Number(o?.tableNo) === 0) return 'COUNTER';
@@ -1546,7 +1547,7 @@ export const RunningOrdersScreen = () => {
             width: '100%'
           }}          ListHeaderComponent={listHeader}
           ListFooterComponent={
-            timeScope === 'ALL' && stats.totalOrdersCount > filteredOrders.length ? (
+            timeScope === 'ALL' && currentLimit && stats.totalOrdersCount > filteredOrders.length ? (
               <View className="py-4 items-center">
                 <TouchableOpacity
                   onPress={loadMoreOrders}
