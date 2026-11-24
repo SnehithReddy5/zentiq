@@ -5,7 +5,7 @@ import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, M
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronLeft, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List, Menu as MenuIcon, MapPin, Receipt, Bike, TrendingUp, Sun, Moon, Minus, Plus, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Search, X, Settings, ShoppingBag, Send, CreditCard, ChevronLeft, ChevronRight, Star, Sparkles, CheckCircle2, Package, Lock, ShieldCheck, LayoutGrid, List, Menu as MenuIcon, MapPin, Receipt, Bike, TrendingUp, Sun, Moon, Minus, Plus, Trash2, Printer } from 'lucide-react-native';
 import { HamburgerMenu } from '../../components/common/HamburgerMenu';
 import { ProductCard } from './components/ProductCard';
 import { VariantSelectionSheet } from './components/VariantSelectionSheet';
@@ -125,6 +125,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const [selectedItemForVariants, setSelectedItemForVariants] = useState<MenuItem | null>(null);
   const [selectedItemForCustomization, setSelectedItemForCustomization] = useState<MenuItem | null>(null);
   const [isSendingKOT, setIsSendingKOT] = useState(false);
+  const [isSettlingQuickSale, setIsSettlingQuickSale] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'lines'>('grid');
 
   useEffect(() => {
@@ -393,6 +394,115 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         console.warn('KOT dispatch background error:', err);
       }
     })();
+  };
+
+  const handleQuickSalePrintAndSave = async () => {
+    if (cartItems.length === 0) return;
+    if (user?.role === 'WAITER' || user?.role === 'captain') {
+      toast.warning('Quick Sale settlement requires Biller or Manager authorization.', 'Action Restricted');
+      return;
+    }
+    if (!activeLocationId && locations && locations.length > 0) {
+      toast.warning('Please select an active operating branch on home screen first.', 'Branch Required');
+      return;
+    }
+
+    setIsSettlingQuickSale(true);
+    try {
+      const billNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
+
+      const paymentRows = [{
+        id: 'pay_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        method: 'CASH' as const,
+        amount: cartTotal,
+        timestamp: new Date().toISOString(),
+      }];
+
+      const orderPayload: any = {
+        orderNumber: billNo,
+        kotNo: billNo,
+        orderType: 'COUNTER',
+        tableNo: 0,
+        captainId: user?.id || 'staff',
+        captainName: user?.name || 'Staff',
+        status: 'COMPLETED',
+        paymentStatus: 'PAID',
+        payments: paymentRows,
+        items: cartItems.map(i => ({
+          itemId: i.itemId,
+          itemName: i.itemName,
+          price: i.price,
+          qty: i.qty,
+          variantName: i.variantName,
+          selectedOptions: i.selectedOptions,
+          note: i.note,
+        })),
+        subtotal: cartTotal,
+        tax: 0,
+        discount: 0,
+        totalAmount: cartTotal,
+        createdAt: new Date(),
+      };
+
+      // 1. Persist completed order to Firestore
+      await DBServices.createOrder(orderPayload, tenant?.id, activeLocationId || undefined);
+
+      // 2. Dispatch thermal print in background
+      const isUsb = settings.printerType === 'USB';
+      const mainTarget = isUsb ? (settings.printerName || 'POS-80') : (settings.ipAddress || '127.0.0.1');
+      const mainPort = settings.port || 9100;
+      const mainType = isUsb ? 'USB' : 'LAN';
+
+      const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
+      const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
+      const isSingleKot = workflowMode === 'SINGLE_KOT_ONLY' || workflowMode === 'TOKEN_ONLY';
+
+      const brandPayload = branding ? { ...branding } : null;
+
+      const printBuffer = isSingleKot
+        ? ESCPOSService.buildTokenSlip(
+          billNo,
+          0,
+          user?.name || 'Staff',
+          cartItems,
+          brandPayload,
+          'QUICK SALE',
+          'COUNTER'
+        )
+        : isCombinedMode
+        ? ESCPOSService.buildCombinedTiffinPrints(
+          billNo,
+          0,
+          user?.name || 'Staff',
+          cartItems,
+          brandPayload,
+          'COUNTER',
+          [{ method: 'CASH', amount: cartTotal }]
+        )
+        : ESCPOSService.buildBill(
+          billNo,
+          0,
+          user?.name || 'Staff',
+          cartItems,
+          brandPayload,
+          'COUNTER',
+          [{ method: 'CASH', amount: cartTotal }]
+        );
+
+      printerService.printReceiptOrKOT(printBuffer, mainTarget, mainPort, mainType).catch((err) => {
+        console.warn('Quick Sale print background warning:', err);
+      });
+
+      // 3. Clear cart and close modal
+      clearCart(tableNo);
+      setIsCartModalOpen(false);
+
+      toast.success(`Order #${billNo} Saved & Printed! (₹${cartTotal.toFixed(2)})`, 'Quick Sale Complete');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to complete quick sale', 'Error');
+    } finally {
+      setIsSettlingQuickSale(false);
+    }
   };
 
   const favoriteCount = useMemo(() => items.filter(i => i.isFavorite).length, [items]);
@@ -859,23 +969,46 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           </Text>
         </View>
 
-        <View className="flex-row gap-2">
-          {isDualPrinterMode && unsentItems.length > 0 && (
+        {isDirect ? (
+          <TouchableOpacity
+            onPress={handleQuickSalePrintAndSave}
+            disabled={isSettlingQuickSale || cartItems.length === 0}
+            className={`w-full py-4 rounded-2xl flex-row items-center justify-center shadow-lg active:opacity-90 ${
+              cartItems.length > 0
+                ? 'bg-emerald-600 shadow-emerald-600/30'
+                : 'bg-slate-800 opacity-50'
+            }`}
+          >
+            {isSettlingQuickSale ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <View className="flex-row items-center">
+                <Printer size={18} color="white" />
+                <Text className="text-white font-black text-base ml-2">
+                  Print and Save
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View className="flex-row gap-2">
+            {isDualPrinterMode && unsentItems.length > 0 && (
+              <Button
+                title={`Send KOT (${unsentItems.reduce((s, i) => s + i.qty, 0)})`}
+                variant="secondary"
+                onPress={handleSendToKitchen}
+                isLoading={isSendingKOT}
+                className="flex-1"
+              />
+            )}
             <Button
-              title={`Send KOT (${unsentItems.reduce((s, i) => s + i.qty, 0)})`}
-              variant="secondary"
-              onPress={handleSendToKitchen}
-              isLoading={isSendingKOT}
+              title={paymentsEnabled ? (isSingleKotMode ? "Checkout & Token" : "Checkout & Pay") : (isSingleKotMode ? "Generate Token" : "View & Send KOT")}
+              onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}
+              disabled={cartItems.length === 0}
               className="flex-1"
             />
-          )}
-          <Button
-            title={paymentsEnabled ? (isSingleKotMode ? "Checkout & Token" : "Checkout & Pay") : (isSingleKotMode ? "Generate Token" : "View & Send KOT")}
-            onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}
-            disabled={cartItems.length === 0}
-            className="flex-1"
-          />
-        </View>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -1356,48 +1489,71 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
           </View>
 
           {/* Action Buttons Row */}
-          <View className="flex-row gap-2">
-            {isDualPrinterMode && unsentItems.length > 0 ? (
-              <View className="flex-1 flex-row gap-2">
-                <TouchableOpacity
-                  onPress={handleSendToKitchen}
-                  disabled={isSendingKOT}
-                  className="flex-1 bg-amber-500/20 border border-amber-500/40 py-3 rounded-2xl flex-row items-center justify-center active:opacity-80"
-                >
-                  {isSendingKOT ? (
-                    <ActivityIndicator size="small" color="#F59E0B" />
-                  ) : (
-                    <View className="flex-row items-center">
-                      <Send size={15} color="#FBBF24" />
-                      <Text className="text-amber-400 font-black text-xs ml-1.5" numberOfLines={1}>
-                        Send KOT ({unsentItems.reduce((s, i) => s + i.qty, 0)})
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+          {isDirect ? (
+            <TouchableOpacity
+              onPress={handleQuickSalePrintAndSave}
+              disabled={isSettlingQuickSale || cartItems.length === 0}
+              className={`w-full py-3.5 rounded-2xl flex-row items-center justify-center shadow-lg active:opacity-90 ${
+                cartItems.length > 0
+                  ? 'bg-emerald-600 shadow-emerald-600/30'
+                  : 'bg-slate-800 opacity-50'
+              }`}
+            >
+              {isSettlingQuickSale ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <View className="flex-row items-center">
+                  <Printer size={18} color="white" />
+                  <Text className="text-white font-black text-sm sm:text-base ml-2">
+                    Print and Save
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <View className="flex-row gap-2">
+              {isDualPrinterMode && unsentItems.length > 0 ? (
+                <View className="flex-1 flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={handleSendToKitchen}
+                    disabled={isSendingKOT}
+                    className="flex-1 bg-amber-500/20 border border-amber-500/40 py-3 rounded-2xl flex-row items-center justify-center active:opacity-80"
+                  >
+                    {isSendingKOT ? (
+                      <ActivityIndicator size="small" color="#F59E0B" />
+                    ) : (
+                      <View className="flex-row items-center">
+                        <Send size={15} color="#FBBF24" />
+                        <Text className="text-amber-400 font-black text-xs ml-1.5" numberOfLines={1}>
+                          Send KOT ({unsentItems.reduce((s, i) => s + i.qty, 0)})
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
 
+                  <TouchableOpacity
+                    onPress={() => setIsCartModalOpen(true)}
+                    className="flex-1 bg-[#5D3FD3] py-3 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-md shadow-purple-500/30"
+                  >
+                    <ShoppingBag size={15} color="white" />
+                    <Text className="text-white font-black text-xs ml-1.5" numberOfLines={1}>
+                      View Cart ({cartItemCount})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
                 <TouchableOpacity
                   onPress={() => setIsCartModalOpen(true)}
-                  className="flex-1 bg-[#5D3FD3] py-3 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-md shadow-purple-500/30"
+                  className="flex-1 bg-[#5D3FD3] py-3.5 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-md shadow-purple-500/30"
                 >
-                  <ShoppingBag size={15} color="white" />
-                  <Text className="text-white font-black text-xs ml-1.5" numberOfLines={1}>
-                    View Cart ({cartItemCount})
+                  <ShoppingBag size={16} color="white" />
+                  <Text className="text-white font-black text-sm ml-2" numberOfLines={1}>
+                    {`View Cart (${cartItemCount} item${cartItemCount > 1 ? 's' : ''} • ₹${cartTotal.toFixed(2)}) →`}
                   </Text>
                 </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                onPress={() => setIsCartModalOpen(true)}
-                className="flex-1 bg-[#5D3FD3] py-3.5 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-md shadow-purple-500/30"
-              >
-                <ShoppingBag size={16} color="white" />
-                <Text className="text-white font-black text-sm ml-2" numberOfLines={1}>
-                  {`View Cart (${cartItemCount} item${cartItemCount > 1 ? 's' : ''} • ₹${cartTotal.toFixed(2)}) →`}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
+              )}
+            </View>
+          )}
         </View>
       )}
 
@@ -1631,16 +1787,25 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
 
                 {/* Big Proceed to Checkout Button */}
                 <TouchableOpacity
-                  onPress={() => {
+                  onPress={isDirect ? handleQuickSalePrintAndSave : () => {
                     setIsCartModalOpen(false);
                     navigation.navigate(Routes.CART, { tableNo, orderType });
                   }}
-                  className="w-full py-3.5 bg-[#5D3FD3] rounded-2xl flex-row items-center justify-center active:opacity-90 shadow-lg shadow-purple-900/40"
+                  disabled={isSettlingQuickSale || cartItems.length === 0}
+                  className={`w-full py-4 rounded-2xl flex-row items-center justify-center active:opacity-90 shadow-lg ${
+                    isDirect ? 'bg-emerald-600 shadow-emerald-600/30' : 'bg-[#5D3FD3] shadow-purple-900/40'
+                  }`}
                 >
-                  <CreditCard size={18} color="white" />
-                  <Text className="text-white font-black text-sm sm:text-base ml-2">
-                    {paymentsEnabled ? `Proceed to Checkout & Pay (₹${cartTotal.toFixed(2)}) →` : isSingleKotMode ? `Proceed & Generate Token →` : 'Proceed & Send KOT to Kitchen →'}
-                  </Text>
+                  {isSettlingQuickSale ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <View className="flex-row items-center">
+                      {isDirect ? <Printer size={18} color="white" /> : <CreditCard size={18} color="white" />}
+                      <Text className="text-white font-black text-base ml-2">
+                        {isDirect ? 'Print and Save' : (paymentsEnabled ? `Proceed to Checkout & Pay (₹${cartTotal.toFixed(2)}) →` : 'Proceed & Send KOT to Kitchen →')}
+                      </Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               </View>
             )}

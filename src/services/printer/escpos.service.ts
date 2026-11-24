@@ -179,36 +179,22 @@ export class ESCPOSService {
     buffer.push(...this.INIT);
     buffer.push(...this.ALIGN_CENTER);
 
-    // 1. Header (Business Name)
-    const headerTitle = branding?.receiptHeader || branding?.displayName || branding?.businessName;
-    if (headerTitle) {
-      buffer.push(...this.BOLD_ON);
-      buffer.push(...this.stringToBytes(`${headerTitle.toUpperCase()}\n`));
-      buffer.push(...this.BOLD_OFF);
-    }
-
-    // 2. Large Bold TOKEN #
+    // 1. KOT Number (Bold, Large)
     buffer.push(...this.BOLD_ON);
     buffer.push(...this.DOUBLE_HEIGHT_WIDTH);
-    buffer.push(...this.stringToBytes(`TOKEN #${tokenNo}\n`));
+    buffer.push(...this.stringToBytes(`KOT #${tokenNo}\n`));
     buffer.push(...this.NORMAL_SIZE);
     buffer.push(...this.BOLD_OFF);
 
-    const cleanType = (orderType || '').toUpperCase().trim();
-    const orderTypeLabel = (tableNo && tableNo > 0)
-      ? `Table: ${tableNo}`
-      : (cleanType === 'ONLINE_ZOMATO' ? 'Zomato Online' : cleanType === 'ONLINE_SWIGGY' ? 'Swiggy Online' : cleanType === 'PICKUP' ? 'Pick Up' : 'Takeaway / Counter');
+    // 2. Who printed
+    const cleanStaff = (staffName || 'Staff').slice(0, 30);
+    buffer.push(...this.BOLD_ON);
+    buffer.push(...this.stringToBytes(`Printed by: ${cleanStaff}\n`));
+    buffer.push(...this.BOLD_OFF);
 
-    const date = new Date();
-    const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().slice(-2)} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    this.pushSeparatorLine(buffer, '-');
 
-    buffer.push(...this.stringToBytes(`${orderTypeLabel} • ${formattedDate}\n`));
-    if (staffName && staffName !== 'Staff') {
-      buffer.push(...this.stringToBytes(`Staff: ${staffName.slice(0, 24)}\n`));
-    }
-    this.pushSeparatorLine(buffer, '=');
-
-    // 3. Items list
+    // 3. Items list (Quantity + Item Name - that's it)
     buffer.push(...this.ALIGN_LEFT);
     items.forEach((item: any) => {
       const q = (item.qty || 1).toString();
@@ -226,11 +212,6 @@ export class ESCPOSService {
     });
 
     this.pushSeparatorLine(buffer, '-');
-    if (specialNote && specialNote.trim()) {
-      buffer.push(...this.stringToBytes(`Note: ${specialNote.trim()}\n`));
-      this.pushSeparatorLine(buffer, '-');
-    }
-
     buffer.push(...this.NEW_LINE);
     buffer.push(...this.NEW_LINE);
     buffer.push(...this.CUT);
