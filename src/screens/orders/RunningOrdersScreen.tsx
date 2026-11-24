@@ -271,10 +271,31 @@ const OrdersSummaryDashboard = React.memo(({
             const activeDineIn = timeScope === 'TODAY' ? stats.todayDineInCount : stats.dineInCount;
             const activePickup = timeScope === 'TODAY' ? stats.todayPickupCount : stats.pickupCount;
             const activeTakeaway = timeScope === 'TODAY' ? stats.todayTakeawayCount : stats.takeawayCount;
-  const activeOnline = timeScope === 'TODAY' ? (stats.todayOnlineCount || 0) : (stats.onlineCount || 0);
+            const activeCounter = timeScope === 'TODAY' ? (stats.todayCounterCount || 0) : (stats.counterCount || 0);
+            const activeOnline = timeScope === 'TODAY' ? (stats.todayOnlineCount || 0) : (stats.onlineCount || 0);
             const activeAvg = timeScope === 'TODAY' ? stats.todayAvgOrder : stats.averageOrderValue;
             const activePayments = timeScope === 'TODAY' ? stats.paymentsToday : stats.paymentsAll;
             const activeItems = timeScope === 'TODAY' ? stats.itemFrequencyToday : stats.itemFrequencyAll;
+
+            const formatBreakdownLong = () => {
+              const parts: string[] = [];
+              if (activeDineIn > 0) parts.push(`${activeDineIn} Dine`);
+              if (activeCounter > 0) parts.push(`${activeCounter} Quick`);
+              if (activePickup > 0) parts.push(`${activePickup} Pick`);
+              if (activeTakeaway > 0) parts.push(`${activeTakeaway} Take`);
+              if (activeOnline > 0) parts.push(`${activeOnline} Online`);
+              return parts.length > 0 ? `(${parts.join(' · ')})` : '';
+            };
+
+            const formatBreakdownShort = () => {
+              const parts: string[] = [];
+              if (activeDineIn > 0) parts.push(`${activeDineIn}D`);
+              if (activeCounter > 0) parts.push(`${activeCounter}C`);
+              if (activePickup > 0) parts.push(`${activePickup}P`);
+              if (activeTakeaway > 0) parts.push(`${activeTakeaway}T`);
+              if (activeOnline > 0) parts.push(`${activeOnline}O`);
+              return parts.length > 0 ? `(${parts.join(' · ')})` : '';
+            };
 
             return (
               <View className="mb-3">
@@ -317,7 +338,7 @@ const OrdersSummaryDashboard = React.memo(({
                             ₹{activeRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </Text>
                           <Text className="text-slate-400 text-[11px] mt-0.5 font-medium">
-                            {activeCount} orders <Text className="text-slate-500">({activeDineIn} Dine · {activePickup} Pick{activeTakeaway > 0 ? ` · ${activeTakeaway} Take` : ''})</Text>
+                            {activeCount} orders <Text className="text-slate-500">{formatBreakdownLong()}</Text>
                           </Text>
                         </View>
 
@@ -377,7 +398,7 @@ const OrdersSummaryDashboard = React.memo(({
                               {timeScope === 'TODAY' ? <Clock size={13} color="#34D399" /> : <Receipt size={13} color="#818CF8" />}
                             </View>
                             <Text className={`${timeScope === 'TODAY' ? 'text-emerald-300' : 'text-white'} font-black text-base mt-1`} numberOfLines={1}>
-                              {activeCount} <Text className="text-xs text-slate-400 font-normal">({activeDineIn}D / {activePickup}P{activeOnline > 0 ? ` / ${activeOnline} Online` : ''})</Text>
+                              {activeCount} <Text className="text-xs text-slate-400 font-normal">{formatBreakdownShort()}</Text>
                             </Text>
                             <Text className="text-slate-400 text-[10px] mt-0.5">
                               ₹{activeRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} {timeScope === 'TODAY' ? 'today' : 'all-time'}
@@ -672,7 +693,7 @@ export const RunningOrdersScreen = () => {
     isClientAdmin ? (activeLocationId || (locations[0]?.id || 'ALL')) : (staffBranch || 'ALL')
   );
   const [search, setSearch] = useState('');
-  const [selectedOrderTypeFilter, setSelectedOrderTypeFilter] = useState<'ALL' | 'DINE_IN' | 'PICKUP' | 'TAKEAWAY' | 'ONLINE_AGGREGATOR'>('ALL');
+  const [selectedOrderTypeFilter, setSelectedOrderTypeFilter] = useState<'ALL' | 'DINE_IN' | 'COUNTER' | 'PICKUP' | 'TAKEAWAY' | 'ONLINE_AGGREGATOR'>('ALL');
 
   // Single Master Scope for both Summary Dashboard & Order List: 'TODAY' vs 'ALL'
   const [timeScope, setTimeScope] = useState<'TODAY' | 'ALL'>('TODAY');
@@ -716,16 +737,26 @@ export const RunningOrdersScreen = () => {
       }
 
       // Order type filter
-      if (selectedOrderTypeFilter === 'DINE_IN' && (!o.tableNo || o.orderType === 'PICKUP' || o.orderType === 'TAKEAWAY' || o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY')) {
+      const oType = String(o.orderType || '').toUpperCase().trim();
+      const isOnline = oType.includes('ONLINE') || oType.includes('ZOMATO') || oType.includes('SWIGGY');
+      const isCounter = oType === 'COUNTER' || oType === 'QUICK_SALE' || (!oType && Number(o.tableNo) === 0);
+      const isPickup = oType === 'PICKUP' || oType === 'PICK_UP';
+      const isTakeaway = oType === 'TAKEAWAY' || oType === 'TAKE_AWAY';
+      const isDineIn = (oType === 'DINE_IN' || Number(o.tableNo) > 0) && !isPickup && !isTakeaway && !isOnline && !isCounter;
+
+      if (selectedOrderTypeFilter === 'DINE_IN' && !isDineIn) {
         return false;
       }
-      if (selectedOrderTypeFilter === 'PICKUP' && o.orderType !== 'PICKUP') {
+      if (selectedOrderTypeFilter === 'COUNTER' && !isCounter) {
         return false;
       }
-      if (selectedOrderTypeFilter === 'TAKEAWAY' && o.orderType !== 'TAKEAWAY') {
+      if (selectedOrderTypeFilter === 'PICKUP' && !isPickup) {
         return false;
       }
-      if (selectedOrderTypeFilter === 'ONLINE_AGGREGATOR' && o.orderType !== 'ONLINE_ZOMATO' && o.orderType !== 'ONLINE_SWIGGY') {
+      if (selectedOrderTypeFilter === 'TAKEAWAY' && !isTakeaway) {
+        return false;
+      }
+      if (selectedOrderTypeFilter === 'ONLINE_AGGREGATOR' && !isOnline) {
         return false;
       }
 
@@ -845,15 +876,47 @@ export const RunningOrdersScreen = () => {
     const todayRevenue = validTodayOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
     const todayAvgOrder = todayOrdersCount > 0 ? todayRevenue / todayOrdersCount : 0;
 
-    const todayDineInCount = validTodayOrders.filter(o => o.tableNo && o.orderType !== 'PICKUP' && o.orderType !== 'TAKEAWAY' && !o.orderType?.includes('ONLINE')).length;
-    const todayPickupCount = validTodayOrders.filter(o => o.orderType === 'PICKUP').length;
-    const todayTakeawayCount = validTodayOrders.filter(o => o.orderType === 'TAKEAWAY').length;
-    const todayOnlineCount = validTodayOrders.filter(o => o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY').length;
+    const getOrderCategory = (o: any): 'DINE_IN' | 'PICKUP' | 'TAKEAWAY' | 'COUNTER' | 'ONLINE' => {
+      const type = String(o?.orderType || '').toUpperCase().trim();
+      if (type.includes('ZOMATO') || type.includes('SWIGGY') || type.includes('ONLINE')) return 'ONLINE';
+      if (type === 'COUNTER' || type === 'QUICK_SALE' || type === 'QUICK') return 'COUNTER';
+      if (type === 'PICKUP' || type === 'PICK_UP') return 'PICKUP';
+      if (type === 'TAKEAWAY' || type === 'TAKE_AWAY') return 'TAKEAWAY';
+      if (Number(o?.tableNo) === 0) return 'COUNTER';
+      return 'DINE_IN';
+    };
 
-    const dineInCount = validBaseOrders.filter(o => o.tableNo && o.orderType !== 'PICKUP' && o.orderType !== 'TAKEAWAY' && !o.orderType?.includes('ONLINE')).length;
-    const pickupCount = validBaseOrders.filter(o => o.orderType === 'PICKUP').length;
-    const takeawayCount = validBaseOrders.filter(o => o.orderType === 'TAKEAWAY').length;
-    const onlineCount = validBaseOrders.filter(o => o.orderType === 'ONLINE_ZOMATO' || o.orderType === 'ONLINE_SWIGGY').length;
+    const countCategories = (orderList: any[]) => {
+      let dineIn = 0;
+      let pickup = 0;
+      let takeaway = 0;
+      let counter = 0;
+      let online = 0;
+      orderList.forEach(o => {
+        const cat = getOrderCategory(o);
+        if (cat === 'DINE_IN') dineIn++;
+        else if (cat === 'PICKUP') pickup++;
+        else if (cat === 'TAKEAWAY') takeaway++;
+        else if (cat === 'COUNTER') counter++;
+        else if (cat === 'ONLINE') online++;
+      });
+      return { dineIn, pickup, takeaway, counter, online };
+    };
+
+    const todayBreakdown = countCategories(validTodayOrders);
+    const allBreakdown = countCategories(validBaseOrders);
+
+    const todayDineInCount = todayBreakdown.dineIn;
+    const todayPickupCount = todayBreakdown.pickup;
+    const todayTakeawayCount = todayBreakdown.takeaway;
+    const todayCounterCount = todayBreakdown.counter;
+    const todayOnlineCount = todayBreakdown.online;
+
+    const dineInCount = allBreakdown.dineIn;
+    const pickupCount = allBreakdown.pickup;
+    const takeawayCount = allBreakdown.takeaway;
+    const counterCount = allBreakdown.counter;
+    const onlineCount = allBreakdown.online;
 
     const emptyPayments = {
       cash: { amount: 0, count: 0, percent: 0 },
@@ -875,6 +938,7 @@ export const RunningOrdersScreen = () => {
         todayDineInCount,
         todayPickupCount,
         todayTakeawayCount,
+        todayCounterCount,
         highestOrderAmount: 0,
         highestOrderId: '',
         highestOrderKOT: 'None',
@@ -890,6 +954,7 @@ export const RunningOrdersScreen = () => {
         dineInCount,
         pickupCount,
         takeawayCount,
+        counterCount,
         onlineCount,
         todayOnlineCount,
         paymentsAll: emptyPayments,
@@ -1076,6 +1141,7 @@ export const RunningOrdersScreen = () => {
       todayDineInCount,
       todayPickupCount,
       todayTakeawayCount,
+      todayCounterCount,
       highestOrderAmount: highestOrderAmount === -Infinity ? 0 : highestOrderAmount,
       highestOrderId,
       highestOrderKOT,
@@ -1091,6 +1157,8 @@ export const RunningOrdersScreen = () => {
       dineInCount,
       pickupCount,
       takeawayCount,
+      counterCount,
+      onlineCount,
       paymentsAll,
       paymentsToday,
       itemFrequencyAll,
@@ -1431,8 +1499,8 @@ export const RunningOrdersScreen = () => {
           {/* Vertical Separator */}
           <View className="h-5 w-[1px] bg-slate-800 mx-0.5" />
 
-          {/* Order Type Filter: All Types, Dine In, Pick Up, Takeaway */}
-          {(['ALL', 'DINE_IN', 'PICKUP', 'TAKEAWAY', 'ONLINE_AGGREGATOR'] as const).map(f => (
+          {/* Order Type Filter: All Types, Dine In, Quick Sale, Pick Up, Takeaway */}
+          {(['ALL', 'DINE_IN', 'COUNTER', 'PICKUP', 'TAKEAWAY', 'ONLINE_AGGREGATOR'] as const).map(f => (
             <TouchableOpacity
               key={f}
               onPress={() => setSelectedOrderTypeFilter(f)}
@@ -1443,7 +1511,7 @@ export const RunningOrdersScreen = () => {
             >
               <Text className={`text-xs font-bold ${selectedOrderTypeFilter === f ? 'text-white' : 'text-slate-400'
                 }`}>
-                {f === 'ALL' ? 'All Types' : f === 'DINE_IN' ? 'Dine In' : f === 'PICKUP' ? 'Pick Up' : f === 'TAKEAWAY' ? 'Takeaway' : '🛵 Zomato & Swiggy'}
+                {f === 'ALL' ? 'All Types' : f === 'DINE_IN' ? 'Dine In' : f === 'COUNTER' ? '⚡ Quick Sale' : f === 'PICKUP' ? 'Pick Up' : f === 'TAKEAWAY' ? 'Takeaway' : '🛵 Zomato & Swiggy'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -1731,12 +1799,14 @@ export const RunningOrdersScreen = () => {
                 )}
 
                 <View className="flex-row justify-between items-center">
-                  <Text className="text-white text-base font-bold">Total Paid</Text>
+                  <Text className="text-white text-base font-bold">
+                    {(selectedOrder.orderType === 'COUNTER' || selectedOrder.orderType === 'counter') ? 'Total Amount' : 'Total Paid'}
+                  </Text>
                   <Text className="text-emerald-400 text-2xl font-black">₹{Number(selectedOrder.totalAmount || 0).toFixed(2)}</Text>
                 </View>
 
-                {/* Payment breakdown */}
-                {selectedOrder.payments && selectedOrder.payments.length > 0 && (
+                {/* Payment breakdown - Hidden for Quick Sale orders */}
+                {(selectedOrder.orderType !== 'COUNTER' && selectedOrder.orderType !== 'counter') && selectedOrder.payments && selectedOrder.payments.length > 0 && (
                   <View className="mt-3 pt-3 border-t border-slate-800">
                     <Text className="text-slate-400 text-[10px] font-bold uppercase mb-2">Settlement Breakdown:</Text>
                     {selectedOrder.payments.map((p: any, idx: number) => (

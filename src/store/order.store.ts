@@ -59,10 +59,22 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         return total;
       }
 
-      if (!targetLocId) return 0;
+      const effectiveLocId = targetLocId || (locations.length > 0 ? locations[0].id : null);
+      if (!effectiveLocId) {
+        try {
+          const snap = await getCountFromServer(
+            collection(db, 'tenants', tenant.id, 'orders')
+          );
+          const total = snap.data().count;
+          set({ totalOrdersCount: total });
+          return total;
+        } catch (_) {
+          return 0;
+        }
+      }
 
       const snap = await getCountFromServer(
-        collection(db, 'tenants', tenant.id, 'locations', targetLocId, 'orders')
+        collection(db, 'tenants', tenant.id, 'locations', effectiveLocId, 'orders')
       );
       const total = snap.data().count;
       set({ totalOrdersCount: total });
