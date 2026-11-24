@@ -13,7 +13,7 @@ import { useThemeStore } from '../../store/theme.store';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { PrinterWorkflowMode } from '../../types/printer.types';
-import { Printer, CheckCircle2, Check, Save, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw, MapPin, Building, ShieldCheck } from 'lucide-react-native';
+import { Printer, CheckCircle2, Check, Save, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw, MapPin, Building, ShieldCheck, Ticket } from 'lucide-react-native';
 
 export const PrinterSettingsScreen = () => {
   const insets = useSafeAreaInsets();
@@ -61,6 +61,7 @@ export const PrinterSettingsScreen = () => {
   const isDualMode = workflowMode === 'DUAL_PRINTER' || workflowMode === 'RESTAURANT';
   const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
   const isSingleBillMode = workflowMode === 'SINGLE_BILL_ONLY' || workflowMode === 'CURRY_POINT';
+  const isSingleKotMode = workflowMode === 'SINGLE_KOT_ONLY' || workflowMode === 'TOKEN_ONLY';
 
   // Synchronize state when settings hydrate from persistent storage
   const refreshWindowsPrinters = async () => {
@@ -101,6 +102,7 @@ export const PrinterSettingsScreen = () => {
   const [isTestingBilling, setIsTestingBilling] = useState(false);
   const [isTestingKitchen, setIsTestingKitchen] = useState(false);
   const [isTestingTiffin, setIsTestingTiffin] = useState(false);
+  const [isTestingKotOnly, setIsTestingKotOnly] = useState(false);
   const [testResult, setTestResult] = useState<{ type: string; success: boolean; message: string } | null>(null);
 
   const handleSave = async () => {
@@ -356,6 +358,67 @@ export const PrinterSettingsScreen = () => {
     }
   };
 
+  const testSingleKotPrint = async () => {
+    const isUsb = printerType === 'USB';
+    const cleanName = printerName.trim();
+    const targetIp = ipAddress.trim();
+    const targetPort = parseInt(port, 10) || 9100;
+
+    if (isUsb && !cleanName) {
+      toast.warning('Please select or enter your USB Printer Name first.', 'Printer Name Required');
+      return;
+    }
+    if (!isUsb && !targetIp) {
+      toast.warning('Please enter a valid IP address for the Printer.', 'IP Required');
+      return;
+    }
+
+    setIsTestingKotOnly(true);
+    setTestResult(null);
+    try {
+      if (isUsb) {
+        await printerService.connect(cleanName, 0, 'USB');
+      } else {
+        await printerService.connect(targetIp, targetPort, 'LAN');
+      }
+
+      const tokenBuffer = ESCPOSService.buildTokenSlip(
+        'TOK-01',
+        0,
+        'Cashier',
+        [
+          { itemName: 'Veg Manchurian', price: 120, qty: 1 },
+          { itemName: 'Fried Rice', price: 150, qty: 2 }
+        ],
+        { businessName: 'ZENTIQ TOKEN COUNTER', displayName: 'TOKEN COUNTER' } as any,
+        'Single Printer KOT Only Test',
+        'COUNTER'
+      );
+
+      await printerService.print(
+        tokenBuffer,
+        isUsb ? { printerType: 'USB', printerName: cleanName } : { printerType: 'LAN', ip: targetIp, port: targetPort }
+      );
+      await printerService.disconnect();
+
+      setTestResult({
+        type: 'kot_only',
+        success: true,
+        message: `Token / KOT test slip printed successfully! (Single Printer Mode)`
+      });
+      toast.success('KOT / Token slip printed successfully!', 'Test Passed');
+    } catch (e: any) {
+      setTestResult({
+        type: 'kot_only',
+        success: false,
+        message: `Failed printing token slip: ${e.message}`
+      });
+      toast.error(e.message, 'Print Failed');
+    } finally {
+      setIsTestingKotOnly(false);
+    }
+  };
+
   return (
     <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-[#F8FAFC]'}`}>
       <Header
@@ -547,7 +610,7 @@ export const PrinterSettingsScreen = () => {
           {/* Mode 3: Single Bill Only */}
           <TouchableOpacity
             onPress={() => setWorkflowMode('SINGLE_BILL_ONLY')}
-            className={`p-4 rounded-2xl border ${
+            className={`p-4 rounded-2xl border mb-3 ${
               isSingleBillMode
                 ? 'bg-amber-950/30 border-amber-500/60'
                 : 'bg-slate-950/60 border-slate-800'
@@ -566,6 +629,31 @@ export const PrinterSettingsScreen = () => {
             </View>
             <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
               1 printer prints Customer Bill only. No kitchen tickets, and <Text className="text-slate-300 font-semibold">"Send KOT" button is hidden.</Text>
+            </Text>
+          </TouchableOpacity>
+
+          {/* Mode 4: Single KOT / Token Only */}
+          <TouchableOpacity
+            onPress={() => setWorkflowMode('SINGLE_KOT_ONLY')}
+            className={`p-4 rounded-2xl border ${
+              isSingleKotMode
+                ? 'bg-sky-950/30 border-sky-500/60'
+                : 'bg-slate-950/60 border-slate-800'
+            }`}
+          >
+            <View className="flex-row items-center justify-between mb-1">
+              <View className="flex-row items-center flex-1 mr-2 flex-wrap">
+                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isSingleKotMode ? 'bg-sky-500' : 'bg-slate-800'}`} />
+                <Text className="text-white font-bold text-sm">4. Single Printer (KOT / Token Only - No Bill)</Text>
+              </View>
+              {isSingleKotMode && (
+                <View className="bg-sky-500/20 px-2.5 py-0.5 rounded-full border border-sky-500/30 shrink-0">
+                  <Text className="text-sky-300 font-bold text-[10px]">ACTIVE</Text>
+                </View>
+              )}
+            </View>
+            <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
+              1 printer prints Kitchen KOT / Order Token slip only upon checkout. No main customer bill is printed. <Text className="text-slate-300 font-semibold">"Send KOT" button is hidden.</Text> Ideal for fast food, token counters, canteens & kiosks.
             </Text>
           </TouchableOpacity>
         </View>
@@ -629,6 +717,8 @@ export const PrinterSettingsScreen = () => {
                   ? 'Counter Bill Printer'
                   : isCombinedMode
                   ? 'Counter (Combined)'
+                  : isSingleKotMode
+                  ? 'Token / Kitchen Printer (Single)'
                   : 'Counter (Bill Only)'}
               </Text>
             </View>
@@ -1006,6 +1096,26 @@ export const PrinterSettingsScreen = () => {
                 <View className="items-center">
                   <Coffee size={16} color="#34D399" />
                   <Text className="text-emerald-300 font-bold text-xs mt-1">Test 2-Print Slip (Bill + Kitchen Slip)</Text>
+                  <Text className="text-slate-400 text-[10px] mt-0.5">
+                    {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {isSingleKotMode && (
+            <TouchableOpacity
+              onPress={testSingleKotPrint}
+              disabled={isTestingKotOnly}
+              className="w-full bg-sky-600/20 border border-sky-500/40 p-3.5 rounded-2xl items-center justify-center"
+            >
+              {isTestingKotOnly ? (
+                <ActivityIndicator size="small" color="#38BDF8" />
+              ) : (
+                <View className="items-center">
+                  <Ticket size={16} color="#38BDF8" />
+                  <Text className="text-sky-300 font-bold text-xs mt-1">Test KOT / Token Slip Print</Text>
                   <Text className="text-slate-400 text-[10px] mt-0.5">
                     {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
                   </Text>

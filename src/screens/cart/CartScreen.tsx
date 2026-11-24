@@ -38,6 +38,7 @@ export const CartScreen = () => {
   const { isLargePOS } = useResponsiveLayout();
   const { themeMode } = useThemeStore();
   const isDark = themeMode === 'dark';
+  const isSingleKotMode = settings.printerWorkflowMode === 'SINGLE_KOT_ONLY' || settings.printerWorkflowMode === 'TOKEN_ONLY';
 
   const cartItems = useMemo(() => consolidateCartItems(carts[tableNo] || []), [carts, tableNo]);
 
@@ -353,12 +354,23 @@ export const CartScreen = () => {
       const brandPayload = branding ? { ...branding, gstEnabled, gstType, cgstRate, sgstRate } : null;
       const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
       const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
+      const isSingleKot = workflowMode === 'SINGLE_KOT_ONLY' || workflowMode === 'TOKEN_ONLY';
 
       const provisionalPayments = payments.length > 0
         ? payments
         : [{ method: selectedMethod, amount: cartTotal }];
 
-      const billBuffer = isCombinedMode
+      const billBuffer = isSingleKot
+        ? ESCPOSService.buildTokenSlip(
+          billNo,
+          tableNo,
+          user?.name || 'Staff',
+          cartItems,
+          brandPayload,
+          'TOKEN DISPATCH',
+          orderType
+        )
+        : isCombinedMode
         ? ESCPOSService.buildCombinedTiffinPrints(
           billNo,
           tableNo,
@@ -398,8 +410,8 @@ export const CartScreen = () => {
       }
 
       toast.success(
-        `Bill #${billNo} printed successfully for ${tableNo !== 0 ? `Table ${tableNo}` : 'Order'}!`,
-        'Bill Printed'
+        `${isSingleKot ? `Token #${billNo}` : `Bill #${billNo}`} printed successfully for ${tableNo !== 0 ? `Table ${tableNo}` : 'Order'}!`,
+        isSingleKot ? 'Token Printed' : 'Bill Printed'
       );
     } catch (err: any) {
       const isExpoGoSocketError = err?.message?.includes('Thermal printing over raw TCP sockets is not supported in Expo Go');
@@ -534,9 +546,20 @@ export const CartScreen = () => {
           const mainType = isUsb ? 'USB' : 'LAN';
 
           const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
+          const isSingleKot = workflowMode === 'SINGLE_KOT_ONLY' || workflowMode === 'TOKEN_ONLY';
 
           try {
-            const billBuffer = isCombinedMode
+            const billBuffer = isSingleKot
+              ? ESCPOSService.buildTokenSlip(
+                billNo,
+                tableNo,
+                user?.name || 'Staff',
+                cartItems,
+                brandPayload,
+                'TOKEN DISPATCH (PAID)',
+                orderType
+              )
+              : isCombinedMode
               ? ESCPOSService.buildCombinedTiffinPrints(
                 billNo,
                 tableNo,
@@ -1048,7 +1071,7 @@ export const CartScreen = () => {
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
                               >
-                                Print Bill
+                                {isSingleKotMode ? 'Print Token' : 'Print Bill'}
                               </Text>
                             </View>
                           )}
@@ -1212,7 +1235,7 @@ export const CartScreen = () => {
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
                               >
-                                Print Bill
+                                {isSingleKotMode ? 'Print Token' : 'Print Bill'}
                               </Text>
                             </View>
                           )}

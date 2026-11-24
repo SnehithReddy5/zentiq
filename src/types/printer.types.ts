@@ -2,6 +2,8 @@ export type PrinterWorkflowMode =
   | 'DUAL_PRINTER'       // Counter Bill + Separate Kitchen KOT (Send KOT button enabled)
   | 'SINGLE_COMBINED'    // Single Printer: Bill + Kitchen Slip Together (Send KOT button hidden)
   | 'SINGLE_BILL_ONLY'   // Single Printer: Bill Only - Quick Service (Send KOT button hidden)
+  | 'SINGLE_KOT_ONLY'    // Single Printer: KOT / Token Only - No Bill (Send KOT button hidden)
+  | 'TOKEN_ONLY'         // Alias for SINGLE_KOT_ONLY
   | 'RESTAURANT'         // Legacy alias for DUAL_PRINTER
   | 'TIFFIN_CENTER'      // Legacy alias for SINGLE_COMBINED
   | 'CURRY_POINT';       // Legacy alias for SINGLE_BILL_ONLY

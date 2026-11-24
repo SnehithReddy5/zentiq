@@ -75,6 +75,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
   const { settings: printerSettings } = usePrinterStore();
   const rawWorkflowMode = printerSettings.printerWorkflowMode || 'DUAL_PRINTER';
   const isDualPrinterMode = rawWorkflowMode === 'DUAL_PRINTER' || rawWorkflowMode === 'RESTAURANT';
+  const isSingleKotMode = rawWorkflowMode === 'SINGLE_KOT_ONLY' || rawWorkflowMode === 'TOKEN_ONLY';
   const { carts, setCarts, addItem, removeItem, updateQuantity, markAsSent, clearCart } = useCartStore();
   const { tables } = useTableStore();
   const { orders } = useOrderStore();
@@ -869,7 +870,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             />
           )}
           <Button
-            title={paymentsEnabled ? "Checkout & Pay" : "View & Send KOT"}
+            title={paymentsEnabled ? (isSingleKotMode ? "Checkout & Token" : "Checkout & Pay") : (isSingleKotMode ? "Generate Token" : "View & Send KOT")}
             onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}
             disabled={cartItems.length === 0}
             className="flex-1"
@@ -1638,7 +1639,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
                 >
                   <CreditCard size={18} color="white" />
                   <Text className="text-white font-black text-sm sm:text-base ml-2">
-                    {paymentsEnabled ? `Proceed to Checkout & Pay (₹${cartTotal.toFixed(2)}) →` : 'Proceed & Send KOT to Kitchen →'}
+                    {paymentsEnabled ? `Proceed to Checkout & Pay (₹${cartTotal.toFixed(2)}) →` : isSingleKotMode ? `Proceed & Generate Token →` : 'Proceed & Send KOT to Kitchen →'}
                   </Text>
                 </TouchableOpacity>
               </View>
