@@ -1,6 +1,6 @@
 {
   "name": "zentiq-pos",
-  "version": "1.14.4",
+  "version": "1.14.5",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -86,13 +86,24 @@
           ]
         },
         {
-          "target": "portable",
+          "target": "appx",
           "arch": [
             "x64"
           ]
         }
       ],
       "icon": "assets/icon.png"
+    },
+    "appx": {
+      "identityName": "Zentiq.ZentiqPOS",
+      "publisher": "CN=Zentiq",
+      "publisherDisplayName": "Zentiq",
+      "applicationId": "ZentiqPOS",
+      "displayName": "Zentiq POS",
+      "backgroundColor": "#090D1A",
+      "languages": [
+        "en-US"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -101,9 +112,6 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Zentiq POS"
-    },
-    "extraMetadata": {
-      "main": "electron/main.js"
     },
     "publish": null
   },

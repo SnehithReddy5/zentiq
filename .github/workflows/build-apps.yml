@@ -217,18 +217,25 @@ jobs:
       - name: Export Web Bundle
         run: npx expo export -p web
 
-      - name: Package Windows Installer
+      - name: Package Windows Installer & Store AppX
         run: |
           npm install --save-dev electron electron-builder
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));if(process.env.APPX_IDENTITY_NAME)p.build.appx.identityName=process.env.APPX_IDENTITY_NAME;if(process.env.APPX_PUBLISHER)p.build.appx.publisher=process.env.APPX_PUBLISHER;if(process.env.APPX_PUBLISHER_DISPLAY_NAME)p.build.appx.publisherDisplayName=process.env.APPX_PUBLISHER_DISPLAY_NAME;fs.writeFileSync('package.json',JSON.stringify(p,null,2));"
           npx --yes electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          APPX_IDENTITY_NAME: ${{ secrets.APPX_IDENTITY_NAME }}
+          APPX_PUBLISHER: ${{ secrets.APPX_PUBLISHER }}
+          APPX_PUBLISHER_DISPLAY_NAME: ${{ secrets.APPX_PUBLISHER_DISPLAY_NAME }}
 
-      - name: Upload Windows Executables (Internal Artifact)
+      - name: Upload Windows Packages (Internal Artifact)
         uses: actions/upload-artifact@v4
         with:
           name: windows-desktop-installer
-          path: dist-electron/*.exe
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.appx
           retention-days: 30
 
       # Public Release: Allows 1-click anonymous direct download on client PCs without any GitHub login
@@ -238,7 +245,9 @@ jobs:
         with:
           tag_name: pos-desktop-latest
           name: Zentiq POS Desktop Latest (Windows)
-          files: dist-electron/*.exe
+          files: |
+            dist-electron/*.exe
+            dist-electron/*.appx
           draft: false
           prerelease: false
         env:
