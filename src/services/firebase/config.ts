@@ -4,7 +4,7 @@ import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/aut
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeFirestore, setLogLevel } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { LogBox } from 'react-native';
+import { LogBox, Platform } from 'react-native';
 
 // Suppress benign Firestore WebChannel & Auth persistence warnings in React Native
 setLogLevel('error');
@@ -39,10 +39,11 @@ try {
   auth = getAuth(app);
 }
 
-// Use initializeFirestore with experimentalForceLongPolling for stable React Native networking
-const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-});
+// Use native WebChannel auto-detect on Web/Electron for fast logins, and forced long-polling on mobile RN
+const db = initializeFirestore(app, Platform.OS === 'web'
+  ? { experimentalAutoDetectLongPolling: true }
+  : { experimentalForceLongPolling: true }
+);
 
 const storage = getStorage(app);
 

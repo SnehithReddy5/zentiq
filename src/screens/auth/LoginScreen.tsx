@@ -7,27 +7,48 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   TouchableOpacity,
+  useWindowDimensions,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth.store';
 import { useTenantStore } from '../../store/tenant.store';
-import { Button } from '../../components/common/Button';
+import { useThemeStore } from '../../store/theme.store';
 import { Input } from '../../components/common/Input';
-import { Utensils, Lock, User, Eye, EyeOff, Sparkles } from 'lucide-react-native';
+import {
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  Zap,
+  ShieldCheck,
+  Printer,
+  ArrowRight,
+  Sun,
+  Moon,
+  AlertCircle,
+  Building2,
+} from 'lucide-react-native';
 import { db } from '../../services/firebase/config';
-import { doc, getDoc, setDoc, collection, collectionGroup, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, collectionGroup, query, where, getDocs, limit } from 'firebase/firestore';
 import { DBServices } from '../../services/firebase/db';
 import packageJson from '../../../package.json';
 
 export const LoginScreen = () => {
-  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 900;
+
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+  const [statusLabel, setStatusLabel] = useState('Signing in...');
+
   const { setUser, setLoading, isLoading } = useAuthStore();
   const { setTenant, setBranding, setFeatures, setLocations, setActiveLocationId, subscribeToActiveTenant } = useTenantStore();
+  const { themeMode, toggleTheme } = useThemeStore();
+  const isDark = themeMode === 'dark';
 
   const handleLogin = async () => {
     const cleanId = userId.trim();
@@ -35,9 +56,15 @@ export const LoginScreen = () => {
     const cleanPassword = password.trim();
 
     if (!cleanId || !cleanPassword) {
-      toast.warning('Please enter your User ID / Mobile / Email and Password', 'Required');
+      const msg = 'Please enter your User ID / Mobile / Email and Password.';
+      setInlineError(msg);
+      toast.warning(msg, 'Required');
       return;
     }
+
+    setInlineError(null);
+    setStatusLabel('Authenticating...');
+    setLoading(true);
 
     const passwordMatches = (stored: any): boolean => {
       if (stored === undefined || stored === null) return false;
@@ -50,7 +77,7 @@ export const LoginScreen = () => {
     const identifierMatches = (val: any): boolean => {
       if (val === undefined || val === null) return false;
       const s = String(val).trim().toLowerCase();
-      if (s === lowerId || s === cleanId.toLowerCase()) return true;
+      if (s === lowerId) return true;
       if (cleanDigits.length >= 10) {
         const valDigits = normalizeDigits(val);
         if (valDigits.length >= 10 && valDigits.slice(-10) === cleanDigits.slice(-10)) {
@@ -60,9 +87,9 @@ export const LoginScreen = () => {
       return false;
     };
 
-    setLoading(true);
     try {
       let matchedUser: any = null;
+      let matchedTenantDoc: any = null;
       let foundIdMatchWithWrongPassword = false;
       let missingTenantError = false;
 
@@ -83,19 +110,10 @@ export const LoginScreen = () => {
         };
       };
 
-      const evaluateCandidate = async (u: any, fallbackTenantId?: string): Promise<boolean> => {
+      const evaluateCandidateSync = (u: any, fallbackTenantId?: string): boolean => {
         if (!u) return false;
         if (passwordMatches(u.password)) {
-          let resolvedTenant = u.tenantId || fallbackTenantId;
-          if (!resolvedTenant) {
-            try {
-              const tSnap = await getDocs(query(collection(db, 'tenants'), where('adminUsername', '==', u.id || cleanId)));
-              if (!tSnap.empty) {
-                resolvedTenant = tSnap.docs[0].id;
-              }
-            } catch (_) {}
-          }
-          const built = buildMatchedUser(u, resolvedTenant);
+          const built = buildMatchedUser(u, fallbackTenantId);
           if (built) {
             matchedUser = built;
             return true;
@@ -106,128 +124,168 @@ export const LoginScreen = () => {
         return false;
       };
 
+      const tryMatchTenantAdmin = (tDoc: any): boolean => {
+        const tData = tDoc.data();
+        const matchesAdminId =
+          identifierMatches(tDoc.id) ||
+          identifierMatches(tData.adminUsername) ||
+          identifierMatches(tData.adminEmail) ||
+          identifierMatches(tData.adminMobile) ||
+          identifierMatches(tData.email) ||
+          identifierMatches(tData.phone) ||
+          identifierMatches(tData.mobile);
+
+        if (!matchesAdminId) return false;
+
+        if (passwordMatches(tData.adminPassword)) {
+          matchedTenantDoc = { ...tData, id: tDoc.id };
+          matchedUser = {
+            id: (tData.adminUsername || cleanId).trim(),
+            name: `${tData.displayName || tData.businessName || 'Restaurant'} Admin`,
+            role: 'ADMIN',
+            tenantId: tDoc.id,
+            locationIds: ['*'],
+            assignedLocationId: null,
+            lastActiveLocationId: null,
+          };
+          return true;
+        } else if (tData.adminPassword) {
+          foundIdMatchWithWrongPassword = true;
+        }
+        return false;
+      };
+
       try {
-        // 1. Fast path: Direct lookup in root `users` collection (lowercase + exact case)
+        // WAVE 1 (Single parallel network round-trip):
+        // Lookup direct root `users` doc IDs, indexed `users` fields, and `tenants` admin fields simultaneously
         const rootDocIds = lowerId !== cleanId ? [lowerId, cleanId] : [cleanId];
-        for (const docId of rootDocIds) {
+        const rootQueries = [
+          query(collection(db, 'users'), where('email', '==', lowerId), limit(5)),
+          query(collection(db, 'users'), where('mobile', '==', cleanId), limit(5)),
+          query(collection(db, 'users'), where('id', '==', cleanId), limit(5)),
+          query(collection(db, 'users'), where('username', '==', cleanId), limit(5)),
+        ];
+        if (lowerId !== cleanId) {
+          rootQueries.push(query(collection(db, 'users'), where('mobile', '==', lowerId), limit(5)));
+          rootQueries.push(query(collection(db, 'users'), where('username', '==', lowerId), limit(5)));
+        }
+        if (cleanDigits.length >= 10 && cleanDigits !== cleanId) {
+          rootQueries.push(query(collection(db, 'users'), where('mobile', '==', cleanDigits), limit(5)));
+          rootQueries.push(query(collection(db, 'users'), where('mobile', '==', cleanDigits.slice(-10)), limit(5)));
+        }
+
+        const tenantAdminQueries = [
+          query(collection(db, 'tenants'), where('adminUsername', '==', cleanId), limit(3)),
+          query(collection(db, 'tenants'), where('adminEmail', '==', lowerId), limit(3)),
+          query(collection(db, 'tenants'), where('adminMobile', '==', cleanId), limit(3)),
+        ];
+        if (lowerId !== cleanId) {
+          tenantAdminQueries.push(query(collection(db, 'tenants'), where('adminUsername', '==', lowerId), limit(3)));
+        }
+        if (cleanDigits.length >= 10 && cleanDigits !== cleanId) {
+          tenantAdminQueries.push(query(collection(db, 'tenants'), where('adminMobile', '==', cleanDigits.slice(-10)), limit(3)));
+        }
+
+        const [docSnaps, querySnaps, tenantAdminSnaps] = await Promise.all([
+          Promise.all(rootDocIds.map(docId => getDoc(doc(db, 'users', docId)).catch(() => null))),
+          Promise.all(rootQueries.map(qRef => getDocs(qRef).catch(() => null))),
+          Promise.all(tenantAdminQueries.map(tRef => getDocs(tRef).catch(() => null))),
+        ]);
+
+        // Evaluate direct `users` doc hits first
+        for (const snap of docSnaps) {
           if (matchedUser) break;
-          const snap = await getDoc(doc(db, 'users', docId));
-          if (snap.exists()) {
-            await evaluateCandidate(snap.data());
-          }
-        }
-
-        // 2. Fallback: Query root `users` by mobile, email, id, or username
-        if (!matchedUser) {
-          const rootQueries = [
-            query(collection(db, 'users'), where('email', '==', lowerId)),
-            query(collection(db, 'users'), where('mobile', '==', cleanId)),
-            query(collection(db, 'users'), where('id', '==', cleanId)),
-            query(collection(db, 'users'), where('username', '==', cleanId)),
-          ];
-          if (lowerId !== cleanId) {
-            rootQueries.push(query(collection(db, 'users'), where('mobile', '==', lowerId)));
-          }
-          if (cleanDigits.length >= 10 && cleanDigits !== cleanId) {
-            rootQueries.push(query(collection(db, 'users'), where('mobile', '==', cleanDigits)));
-            rootQueries.push(query(collection(db, 'users'), where('mobile', '==', cleanDigits.slice(-10))));
-          }
-          for (const qRef of rootQueries) {
-            if (matchedUser) break;
-            try {
-              const qSnap = await getDocs(qRef);
-              for (const d of qSnap.docs) {
-                if (await evaluateCandidate(d.data())) break;
-              }
-            } catch (_) {}
-          }
-        }
-
-        // 3. Fallback: collectionGroup search across tenant users subcollections
-        if (!matchedUser) {
-          const cgQueries = [
-            query(collectionGroup(db, 'users'), where('mobile', '==', cleanId)),
-            query(collectionGroup(db, 'users'), where('email', '==', lowerId)),
-            query(collectionGroup(db, 'users'), where('id', '==', cleanId)),
-            query(collectionGroup(db, 'users'), where('username', '==', cleanId)),
-          ];
-          if (lowerId !== cleanId) {
-            cgQueries.push(query(collectionGroup(db, 'users'), where('mobile', '==', lowerId)));
-          }
-          if (cleanDigits.length >= 10 && cleanDigits !== cleanId) {
-            cgQueries.push(query(collectionGroup(db, 'users'), where('mobile', '==', cleanDigits.slice(-10))));
-          }
-          for (const cgQ of cgQueries) {
-            if (matchedUser) break;
-            try {
-              const cgSnap = await getDocs(cgQ);
-              for (const d of cgSnap.docs) {
-                const pathTenantId = d.ref.parent?.parent?.id;
-                if (await evaluateCandidate(d.data(), pathTenantId)) {
-                  break;
-                }
-              }
-            } catch (cgErr) {
-              console.warn('collectionGroup search skipped:', cgErr);
+          if (snap && snap.exists()) {
+            const u = snap.data();
+            if (u.tenantId) {
+              evaluateCandidateSync(u);
+            } else if (passwordMatches(u.password)) {
+              const tSnap = await getDocs(query(collection(db, 'tenants'), where('adminUsername', '==', u.id || cleanId), limit(1))).catch(() => null);
+              const resolved = tSnap && !tSnap.empty ? tSnap.docs[0].id : undefined;
+              evaluateCandidateSync(u, resolved);
             }
           }
         }
 
-        // 4. Guaranteed Index-Free Fallback: Search `tenants` (Admin credentials & tenant staff subcollections)
-        // Handles: mixed-case IDs, email logins, stale/corrupted root `users` docs, or cross-tenant duplicate usernames
+        // Evaluate root `users` field queries
+        if (!matchedUser) {
+          for (const qSnap of querySnaps) {
+            if (matchedUser) break;
+            if (!qSnap) continue;
+            for (const d of qSnap.docs) {
+              if (evaluateCandidateSync(d.data())) break;
+            }
+          }
+        }
+
+        // Evaluate direct `tenants` admin hits
+        if (!matchedUser) {
+          for (const tSnap of tenantAdminSnaps) {
+            if (matchedUser) break;
+            if (!tSnap) continue;
+            for (const tDoc of tSnap.docs) {
+              if (tryMatchTenantAdmin(tDoc)) break;
+            }
+          }
+        }
+
+        // WAVE 2 (Parallel collectionGroup fallback across tenant staff subcollections)
+        if (!matchedUser) {
+          const cgQueries = [
+            query(collectionGroup(db, 'users'), where('mobile', '==', cleanId), limit(5)),
+            query(collectionGroup(db, 'users'), where('email', '==', lowerId), limit(5)),
+            query(collectionGroup(db, 'users'), where('id', '==', cleanId), limit(5)),
+            query(collectionGroup(db, 'users'), where('username', '==', cleanId), limit(5)),
+          ];
+          if (lowerId !== cleanId) {
+            cgQueries.push(query(collectionGroup(db, 'users'), where('mobile', '==', lowerId), limit(5)));
+          }
+          if (cleanDigits.length >= 10 && cleanDigits !== cleanId) {
+            cgQueries.push(query(collectionGroup(db, 'users'), where('mobile', '==', cleanDigits.slice(-10)), limit(5)));
+          }
+
+          const cgSnaps = await Promise.all(cgQueries.map(cgQ => getDocs(cgQ).catch(() => null)));
+          for (const cgSnap of cgSnaps) {
+            if (matchedUser) break;
+            if (!cgSnap) continue;
+            for (const d of cgSnap.docs) {
+              const pathTenantId = d.ref.parent?.parent?.id;
+              if (evaluateCandidateSync(d.data(), pathTenantId)) break;
+            }
+          }
+        }
+
+        // WAVE 3 (Guaranteed index-free parallel fallback across tenants & staff subcollections)
         if (!matchedUser) {
           const tenantsSnap = await getDocs(collection(db, 'tenants'));
 
-          // 4a. Check Tenant Admin credentials directly on tenant docs
           for (const tDoc of tenantsSnap.docs) {
             if (matchedUser) break;
-            const tData = tDoc.data();
-            const matchesAdminId =
-              identifierMatches(tDoc.id) ||
-              identifierMatches(tData.adminUsername) ||
-              identifierMatches(tData.adminEmail) ||
-              identifierMatches(tData.adminMobile) ||
-              identifierMatches(tData.email) ||
-              identifierMatches(tData.phone) ||
-              identifierMatches(tData.mobile);
-            if (matchesAdminId) {
-              if (passwordMatches(tData.adminPassword)) {
-                const adminId = (tData.adminUsername || cleanId).trim();
-                matchedUser = {
-                  id: adminId,
-                  name: `${tData.displayName || tData.businessName || 'Restaurant'} Admin`,
-                  role: 'ADMIN',
-                  tenantId: tDoc.id,
-                  locationIds: ['*'],
-                  assignedLocationId: null,
-                  lastActiveLocationId: null,
-                };
-              } else if (tData.adminPassword) {
-                foundIdMatchWithWrongPassword = true;
-              }
-            }
+            tryMatchTenantAdmin(tDoc);
           }
 
-          // 4b. Scan tenant staff subcollections case-insensitively
           if (!matchedUser) {
-            for (const tDoc of tenantsSnap.docs) {
+            const staffSnaps = await Promise.all(
+              tenantsSnap.docs.map(tDoc =>
+                getDocs(collection(db, 'tenants', tDoc.id, 'users'))
+                  .then(snap => ({ tenantId: tDoc.id, snap }))
+                  .catch(() => null)
+              )
+            );
+            for (const entry of staffSnaps) {
               if (matchedUser) break;
-              try {
-                const staffSnap = await getDocs(collection(db, 'tenants', tDoc.id, 'users'));
-                for (const sDoc of staffSnap.docs) {
-                  const sData = sDoc.data();
-                  const isMatch =
-                    identifierMatches(sDoc.id) ||
-                    identifierMatches(sData.id) ||
-                    identifierMatches(sData.mobile) ||
-                    identifierMatches(sData.email);
-                  if (isMatch) {
-                    if (await evaluateCandidate(sData, tDoc.id)) {
-                      break;
-                    }
-                  }
+              if (!entry) continue;
+              for (const sDoc of entry.snap.docs) {
+                const sData = sDoc.data();
+                const isMatch =
+                  identifierMatches(sDoc.id) ||
+                  identifierMatches(sData.id) ||
+                  identifierMatches(sData.mobile) ||
+                  identifierMatches(sData.email);
+                if (isMatch && evaluateCandidateSync(sData, entry.tenantId)) {
+                  break;
                 }
-              } catch (_) {}
+              }
             }
           }
         }
@@ -239,7 +297,9 @@ export const LoginScreen = () => {
           firestoreErr.code === 'permission-denied' ||
           firestoreErr.code === 'unavailable'
         ) {
-          toast.error('Cannot reach Cloud Firestore. Please ensure your internet connection is active.', 'Database Offline');
+          const offlineMsg = 'Cannot reach Cloud Firestore. Please verify your internet connection.';
+          setInlineError(offlineMsg);
+          toast.error(offlineMsg, 'Database Offline');
           setLoading(false);
           return;
         }
@@ -247,39 +307,52 @@ export const LoginScreen = () => {
       }
 
       if (!matchedUser) {
+        let errTitle = 'User Not Found';
+        let errMsg = 'No user found with this ID, Mobile, or Email. Please check your credentials.';
         if (foundIdMatchWithWrongPassword) {
-          toast.error('Incorrect password for this user.', 'Login Failed');
+          errTitle = 'Login Failed';
+          errMsg = 'Incorrect password for this account.';
         } else if (missingTenantError) {
-          toast.error('This user account is not linked to any active restaurant.', 'Account Error');
-        } else {
-          toast.error('No user found with this ID or Mobile. Please check your credentials.', 'User Not Found');
+          errTitle = 'Account Error';
+          errMsg = 'This user account is not linked to any active restaurant.';
         }
+        setInlineError(errMsg);
+        toast.error(errMsg, errTitle);
         setLoading(false);
         return;
       }
 
+      setStatusLabel('Loading workspace...');
       const targetTenantId = matchedUser.tenantId;
 
-      // 3. Check if Tenant is DEACTIVATED or SUSPENDED
-      const tenantRef = doc(db, 'tenants', targetTenantId);
-      const tenantSnap = await getDoc(tenantRef);
+      // Parallel post-auth hydration: fetch tenant doc, features, branding, and locations in ONE round-trip
+      const [tenantSnap, fetchedFeatures, fetchedBranding, fetchedLocs] = await Promise.all([
+        matchedTenantDoc ? Promise.resolve(null) : getDoc(doc(db, 'tenants', targetTenantId)),
+        DBServices.getTenantFeatures(targetTenantId),
+        DBServices.getTenantBranding(targetTenantId),
+        DBServices.getApprovedLocations(targetTenantId),
+      ]);
 
-      if (tenantSnap.exists()) {
-        const tData = tenantSnap.data();
-        if (tData.status === 'DEACTIVATED' || tData.status === 'SUSPENDED') {
-          toast.error('This restaurant account has been suspended by the platform administrator. Please contact support.', 'Account Deactivated');
-          setLoading(false);
-          return;
-        }
-        setTenant({ ...tData, id: tenantSnap.id } as any);
-      } else {
-        toast.error('The restaurant tenant linked to this account could not be found.', 'Restaurant Not Found');
+      const tData = matchedTenantDoc || (tenantSnap?.exists() ? { ...tenantSnap.data(), id: tenantSnap.id } : null);
+      if (!tData) {
+        const msg = 'The restaurant tenant linked to this account could not be found.';
+        setInlineError(msg);
+        toast.error(msg, 'Restaurant Not Found');
         setLoading(false);
         return;
       }
 
-      // Fetch Features
-      let features = await DBServices.getTenantFeatures(targetTenantId);
+      if (tData.status === 'DEACTIVATED' || tData.status === 'SUSPENDED') {
+        const msg = 'This restaurant account has been suspended by the platform administrator.';
+        setInlineError(msg);
+        toast.error(msg, 'Account Deactivated');
+        setLoading(false);
+        return;
+      }
+
+      setTenant(tData as any);
+
+      let features = fetchedFeatures;
       if (!features) {
         features = {
           tablesEnabled: true,
@@ -289,44 +362,42 @@ export const LoginScreen = () => {
           splitPaymentsEnabled: true,
           insightsEnabled: true,
         };
-        await DBServices.updateTenantFeatures(targetTenantId, features);
+        DBServices.updateTenantFeatures(targetTenantId, features).catch(() => {});
       }
       setFeatures(features);
 
-      // Fetch Branding
-      let branding = await DBServices.getTenantBranding(targetTenantId);
+      let branding = fetchedBranding;
       if (!branding) {
         branding = {
-          businessName: 'Vasudha Family Restaurant',
-          displayName: 'Vasudha POS',
-          phone: '9876543210',
-          email: 'contact@vasudha.com',
-          address: '2nd Floor, Kaveri Enclave, Kompally, Hyderabad',
-          gstin: '36DLVPS528K1ZW',
-          receiptHeader: 'VASUDHA FAMILY RESTAURANT',
+          businessName: tData.businessName || 'Zentiq Restaurant',
+          displayName: tData.displayName || tData.businessName || 'Zentiq POS',
+          phone: tData.adminMobile || '',
+          email: tData.adminEmail || '',
+          address: '',
+          receiptHeader: (tData.businessName || 'ZENTIQ RESTAURANT POS').toUpperCase(),
           receiptFooter: 'Thank You & Visit Again!!',
         };
-        await DBServices.updateTenantBranding(targetTenantId, branding);
+        DBServices.updateTenantBranding(targetTenantId, branding).catch(() => {});
       }
       setBranding(branding);
 
-      // Fetch Locations
-      let locs = await DBServices.getApprovedLocations(targetTenantId);
+      let locs = fetchedLocs;
       if (locs.length === 0) {
         const defaultLocRef = doc(db, 'tenants', targetTenantId, 'locations', 'loc-primary');
         const defaultLoc = {
           id: 'loc-primary',
           tenantId: targetTenantId,
-          name: 'Kompally Main Branch',
-          address: 'Kompally, Hyderabad',
-          phone: '9876543210',
+          name: 'Main Branch',
+          address: '',
+          phone: tData.adminMobile || '',
           status: 'ACTIVE' as const,
         };
-        await setDoc(defaultLocRef, defaultLoc);
+        setDoc(defaultLocRef, defaultLoc).catch(() => {});
         locs = [defaultLoc];
       }
       setLocations(locs);
-      // Restore user's last selected branch (e.g. hyd branch) or assigned branch
+
+      // Commit session immediately so user enters the POS right away
       setUser(matchedUser);
       if (matchedUser.lastActiveLocationId && locs.some(l => l.id === matchedUser.lastActiveLocationId)) {
         setActiveLocationId(matchedUser.lastActiveLocationId);
@@ -336,113 +407,302 @@ export const LoginScreen = () => {
         setActiveLocationId(locs[0]?.id || null);
       }
 
-      // Start live real-time subscription for instant feature and status enforcement
       subscribeToActiveTenant(targetTenantId);
-
     } catch (err: any) {
-      toast.error(err.message || 'An unexpected error occurred during login.', 'Login Error');
+      const msg = err?.message || 'An unexpected error occurred during login.';
+      setInlineError(msg);
+      toast.error(msg, 'Login Error');
     } finally {
       setLoading(false);
     }
   };
 
+  const highlights = [
+    {
+      icon: <Zap size={18} color="#A78BFA" />,
+      title: '1-Click Quick Sale & KOT',
+      desc: 'Instant counter billing and compact kitchen token dispatch with zero screen hopping.',
+    },
+    {
+      icon: <Building2 size={18} color="#34D399" />,
+      title: 'Branch-Isolated Operations',
+      desc: 'Separate menus, thermal printer IPs, tax rules, and staff scopes per outlet.',
+    },
+    {
+      icon: <Printer size={18} color="#38BDF8" />,
+      title: 'Direct LAN ESC/POS Printing',
+      desc: 'Zero driver hassles over TCP port 9100 for billing, kitchen, and token printers.',
+    },
+  ];
+
   return (
-    <SafeAreaView className="flex-1 bg-[#090D1A]">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#050814]' : 'bg-slate-50'}`}>
+      {/* Ambient Background Glows */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: -120,
+          left: -80,
+          width: 420,
+          height: 420,
+          borderRadius: 210,
+          backgroundColor: isDark ? 'rgba(93, 63, 211, 0.16)' : 'rgba(93, 63, 211, 0.08)',
+        }}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          bottom: -140,
+          right: -100,
+          width: 460,
+          height: 460,
+          borderRadius: 230,
+          backgroundColor: isDark ? 'rgba(16, 185, 129, 0.10)' : 'rgba(14, 165, 233, 0.08)',
+        }}
+      />
+
+      {/* Top Utility Header */}
+      <View className="flex-row items-center justify-between px-5 sm:px-8 pt-3 pb-1 z-10">
+        <View className="flex-row items-center">
+          <View className={`flex-row items-center px-3 py-1 rounded-full border ${isDark ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-emerald-50 border-emerald-200'}`}>
+            <View className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
+            <Text className={`text-[11px] font-bold ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
+              Live Cloud Sync
+            </Text>
+          </View>
+          <View className={`ml-2 px-2.5 py-1 rounded-full border ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'}`}>
+            <Text className={`text-[11px] font-mono font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              v{packageJson.version}
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          onPress={toggleTheme}
+          activeOpacity={0.8}
+          className={`flex-row items-center px-3 py-1.5 rounded-full border ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}
+        >
+          {isDark ? <Sun size={14} color="#FBBF24" /> : <Moon size={14} color="#4F46E5" />}
+          <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+            {isDark ? 'Light' : 'Dark'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, width: '100%', justifyContent: 'center' }}
+        style={{ flex: 1, width: '100%' }}
       >
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
             justifyContent: 'center',
             alignItems: 'center',
-            paddingHorizontal: 24,
-            paddingVertical: 32,
+            paddingHorizontal: isWide ? 40 : 20,
+            paddingVertical: 24,
           }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Top Brand Header - Strictly Centered */}
-          <View style={{ width: '100%', maxWidth: 440, alignItems: 'center', justifyContent: 'center', marginBottom: 28 }}>
-            <View
-              style={{
-                width: 96,
-                height: 96,
-                borderRadius: 24,
-                backgroundColor: '#1E1B4B',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 16,
-                shadowColor: '#8B5CF6',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.35,
-                shadowRadius: 16,
-                elevation: 10,
-              }}
-            >
-              <Image
-                source={require('../../../assets/logo-optimized.png')}
-                style={{ width: 96, height: 96, borderRadius: 24 }}
-                resizeMode="contain"
-                fadeDuration={0}
-              />
+          <View
+            style={{
+              width: '100%',
+              maxWidth: isWide ? 1020 : 440,
+              flexDirection: isWide ? 'row' : 'column',
+              alignItems: isWide ? 'center' : 'stretch',
+              gap: isWide ? 48 : 24,
+            }}
+          >
+            {/* Left Showcase Panel (Desktop/Tablet) or Compact Hero (Mobile) */}
+            <View style={{ flex: isWide ? 1.1 : undefined, alignItems: isWide ? 'flex-start' : 'center' }}>
+              <View className="flex-row items-center mb-4">
+                <View
+                  style={{
+                    width: isWide ? 64 : 72,
+                    height: isWide ? 64 : 72,
+                    borderRadius: 20,
+                    backgroundColor: '#1E1B4B',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    shadowColor: '#6366F1',
+                    shadowOffset: { width: 0, height: 8 },
+                    shadowOpacity: 0.35,
+                    shadowRadius: 16,
+                    elevation: 10,
+                  }}
+                >
+                  <Image
+                    source={require('../../../assets/logo-optimized.png')}
+                    style={{ width: isWide ? 64 : 72, height: isWide ? 64 : 72, borderRadius: 20 }}
+                    resizeMode="contain"
+                    fadeDuration={0}
+                  />
+                </View>
+
+                {isWide && (
+                  <View className="ml-4">
+                    <Text className={`text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      ZENTIQ POS
+                    </Text>
+                    <Text className="text-indigo-400 text-xs font-bold uppercase tracking-widest mt-0.5">
+                      Restaurant Command Terminal
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {!isWide && (
+                <View className="items-center mb-1">
+                  <Text className={`text-3xl font-black tracking-tight text-center ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    ZENTIQ POS
+                  </Text>
+                  <Text className="text-indigo-400 text-xs font-bold uppercase tracking-widest mt-1 text-center">
+                    Restaurant Command Terminal
+                  </Text>
+                </View>
+              )}
+
+              {isWide && (
+                <>
+                  <Text className={`text-4xl font-black tracking-tight leading-tight mt-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Built for speed at every table & counter.
+                  </Text>
+                  <Text className={`text-sm leading-relaxed mt-3 mb-6 max-w-md ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Sign in with your branch credentials to manage dine-in tables, rapid counter sales, thermal KOT printing, and live branch analytics.
+                  </Text>
+
+                  <View className="w-full space-y-3">
+                    {highlights.map((item, idx) => (
+                      <View
+                        key={idx}
+                        className={`flex-row items-start p-3.5 rounded-2xl border ${
+                          isDark ? 'bg-slate-900/55 border-slate-800/80' : 'bg-white/90 border-slate-200 shadow-sm'
+                        }`}
+                      >
+                        <View className={`w-9 h-9 rounded-xl items-center justify-center mr-3.5 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                          {item.icon}
+                        </View>
+                        <View className="flex-1">
+                          <Text className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            {item.title}
+                          </Text>
+                          <Text className={`text-[11px] mt-0.5 leading-snug ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                            {item.desc}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
             </View>
 
-            <Text style={{ textAlign: 'center' }} className="text-3xl font-black text-white tracking-wider">
-              ZENTIQ POS
-            </Text>
-            <Text style={{ textAlign: 'center' }} className="text-indigo-400 text-xs font-bold uppercase tracking-widest mt-1.5">
-              Multi-Tenant Cloud Platform
-            </Text>
-          </View>
+            {/* Right Sign-In Form Card */}
+            <View style={{ flex: isWide ? 0.95 : undefined, width: '100%', maxWidth: 440, alignSelf: 'center' }}>
+              <View
+                className={`p-6 sm:p-8 rounded-3xl border shadow-2xl ${
+                  isDark
+                    ? 'bg-slate-900/85 border-slate-800/90'
+                    : 'bg-white border-slate-200'
+                }`}
+              >
+                <View className="mb-6">
+                  <View className="flex-row items-center mb-1.5">
+                    <ShieldCheck size={16} color={isDark ? '#818CF8' : '#4F46E5'} />
+                    <Text className={`text-[11px] font-bold uppercase tracking-wider ml-1.5 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                      Terminal Access
+                    </Text>
+                  </View>
+                  <Text className={`text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Welcome back
+                  </Text>
+                  <Text className={`text-xs mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Enter your Staff ID, Mobile Number, or Admin Email to continue.
+                  </Text>
+                </View>
 
-          {/* Form Card - Max 440px Centered */}
-          <View
-            style={{ width: '100%', maxWidth: 440, alignSelf: 'center' }}
-            className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-2xl backdrop-blur-xl"
-          >
-            <Text className="text-white text-base font-semibold text-center mb-6">Sign in to your restaurant</Text>
+                {inlineError && (
+                  <View className={`mb-4 p-3 rounded-2xl border flex-row items-start ${isDark ? 'bg-rose-500/10 border-rose-500/30' : 'bg-rose-50 border-rose-200'}`}>
+                    <AlertCircle size={16} color="#F43F5E" style={{ marginTop: 1 }} />
+                    <Text className={`text-xs font-medium ml-2 flex-1 ${isDark ? 'text-rose-300' : 'text-rose-700'}`}>
+                      {inlineError}
+                    </Text>
+                  </View>
+                )}
 
-            <Input
-              label="User ID / Mobile / Email"
-              placeholder="Enter Mobile / User ID"
-              value={userId}
-              onChangeText={setUserId}
-              autoCapitalize="none"
-              returnKeyType="next"
-              leftIcon={<User size={18} color="#64748B" />}
-            />
+                <Input
+                  label="User ID / Mobile / Email"
+                  placeholder="e.g. 9876543210 or branchadmin"
+                  value={userId}
+                  onChangeText={(text) => {
+                    setUserId(text);
+                    if (inlineError) setInlineError(null);
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                  containerClassName={isDark ? 'bg-slate-950/70 border-slate-800 rounded-2xl py-3' : 'bg-slate-50 border-slate-200 rounded-2xl py-3'}
+                  leftIcon={<User size={18} color={isDark ? '#818CF8' : '#6366F1'} />}
+                />
 
-            <Input
-              label="Password"
-              placeholder="Enter password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              leftIcon={<Lock size={18} color="#64748B" />}
-              rightIcon={
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  {showPassword ? <Eye size={18} color="#64748B" /> : <EyeOff size={18} color="#64748B" />}
+                <Input
+                  label="Password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (inlineError) setInlineError(null);
+                  }}
+                  secureTextEntry={!showPassword}
+                  containerClassName={isDark ? 'bg-slate-950/70 border-slate-800 rounded-2xl py-3' : 'bg-slate-50 border-slate-200 rounded-2xl py-3'}
+                  leftIcon={<Lock size={18} color={isDark ? '#818CF8' : '#6366F1'} />}
+                  rightIcon={
+                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      {showPassword ? <Eye size={18} color="#64748B" /> : <EyeOff size={18} color="#64748B" />}
+                    </TouchableOpacity>
+                  }
+                  onSubmitEditing={handleLogin}
+                  returnKeyType="go"
+                />
+
+                <TouchableOpacity
+                  onPress={handleLogin}
+                  disabled={isLoading}
+                  activeOpacity={0.85}
+                  className={`mt-4 py-3.5 px-5 rounded-2xl flex-row items-center justify-center shadow-lg ${
+                    isLoading
+                      ? 'bg-indigo-600/70'
+                      : 'bg-[#5D3FD3] active:bg-[#4C32B8]'
+                  }`}
+                >
+                  {isLoading ? (
+                    <View className="flex-row items-center">
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text className="text-white font-bold text-sm ml-2.5">
+                        {statusLabel}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View className="flex-row items-center">
+                      <Text className="text-white font-extrabold text-sm tracking-wide">
+                        SIGN IN TO TERMINAL
+                      </Text>
+                      <ArrowRight size={17} color="#FFFFFF" style={{ marginLeft: 8 }} />
+                    </View>
+                  )}
                 </TouchableOpacity>
-              }
-              onSubmitEditing={handleLogin}
-              returnKeyType="go"
-            />
 
-            <Button
-              title="SIGN IN"
-              onPress={handleLogin}
-              isLoading={isLoading}
-              size="lg"
-              className="mt-4 shadow-lg shadow-purple-500/20"
-            />
-          </View>
-
-          {/* Footer - Centered */}
-          <View style={{ width: '100%', maxWidth: 440, alignItems: 'center', justifyContent: 'center' }} className="mt-8">
-            <Text style={{ textAlign: 'center' }} className="text-slate-600 text-[11px]">
-              Zentiq POS Enterprise • Connected to Live Cloud
-            </Text>
+                <View className={`mt-6 pt-4 border-t flex-row items-center justify-between ${isDark ? 'border-slate-800/80' : 'border-slate-100'}`}>
+                  <Text className={`text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Branch-scoped security enabled
+                  </Text>
+                  <Text className={`text-[11px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Zentiq Cloud POS
+                  </Text>
+                </View>
+              </View>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
