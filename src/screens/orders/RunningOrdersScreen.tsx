@@ -661,7 +661,7 @@ const OrdersSummaryDashboard = React.memo(({
 
 export const RunningOrdersScreen = () => {
   const insets = useSafeAreaInsets();
-  const { orders, subscribeToOrders, isLoading, totalOrdersCount: serverTotalCount, loadMoreOrders, currentLimit } = useOrderStore();
+  const { orders, subscribeToOrders, isLoading, totalOrdersCount: serverTotalCount, serverStats, loadMoreOrders, currentLimit } = useOrderStore();
   const { tenant, locations, activeLocationId, branding, features } = useTenantStore();
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
@@ -888,11 +888,17 @@ export const RunningOrdersScreen = () => {
     const validTodayOrders = todayOrders.filter(o => !isCancelled(o));
 
     const isFiltered = selectedOrderTypeFilter !== 'ALL' || Boolean(search.trim());
+    const useServerAllTotals = !isFiltered && serverStats && serverStats.totalOrdersCount > validBaseOrders.length;
+
     const totalOrdersCount = isFiltered
       ? validBaseOrders.length
-      : (validBaseOrders.length > 0 ? validBaseOrders.length : (serverTotalCount ?? 0));
-    const totalRevenue = validBaseOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-    const averageOrderValue = validBaseOrders.length > 0 ? totalRevenue / validBaseOrders.length : 0;
+      : (useServerAllTotals
+          ? serverStats!.totalOrdersCount
+          : (validBaseOrders.length > 0 ? validBaseOrders.length : (serverTotalCount ?? 0)));
+    const totalRevenue = useServerAllTotals
+      ? serverStats!.totalRevenue
+      : validBaseOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+    const averageOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0;
 
     const todayOrdersCount = validTodayOrders.length;
     const todayRevenue = validTodayOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
@@ -934,11 +940,16 @@ export const RunningOrdersScreen = () => {
     const todayCounterCount = todayBreakdown.counter;
     const todayOnlineCount = todayBreakdown.online;
 
-    const dineInCount = allBreakdown.dineIn;
-    const pickupCount = allBreakdown.pickup;
-    const takeawayCount = allBreakdown.takeaway;
-    const counterCount = allBreakdown.counter;
-    const onlineCount = allBreakdown.online;
+    const serverCatSum = serverStats
+      ? serverStats.dineInCount + serverStats.pickupCount + serverStats.takeawayCount + serverStats.counterCount + serverStats.onlineCount
+      : 0;
+    const useServerCats = Boolean(useServerAllTotals && serverCatSum > 0);
+
+    const dineInCount = useServerCats ? serverStats!.dineInCount : allBreakdown.dineIn;
+    const pickupCount = useServerCats ? serverStats!.pickupCount : allBreakdown.pickup;
+    const takeawayCount = useServerCats ? serverStats!.takeawayCount : allBreakdown.takeaway;
+    const counterCount = useServerCats ? serverStats!.counterCount : allBreakdown.counter;
+    const onlineCount = useServerCats ? serverStats!.onlineCount : allBreakdown.online;
 
     const emptyPayments = {
       cash: { amount: 0, count: 0, percent: 0 },
@@ -1189,7 +1200,7 @@ export const RunningOrdersScreen = () => {
       itemFrequencyAll,
       itemFrequencyToday
     };
-  }, [baseFilteredOrders, todayOrders, isReady, selectedOrderTypeFilter, search, serverTotalCount, summaryTab, isItemFrequencyModalOpen]);
+  }, [baseFilteredOrders, todayOrders, isReady, selectedOrderTypeFilter, search, serverTotalCount, serverStats, summaryTab, isItemFrequencyModalOpen]);
 
   // Reprint Bill handler
   const handleReprintBill = async (order: any) => {

@@ -1,14 +1,27 @@
 import { create } from 'zustand';
 import { Order } from '../types/order.types';
-import { collection, onSnapshot, query, orderBy, limit, getCountFromServer } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, where, getCountFromServer, getAggregateFromServer, count, sum } from 'firebase/firestore';
 import { db } from '../services/firebase/config';
 import { useTenantStore } from './tenant.store';
+
+const DEFAULT_LIVE_ORDER_LIMIT = 150;
+
+export interface ServerOrderStats {
+  totalOrdersCount: number;
+  totalRevenue: number;
+  dineInCount: number;
+  pickupCount: number;
+  takeawayCount: number;
+  counterCount: number;
+  onlineCount: number;
+}
 
 interface OrderState {
   orders: Order[];
   isLoading: boolean;
   totalOrdersCount: number | null;
-  currentLimit: number | null;
+  serverStats: ServerOrderStats | null;
+  currentLimit: number;
   setOrders: (orders: Order[]) => void;
   setLoading: (isLoading: boolean) => void;
   subscribeToOrders: (specificLocationId?: string | null, customLimit?: number | null) => () => void;
@@ -27,7 +40,8 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   orders: [],
   isLoading: true,
   totalOrdersCount: null,
-  currentLimit: null, // Dynamic / unlimited by default (no hardcoded limits)
+  serverStats: null,
+  currentLimit: DEFAULT_LIVE_ORDER_LIMIT,
   setOrders: (orders) => set({ orders }),
   setLoading: (isLoading) => set({ isLoading }),
   resetOrders: () => {
@@ -38,7 +52,13 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     currentSubscribedKey = null;
     currentSubscribedLocId = null;
     orderSubscribersCount = 0;
-    set({ orders: [], isLoading: false, totalOrdersCount: null, currentLimit: null });
+    set({
+      orders: [],
+      isLoading: false,
+      totalOrdersCount: null,
+      serverStats: null,
+      currentLimit: DEFAULT_LIVE_ORDER_LIMIT,
+    });
   },
 
   fetchTotalOrdersCount: async (locationId?: string | null) => {
@@ -46,51 +66,117 @@ export const useOrderStore = create<OrderState>((set, get) => ({
     const targetLocId = locationId !== undefined ? locationId : activeLocationId;
     if (!tenant?.id) return 0;
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const fetchColStats = async (colRef: any) => {
+      const [
+        allAgg,
+        cancelC,
+        todayC,
+        dineUpper,
+        dineLower,
+        pickUpper,
+        pickLower,
+        takeC,
+        counterC,
+        quickC,
+        zomC,
+        swigC,
+      ] = await Promise.all([
+        getAggregateFromServer(colRef, { c: count(), r: sum('totalAmount') }).catch(() => null),
+        getCountFromServer(query(colRef, where('status', '==', 'CANCELLED'))).catch(() => null),
+        getCountFromServer(query(colRef, where('createdAt', '>=', startOfToday))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'DINE_IN'))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'dine-in'))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'PICKUP'))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'pickup'))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'TAKEAWAY'))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'COUNTER'))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'QUICK_SALE'))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'ONLINE_ZOMATO'))).catch(() => null),
+        getCountFromServer(query(colRef, where('orderType', '==', 'ONLINE_SWIGGY'))).catch(() => null),
+      ]);
+
+      const rawTotal = Number(allAgg?.data()?.c || 0);
+      const cancelled = Number(cancelC?.data()?.count || 0);
+      const validTotal = Math.max(0, rawTotal - cancelled);
+      const totalRevenue = Number(allAgg?.data()?.r || 0);
+      const todayCount = Number(todayC?.data()?.count || 0);
+
+      return {
+        totalOrdersCount: validTotal,
+        totalRevenue,
+        todayCount,
+        dineInCount: Number(dineUpper?.data()?.count || 0) + Number(dineLower?.data()?.count || 0),
+        pickupCount: Number(pickUpper?.data()?.count || 0) + Number(pickLower?.data()?.count || 0),
+        takeawayCount: Number(takeC?.data()?.count || 0),
+        counterCount: Number(counterC?.data()?.count || 0) + Number(quickC?.data()?.count || 0),
+        onlineCount: Number(zomC?.data()?.count || 0) + Number(swigC?.data()?.count || 0),
+      };
+    };
+
     try {
+      let combined: ServerOrderStats & { todayCount: number };
+
       if (targetLocId === 'ALL') {
         const activeLocs = locations.filter(l => l.status !== 'DISABLED');
         if (activeLocs.length === 0) {
-          set({ totalOrdersCount: 0 });
+          set({
+            totalOrdersCount: 0,
+            serverStats: { totalOrdersCount: 0, totalRevenue: 0, dineInCount: 0, pickupCount: 0, takeawayCount: 0, counterCount: 0, onlineCount: 0 },
+          });
           return 0;
         }
-        const counts = await Promise.all(
-          activeLocs.map(async (loc) => {
-            try {
-              const snap = await getCountFromServer(
-                collection(db, 'tenants', tenant.id, 'locations', loc.id, 'orders')
-              );
-              return snap.data().count;
-            } catch (err) {
-              console.warn(`Error counting orders for ${loc.name}:`, err);
-              return 0;
-            }
-          })
+        const perLoc = await Promise.all(
+          activeLocs.map(loc =>
+            fetchColStats(collection(db, 'tenants', tenant.id, 'locations', loc.id, 'orders')).catch(() => ({
+              totalOrdersCount: 0, totalRevenue: 0, todayCount: 0,
+              dineInCount: 0, pickupCount: 0, takeawayCount: 0, counterCount: 0, onlineCount: 0,
+            }))
+          )
         );
-        const total = counts.reduce((sum, c) => sum + c, 0);
-        set({ totalOrdersCount: total });
-        return total;
+        combined = perLoc.reduce(
+          (acc, cur) => ({
+            totalOrdersCount: acc.totalOrdersCount + cur.totalOrdersCount,
+            totalRevenue: acc.totalRevenue + cur.totalRevenue,
+            todayCount: acc.todayCount + cur.todayCount,
+            dineInCount: acc.dineInCount + cur.dineInCount,
+            pickupCount: acc.pickupCount + cur.pickupCount,
+            takeawayCount: acc.takeawayCount + cur.takeawayCount,
+            counterCount: acc.counterCount + cur.counterCount,
+            onlineCount: acc.onlineCount + cur.onlineCount,
+          }),
+          { totalOrdersCount: 0, totalRevenue: 0, todayCount: 0, dineInCount: 0, pickupCount: 0, takeawayCount: 0, counterCount: 0, onlineCount: 0 }
+        );
+      } else {
+        const effectiveLocId = targetLocId || (locations.length > 0 ? locations[0].id : null);
+        const colRef = effectiveLocId
+          ? collection(db, 'tenants', tenant.id, 'locations', effectiveLocId, 'orders')
+          : collection(db, 'tenants', tenant.id, 'orders');
+        combined = await fetchColStats(colRef);
       }
 
-      const effectiveLocId = targetLocId || (locations.length > 0 ? locations[0].id : null);
-      if (!effectiveLocId) {
-        try {
-          const snap = await getCountFromServer(
-            collection(db, 'tenants', tenant.id, 'orders')
-          );
-          const total = snap.data().count;
-          set({ totalOrdersCount: total });
-          return total;
-        } catch (_) {
-          return 0;
+      const { todayCount, ...statsOnly } = combined;
+      set({
+        totalOrdersCount: statsOnly.totalOrdersCount,
+        serverStats: statsOnly,
+      });
+
+      // Auto-expand live window if a single day has more orders than currentLimit
+      const currentLim = get().currentLimit;
+      if (todayCount > currentLim) {
+        const expandedLimit = todayCount + 40;
+        set({ currentLimit: expandedLimit });
+        if (activeOrdersUnsub) {
+          activeOrdersUnsub();
+          activeOrdersUnsub = null;
+          orderSubscribersCount = 0;
         }
+        get().subscribeToOrders(targetLocId, expandedLimit);
       }
 
-      const snap = await getCountFromServer(
-        collection(db, 'tenants', tenant.id, 'locations', effectiveLocId, 'orders')
-      );
-      const total = snap.data().count;
-      set({ totalOrdersCount: total });
-      return total;
+      return statsOnly.totalOrdersCount;
     } catch (e) {
       console.warn('Error fetching total orders count:', e);
       return 0;
@@ -98,9 +184,8 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   },
 
   loadMoreOrders: () => {
-    const current = get().currentLimit;
-    if (!current) return;
-    const nextLimit = current + 500;
+    const current = get().currentLimit || DEFAULT_LIVE_ORDER_LIMIT;
+    const nextLimit = current + 250;
     set({ currentLimit: nextLimit });
     if (activeOrdersUnsub) {
       activeOrdersUnsub();
@@ -114,16 +199,18 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   subscribeToOrders: (specificLocationId?: string | null, customLimit?: number | null) => {
     const { tenant, activeLocationId, locations } = useTenantStore.getState();
     const targetLocId = specificLocationId !== undefined ? specificLocationId : activeLocationId;
-    const orderLimit = customLimit !== undefined ? customLimit : get().currentLimit;
+    const isNewTenant = Boolean(tenant?.id && currentSubscribedKey && !currentSubscribedKey.startsWith(`${tenant.id}::`));
+    const baseLimit = isNewTenant ? DEFAULT_LIVE_ORDER_LIMIT : (get().currentLimit || DEFAULT_LIVE_ORDER_LIMIT);
+    const orderLimit = (customLimit && customLimit > 0) ? customLimit : baseLimit;
 
     if (!tenant?.id) {
-      set({ orders: [], isLoading: false, totalOrdersCount: 0 });
+      set({ orders: [], isLoading: false, totalOrdersCount: 0, serverStats: null });
       return () => {};
     }
 
-    const subKey = `${tenant.id}::${targetLocId || 'NONE'}::${orderLimit || 'ALL'}`;
+    const subKey = `${tenant.id}::${targetLocId || 'NONE'}::${orderLimit}`;
 
-    // Trigger server-side exact count in background
+    // Trigger server-side exact count & aggregates in background
     get().fetchTotalOrdersCount(targetLocId);
 
     // If already subscribed to this exact tenant + location + limit, increment subscriber count and reuse listener
@@ -148,11 +235,10 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       orderSubscribersCount = 0;
     }
 
-    // Only show loading spinner if we have no orders for this key yet (switching tenant clears orders first)
     const isSameTenant = currentSubscribedKey?.startsWith(`${tenant.id}::`);
     set({
       isLoading: true,
-      ...(isSameTenant ? {} : { orders: [] }),
+      ...(isSameTenant ? { currentLimit: orderLimit } : { orders: [], serverStats: null, currentLimit: orderLimit }),
     });
     currentSubscribedKey = subKey;
     currentSubscribedLocId = targetLocId || 'NONE';

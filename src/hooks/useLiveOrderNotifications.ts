@@ -211,6 +211,10 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
   };
 
   useEffect(() => {
+    alertedBillOrderIds.clear();
+    printedItemCounts.clear();
+    roundCounts.clear();
+
     if (!tenant?.id || !activeLocationId) return;
 
     const ordersCol = collection(
@@ -238,18 +242,20 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
       }
     );
 
-    // 2. Active 4-second polling check as a fallback against background browser tab throttling
-    const pollInterval = setInterval(async () => {
-      try {
-        const snap = await getDocs(q);
-        snap.forEach((d) => {
-          const ord = { id: d.id, ...d.data() } as any;
-          if (ord.kotPrinted !== true || ord.hasNewQRItems === true) {
-            processIncomingOrder(ord);
-          }
-        });
-      } catch (_) { }
-    }, 4000);
+    // 2. Fallback 6s polling ONLY on Web (prevents competing polling storms on Android long-polling)
+    const pollInterval = Platform.OS === 'web'
+      ? setInterval(async () => {
+          try {
+            const snap = await getDocs(q);
+            snap.forEach((d) => {
+              const ord = { id: d.id, ...d.data() } as any;
+              if (ord.kotPrinted !== true || ord.hasNewQRItems === true) {
+                processIncomingOrder(ord);
+              }
+            });
+          } catch (_) { }
+        }, 6000)
+      : null;
 
     // 3. Immediate check whenever user switches back to or focuses the POS app
     const handleFocus = async () => {
@@ -299,7 +305,7 @@ export const useLiveOrderNotifications = (onPrintBill?: (order: any) => void) =>
 
     return () => {
       unsubscribe();
-      clearInterval(pollInterval);
+      if (pollInterval) clearInterval(pollInterval);
       if (appStateSub && typeof appStateSub.remove === 'function') {
         appStateSub.remove();
       }
