@@ -1,7 +1,7 @@
 import { toast } from '../../utils/toast';
 import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Image, useWindowDimensions } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Modal, ScrollView, Alert, Image, useWindowDimensions, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -683,14 +683,32 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
     toast.success(`Added ${qty}x ${item.name} (Customized)`, 'Added to Order');
   }, [checkCanEditCart, tableNo, addItem]);
 
+  // O(1) lookup maps for MenuScreen cards (avoids O(M * C) scans on every cart update)
+  const cartQtyMaps = useMemo(() => {
+    const byId: Record<string, number> = {};
+    const byName: Record<string, number> = {};
+    cartItems.forEach((ci) => {
+      const qty = ci.qty || 0;
+      if (ci.itemId) byId[ci.itemId] = (byId[ci.itemId] || 0) + qty;
+      const baseId = (ci as any).baseItemId;
+      if (baseId && baseId !== ci.itemId) byId[baseId] = (byId[baseId] || 0) + qty;
+      const nameNorm = (ci.itemName || '').trim().toLowerCase();
+      if (nameNorm) byName[nameNorm] = (byName[nameNorm] || 0) + qty;
+    });
+    return { byId, byName };
+  }, [cartItems]);
+
+  const categoryNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    categories.forEach((c) => {
+      if (c.id) map[c.id] = c.name;
+    });
+    return map;
+  }, [categories]);
+
   const renderGridCard = useCallback(({ item }: { item: MenuItem }) => {
     const itemNameNorm = (item.name || '').trim().toLowerCase();
-    const matchingCartItems = cartItems.filter(i =>
-      i.itemId === item.id ||
-      (i as any).baseItemId === item.id ||
-      (i.itemName && i.itemName.trim().toLowerCase() === itemNameNorm)
-    );
-    const qty = matchingCartItems.reduce((sum, i) => sum + (i.qty || 0), 0);
+    const qty = Math.max(cartQtyMaps.byId[item.id] || 0, cartQtyMaps.byName[itemNameNorm] || 0);
     const availStock = getAvailableStock(item);
     const isExplicitlyOutOfStock = item.isAvailable === false;
     const isOutOfStock = Boolean(isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0));
@@ -699,7 +717,6 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
       : null;
 
     const colWidth = `${100 / numColumns}%`;
-    const itemCat = categories.find(c => c.id === item.categoryId);
 
     return (
       <ProductCard
@@ -713,26 +730,21 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         viewMode="grid"
         cardWidth={colWidth}
         showImage={showImages}
-        categoryName={itemCat?.name}
+        categoryName={categoryNameById[item.categoryId]}
+        isDark={isDark}
       />
     );
-  }, [cartItems, numColumns, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, items, showImages, categories]);
+  }, [cartQtyMaps, numColumns, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, showImages, categoryNameById, isDark]);
 
   const renderLineCard = useCallback(({ item }: { item: MenuItem }) => {
     const itemNameNorm = (item.name || '').trim().toLowerCase();
-    const matchingCartItems = cartItems.filter(i =>
-      i.itemId === item.id ||
-      (i as any).baseItemId === item.id ||
-      (i.itemName && i.itemName.trim().toLowerCase() === itemNameNorm)
-    );
-    const qty = matchingCartItems.reduce((sum, i) => sum + (i.qty || 0), 0);
+    const qty = Math.max(cartQtyMaps.byId[item.id] || 0, cartQtyMaps.byName[itemNameNorm] || 0);
     const availStock = getAvailableStock(item);
     const isExplicitlyOutOfStock = item.isAvailable === false;
     const isOutOfStock = Boolean(isExplicitlyOutOfStock || (item.trackInventory && availStock <= 0));
     const lowStockText = !isExplicitlyOutOfStock && item.trackInventory && !isOutOfStock && availStock <= (item.lowStockThreshold || 2)
       ? `Low: ${availStock.toFixed(availStock % 1 === 0 ? 0 : 2)} ${item.stockUnit || 'kg'}`
       : null;
-    const itemCat = categories.find(c => c.id === item.categoryId);
 
     return (
       <ProductCard
@@ -745,10 +757,11 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
         onDecrement={handleDecrementCardItem}
         viewMode="lines"
         showImage={showImages}
-        categoryName={itemCat?.name}
+        categoryName={categoryNameById[item.categoryId]}
+        isDark={isDark}
       />
     );
-  }, [cartItems, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, items, showImages, categories]);
+  }, [cartQtyMaps, handleCardPress, handleIncrementSimpleItem, handleDecrementCardItem, showImages, categoryNameById, isDark]);
 
   // Persistent Right Panel for Tablets & iPad POS (Responsive ~32% Width)
   const renderSplitCartPanel = () => (
@@ -1380,10 +1393,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             numColumns={numColumns}
             keyExtractor={(item, index) => `${item.id || 'item'}-${index}`}
             renderItem={viewMode === 'grid' ? renderGridCard : renderLineCard}
-            initialNumToRender={20}
-            maxToRenderPerBatch={20}
-            windowSize={5}
-            removeClippedSubviews={false}
+            initialNumToRender={14}
+            maxToRenderPerBatch={12}
+            windowSize={4}
+            removeClippedSubviews={Platform.OS === 'android'}
             showsVerticalScrollIndicator={true}
             style={{ flex: 1 }}
             className="flex-1"

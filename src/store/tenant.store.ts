@@ -12,18 +12,38 @@ interface TenantState {
   features: TenantFeatures;
   locations: Location[];
   activeLocationId: string | null;
+  lastLocationByAccount: Record<string, string>;
   isLoading: boolean;
   setTenant: (tenant: TenantProfile | null) => void;
   setBranding: (branding: TenantBranding | null) => void;
   setFeatures: (features: Partial<TenantFeatures>) => void;
   setLocations: (locations: Location[]) => void;
   setActiveLocationId: (locationId: string | null) => void;
+  getSavedLocationForAccount: (tenantId?: string | null, userId?: string | null) => string | null;
   setLoading: (loading: boolean) => void;
   resetTenant: () => void;
   getActiveLocation: () => Location | null;
   getEffectiveFeatures: (locationId?: string | null) => TenantFeatures;
   subscribeToActiveTenant: (tenantId: string) => () => void;
 }
+
+const sortLocations = (locs: Location[]): Location[] => {
+  return [...locs].sort((a, b) => {
+    if (a.id === 'loc-primary' && b.id !== 'loc-primary') return -1;
+    if (b.id === 'loc-primary' && a.id !== 'loc-primary') return 1;
+    const tA = (a as any).createdAt?.seconds ? (a as any).createdAt.seconds : 0;
+    const tB = (b as any).createdAt?.seconds ? (b as any).createdAt.seconds : 0;
+    if (tA !== tB) return tA - tB;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+};
+
+const makeAccountKey = (tenantId?: string | null, userId?: string | null) => {
+  if (!tenantId || !userId) return null;
+  return `${tenantId}::${userId.trim().toLowerCase()}`;
+};
+
+const safeFirestoreKey = (val: string) => val.trim().toLowerCase().replace(/[.#$/[\]]/g, '_');
 
 export const computeEffectiveFeatures = (
   baseFeatures: TenantFeatures,
@@ -82,7 +102,14 @@ export const useTenantStore = create<TenantState>()(
       features: defaultFeatures,
       locations: [],
       activeLocationId: null,
+      lastLocationByAccount: {},
       isLoading: false,
+
+      getSavedLocationForAccount: (tenantId, userId) => {
+        const key = makeAccountKey(tenantId, userId);
+        if (!key) return null;
+        return get().lastLocationByAccount[key] || null;
+      },
 
       setTenant: (tenant) => set({ tenant }),
       setBranding: (branding) => set({ branding: branding ? { ...defaultBranding, ...branding } : defaultBranding }),
@@ -105,12 +132,25 @@ export const useTenantStore = create<TenantState>()(
         }
       },
       setLocations: (locations) => {
+        const sortedLocs = sortLocations(locations);
         const currentActive = get().activeLocationId;
-        const validActive = locations.find(l => l.id === currentActive);
-        const finalActive = validActive ? currentActive : (locations[0]?.id || null);
-        const activeLoc = locations.find(l => l.id === finalActive) || null;
+        let validActive = sortedLocs.find(l => l.id === currentActive)?.id || null;
+
+        if (!validActive) {
+          try {
+            const { user } = require('./auth.store').useAuthStore.getState();
+            const tenantId = get().tenant?.id || user?.tenantId;
+            const saved = get().getSavedLocationForAccount(tenantId, user?.id);
+            if (saved && sortedLocs.some(l => l.id === saved)) {
+              validActive = saved;
+            }
+          } catch (_) {}
+        }
+
+        const finalActive = validActive || (sortedLocs[0]?.id || null);
+        const activeLoc = sortedLocs.find(l => l.id === finalActive) || null;
         set({
-          locations,
+          locations: sortedLocs,
           activeLocationId: finalActive,
           features: computeEffectiveFeatures(get().tenantFeatures, activeLoc),
         });
@@ -118,22 +158,41 @@ export const useTenantStore = create<TenantState>()(
       setActiveLocationId: (activeLocationId) => {
         const activeLoc = get().locations.find(l => l.id === activeLocationId) || null;
         const effective = computeEffectiveFeatures(get().tenantFeatures, activeLoc);
-        set({
-          activeLocationId,
-          features: effective,
-        });
+
+        let updatedAccountMap = get().lastLocationByAccount;
         try {
           const { user } = require('./auth.store').useAuthStore.getState();
           const currentTenantId = get().tenant?.id || user?.tenantId;
+          const accKey = makeAccountKey(currentTenantId, user?.id);
+          if (accKey && activeLocationId) {
+            updatedAccountMap = { ...updatedAccountMap, [accKey]: activeLocationId };
+          }
+          set({
+            activeLocationId,
+            features: effective,
+            lastLocationByAccount: updatedAccountMap,
+          });
+
           if (user?.id && activeLocationId) {
             if (currentTenantId) {
+              const userFieldKey = safeFirestoreKey(user.id);
+              setDoc(
+                doc(db, 'tenants', currentTenantId),
+                {
+                  lastActiveLocationId: activeLocationId,
+                  lastActiveLocationByUser: { [userFieldKey]: activeLocationId },
+                },
+                { merge: true }
+              ).catch(() => {});
               setDoc(doc(db, 'tenants', currentTenantId, 'users', user.id), { lastActiveLocationId: activeLocationId }, { merge: true }).catch(() => {});
               const { usePrinterStore } = require('./printer.store');
               usePrinterStore.getState().switchLocation(activeLocationId, currentTenantId);
             }
             setDoc(doc(db, 'users', user.id), { lastActiveLocationId: activeLocationId }, { merge: true }).catch(() => {});
           }
-        } catch (e) {}
+        } catch (e) {
+          set({ activeLocationId, features: effective });
+        }
       },
       setLoading: (isLoading) => set({ isLoading }),
       resetTenant: () => set({
@@ -188,28 +247,40 @@ export const useTenantStore = create<TenantState>()(
         // 4. Locations listener
         const qLoc = query(collection(db, 'tenants', tenantId, 'locations'), where('status', '==', 'ACTIVE'));
         const unsubLocations = onSnapshot(qLoc, (snap) => {
-          const locs: Location[] = [];
-          snap.forEach(d => locs.push({ ...d.data(), id: d.id } as Location));
+          const rawLocs: Location[] = [];
+          snap.forEach(d => rawLocs.push({ ...d.data(), id: d.id } as Location));
+          const locs = sortLocations(rawLocs);
           const currentActive = get().activeLocationId;
           const { user } = require('./auth.store').useAuthStore.getState();
           const userAssigned = user?.assignedLocationId;
           const hasGlobalWildcard = user?.locationIds?.includes('*');
           const isBranchScoped = !!userAssigned && !hasGlobalWildcard;
 
+          const savedLocalBranch = get().getSavedLocationForAccount(tenantId, user?.id);
+          const tenantDocBranch = (() => {
+            const tData: any = get().tenant;
+            if (!tData || !user?.id) return null;
+            const userKey = safeFirestoreKey(user.id);
+            return tData.lastActiveLocationByUser?.[userKey] || tData.lastActiveLocationId || null;
+          })();
+          const preferredBranch =
+            (savedLocalBranch && locs.some(l => l.id === savedLocalBranch) ? savedLocalBranch : null) ||
+            (user?.lastActiveLocationId && locs.some(l => l.id === user.lastActiveLocationId) ? user.lastActiveLocationId : null) ||
+            (tenantDocBranch && locs.some(l => l.id === tenantDocBranch) ? tenantDocBranch : null);
+
           let finalActive = currentActive;
           if (isBranchScoped && locs.some(l => l.id === userAssigned)) {
             // Strictly enforce branch assignment for branch-scoped admins and staff
             finalActive = userAssigned;
-          } else if (!finalActive && user?.lastActiveLocationId && locs.some(l => l.id === user.lastActiveLocationId)) {
-            finalActive = user.lastActiveLocationId;
-          } else if (userAssigned && !finalActive && locs.some(l => l.id === userAssigned)) {
+          } else if (finalActive && locs.some(l => l.id === finalActive)) {
+            // Keep currently selected branch if valid for this tenant
+            finalActive = currentActive;
+          } else if (preferredBranch) {
+            finalActive = preferredBranch;
+          } else if (userAssigned && locs.some(l => l.id === userAssigned)) {
             finalActive = userAssigned;
-          } else if (!locs.some(l => l.id === finalActive)) {
-            finalActive = (user?.lastActiveLocationId && locs.some(l => l.id === user.lastActiveLocationId))
-              ? user.lastActiveLocationId
-              : (userAssigned && locs.some(l => l.id === userAssigned))
-                ? userAssigned
-                : (locs[0]?.id || null);
+          } else {
+            finalActive = locs[0]?.id || null;
           }
 
           const activeLoc = locs.find(l => l.id === finalActive) || locs[0] || null;

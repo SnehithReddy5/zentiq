@@ -17,9 +17,10 @@ interface ProductCardProps {
   cardWidth?: string | number;
   showImage?: boolean;
   categoryName?: string;
+  isDark?: boolean;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({
+export const ProductCard: React.FC<ProductCardProps> = React.memo(({
   item,
   cartQty,
   isOutOfStock,
@@ -31,9 +32,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   cardWidth,
   showImage = false,
   categoryName,
+  isDark: isDarkProp,
 }) => {
   const { themeMode } = useThemeStore();
-  const isDark = themeMode === 'dark';
+  const isDark = isDarkProp !== undefined ? isDarkProp : themeMode === 'dark';
 
   const imageUrl = showImage
     ? getAutoMenuItemImage(item.name, categoryName, (item as any).imageUrl || (item as any).image)
@@ -345,5 +347,5 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       </TouchableOpacity>
     </View>
   );
-};
+});
 

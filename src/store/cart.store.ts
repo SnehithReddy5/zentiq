@@ -170,12 +170,20 @@ interface CartState {
   markAsSent: (tableNo: number) => void;
   clearCart: (tableNo: number) => void;
   getCart: (tableNo: number) => CartItem[];
+  resetLocalCarts: () => void;
 }
 
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       carts: {},
+      resetLocalCarts: () => {
+        Object.keys(syncTimeouts).forEach((k) => {
+          clearTimeout(syncTimeouts[Number(k)]);
+          delete syncTimeouts[Number(k)];
+        });
+        set({ carts: {} });
+      },
       getCart: (tableNo) => consolidateCartItems(get().carts[tableNo] || []),
       setCarts: (carts) => {
         const currentCarts = get().carts;

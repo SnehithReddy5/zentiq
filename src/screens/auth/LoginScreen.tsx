@@ -138,15 +138,18 @@ export const LoginScreen = () => {
         if (!matchesAdminId) return false;
 
         if (passwordMatches(tData.adminPassword)) {
+          const adminId = (tData.adminUsername || cleanId).trim();
+          const adminKey = adminId.toLowerCase().replace(/[.#$/[\]]/g, '_');
+          const storedLoc = tData.lastActiveLocationByUser?.[adminKey] || tData.lastActiveLocationId || null;
           matchedTenantDoc = { ...tData, id: tDoc.id };
           matchedUser = {
-            id: (tData.adminUsername || cleanId).trim(),
+            id: adminId,
             name: `${tData.displayName || tData.businessName || 'Restaurant'} Admin`,
             role: 'ADMIN',
             tenantId: tDoc.id,
             locationIds: ['*'],
             assignedLocationId: null,
-            lastActiveLocationId: null,
+            lastActiveLocationId: storedLoc,
           };
           return true;
         } else if (tData.adminPassword) {
@@ -381,7 +384,11 @@ export const LoginScreen = () => {
       }
       setBranding(branding);
 
-      let locs = fetchedLocs;
+      let locs = [...fetchedLocs].sort((a, b) => {
+        if (a.id === 'loc-primary' && b.id !== 'loc-primary') return -1;
+        if (b.id === 'loc-primary' && a.id !== 'loc-primary') return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
       if (locs.length === 0) {
         const defaultLocRef = doc(db, 'tenants', targetTenantId, 'locations', 'loc-primary');
         const defaultLoc = {
@@ -395,17 +402,24 @@ export const LoginScreen = () => {
         setDoc(defaultLocRef, defaultLoc).catch(() => {});
         locs = [defaultLoc];
       }
-      setLocations(locs);
 
-      // Commit session immediately so user enters the POS right away
-      setUser(matchedUser);
-      if (matchedUser.lastActiveLocationId && locs.some(l => l.id === matchedUser.lastActiveLocationId)) {
-        setActiveLocationId(matchedUser.lastActiveLocationId);
-      } else if (matchedUser.assignedLocationId) {
-        setActiveLocationId(matchedUser.assignedLocationId);
-      } else {
-        setActiveLocationId(locs[0]?.id || null);
-      }
+      const userKey = (matchedUser.id || '').trim().toLowerCase().replace(/[.#$/[\]]/g, '_');
+      const savedAccountLoc = useTenantStore.getState().getSavedLocationForAccount(targetTenantId, matchedUser.id);
+      const tenantStoredLoc = tData.lastActiveLocationByUser?.[userKey] || tData.lastActiveLocationId || null;
+      const isBranchScoped = !!matchedUser.assignedLocationId && !matchedUser.locationIds?.includes('*');
+
+      const preferredLocId =
+        (isBranchScoped && locs.some(l => l.id === matchedUser.assignedLocationId) ? matchedUser.assignedLocationId : null) ||
+        (savedAccountLoc && locs.some(l => l.id === savedAccountLoc) ? savedAccountLoc : null) ||
+        (matchedUser.lastActiveLocationId && locs.some(l => l.id === matchedUser.lastActiveLocationId) ? matchedUser.lastActiveLocationId : null) ||
+        (tenantStoredLoc && locs.some(l => l.id === tenantStoredLoc) ? tenantStoredLoc : null) ||
+        (matchedUser.assignedLocationId && locs.some(l => l.id === matchedUser.assignedLocationId) ? matchedUser.assignedLocationId : null) ||
+        (locs[0]?.id || null);
+
+      // Commit session immediately with resolved branch so user enters the exact branch right away
+      setUser({ ...matchedUser, lastActiveLocationId: preferredLocId });
+      setLocations(locs);
+      setActiveLocationId(preferredLocId);
 
       subscribeToActiveTenant(targetTenantId);
     } catch (err: any) {

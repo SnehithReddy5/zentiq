@@ -1,7 +1,7 @@
 import { toast } from '../../utils/toast';
 import { confirmDialog } from '../../utils/confirm';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Plus, LayoutGrid, Users, Trash2, CheckCircle2, Clock, QrCode, Smartphone, Building, MapPin } from 'lucide-react-native';
@@ -336,7 +336,10 @@ export const TablesScreen = () => {
       <FlatList
         className="flex-1"
         style={{ flex: 1 }}
-        removeClippedSubviews={false}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={16}
+        maxToRenderPerBatch={12}
+        windowSize={4}
         showsVerticalScrollIndicator={true}
         data={filteredTables}
         renderItem={renderTableCard}

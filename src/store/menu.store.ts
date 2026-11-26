@@ -12,6 +12,7 @@ interface MenuState {
   setCategories: (categories: MenuCategory[]) => void;
   setItems: (items: MenuItem[]) => void;
   subscribeToMenu: () => () => void;
+  resetMenu: () => void;
 }
 
 // Singleton listener state to prevent duplicate listeners
@@ -26,6 +27,15 @@ export const useMenuStore = create<MenuState>((set) => ({
   isLoadingItems: true,
   setCategories: (categories) => set({ categories }),
   setItems: (items) => set({ items }),
+  resetMenu: () => {
+    if (activeMenuUnsub) {
+      try { activeMenuUnsub(); } catch (_) {}
+      activeMenuUnsub = null;
+    }
+    currentMenuLocKey = null;
+    menuSubscribersCount = 0;
+    set({ categories: [], items: [], isLoadingCategories: false, isLoadingItems: false });
+  },
   subscribeToMenu: () => {
     const { tenant, activeLocationId } = useTenantStore.getState();
     const locKey = `${tenant?.id || 'none'}_${activeLocationId || 'none'}`;

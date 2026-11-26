@@ -10,6 +10,7 @@ interface TableState {
   setTables: (tables: Table[]) => void;
   setLoading: (isLoading: boolean) => void;
   subscribeToTables: () => () => void;
+  resetTables: () => void;
 }
 
 // Singleton listener state to prevent duplicate listeners
@@ -22,6 +23,15 @@ export const useTableStore = create<TableState>((set) => ({
   isLoading: true,
   setTables: (tables) => set({ tables }),
   setLoading: (isLoading) => set({ isLoading }),
+  resetTables: () => {
+    if (activeTablesUnsub) {
+      try { activeTablesUnsub(); } catch (_) {}
+      activeTablesUnsub = null;
+    }
+    currentSubscribedTableLoc = null;
+    tableSubscribersCount = 0;
+    set({ tables: [], isLoading: false });
+  },
   subscribeToTables: () => {
     const { tenant, activeLocationId } = useTenantStore.getState();
 
@@ -31,8 +41,10 @@ export const useTableStore = create<TableState>((set) => ({
       return () => {};
     }
 
-    // Reuse existing listener if already active for this location
-    if (activeTablesUnsub && currentSubscribedTableLoc === activeLocationId) {
+    const tableKey = `${tenant.id}::${activeLocationId}`;
+
+    // Reuse existing listener if already active for this tenant + location
+    if (activeTablesUnsub && currentSubscribedTableLoc === tableKey) {
       tableSubscribersCount++;
       return () => {
         tableSubscribersCount--;
@@ -52,7 +64,7 @@ export const useTableStore = create<TableState>((set) => ({
     }
 
     set({ isLoading: true });
-    currentSubscribedTableLoc = activeLocationId;
+    currentSubscribedTableLoc = tableKey;
     tableSubscribersCount = 1;
 
     const q = query(

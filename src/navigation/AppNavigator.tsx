@@ -19,6 +19,7 @@ import { Routes } from '../constants/routes';
 import { useTableStore } from '../store/table.store';
 import { useTenantStore } from '../store/tenant.store';
 import { useAuthStore } from '../store/auth.store';
+import { useThemeStore } from '../store/theme.store';
 
 const Stack = createNativeStackNavigator();
 
@@ -26,6 +27,8 @@ export const AppNavigator = () => {
   const { user } = useAuthStore();
   const { subscribeToTables } = useTableStore();
   const { tenant, activeLocationId } = useTenantStore();
+  const { themeMode } = useThemeStore();
+  const isDark = themeMode === 'dark';
 
   const isKitchenStaff = user?.role === 'KITCHEN' || user?.role === 'KITCHEN_STAFF';
 
@@ -56,7 +59,7 @@ export const AppNavigator = () => {
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: '#090D1A' },
+        contentStyle: { backgroundColor: isDark ? '#090D1A' : '#F8FAFC' },
         animation: 'slide_from_right',
         freezeOnBlur: true,
       }}

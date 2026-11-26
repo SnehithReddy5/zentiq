@@ -18,7 +18,18 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       setUser: (user) => set({ user }),
       setLoading: (isLoading) => set({ isLoading }),
-      logout: () => set({ user: null }),
+      logout: () => {
+        try {
+          require('./order.store').useOrderStore.getState().resetOrders();
+          require('./table.store').useTableStore.getState().resetTables();
+          require('./menu.store').useMenuStore.getState().resetMenu();
+          require('./cart.store').useCartStore.getState().resetLocalCarts();
+          require('./tenant.store').useTenantStore.getState().resetTenant();
+        } catch (e) {
+          console.warn('Error resetting stores on logout:', e);
+        }
+        set({ user: null, isLoading: false });
+      },
     }),
     {
       name: 'auth-storage',

@@ -1,7 +1,7 @@
 import { getItemDisplayName, getBaseItemName } from '../../utils/itemDisplay';
 import { toast } from '../../utils/toast';
-import React, {  useEffect, useState, useMemo , useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, Modal, Alert, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { View, Text, FlatList, TouchableOpacity, TextInput, ScrollView, Modal, Alert, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Search,
@@ -87,6 +87,7 @@ const isToday = (date: Date): boolean => {
 
 interface OrderCardProps {
   item: any;
+  isDark: boolean;
   ordersGridColumns: number;
   isHighest: boolean;
   isLowest: boolean;
@@ -95,13 +96,12 @@ interface OrderCardProps {
 
 const OrderCard = React.memo(({
   item,
+  isDark,
   ordersGridColumns,
   isHighest,
   isLowest,
   onPress
 }: OrderCardProps) => {
-  const { themeMode } = useThemeStore();
-  const isDark = themeMode === 'dark';
   const isRunning = item.status === 'running' || item.status === 'RUNNING';
   const itemsList = item.items || [];
   const displayedItems = itemsList.slice(0, 2);
@@ -713,11 +713,32 @@ export const RunningOrdersScreen = () => {
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
 
+  // Reset selected branch cleanly when switching tenants
+  useEffect(() => {
+    setSelectedOrder(null);
+    const nextDefault = isClientAdmin
+      ? (activeLocationId || locations[0]?.id || 'ALL')
+      : (staffBranch || locations[0]?.id || 'ALL');
+    setSelectedLocationId(nextDefault);
+  }, [tenant?.id]);
+
+  // Keep selectedLocationId valid if locations finish hydrating or active branch changes
+  useEffect(() => {
+    if (!locations || locations.length === 0) return;
+    if (selectedLocationId === 'ALL' && isClientAdmin) return;
+    if (!locations.some(l => l.id === selectedLocationId)) {
+      setSelectedLocationId(
+        isClientAdmin ? (activeLocationId || locations[0]?.id || 'ALL') : (staffBranch || locations[0]?.id || 'ALL')
+      );
+    }
+  }, [activeLocationId, locations, selectedLocationId, isClientAdmin, staffBranch]);
+
   // Subscribe dynamically to the selected location
   useEffect(() => {
+    if (!tenant?.id) return;
     const unsub = subscribeToOrders(selectedLocationId);
     return () => unsub();
-  }, [tenant?.id, selectedLocationId]);
+  }, [tenant?.id, selectedLocationId, locations.length]);
 
   // Base filtered orders list (by location, search query, and order type filter)
   const baseFilteredOrders = useMemo(() => {
@@ -1125,11 +1146,14 @@ export const RunningOrdersScreen = () => {
       return Object.values(map).sort((a, b) => b.qty - a.qty);
     };
 
-    const paymentsAll = calcPaymentBreakdown(validBaseOrders);
-    const paymentsToday = calcPaymentBreakdown(validTodayOrders);
+    // Defer payment & item aggregations unless their respective tabs/modals are active
+    const shouldComputePayments = summaryTab === 'PAYMENTS';
+    const paymentsAll = shouldComputePayments ? calcPaymentBreakdown(validBaseOrders) : emptyPayments;
+    const paymentsToday = shouldComputePayments ? calcPaymentBreakdown(validTodayOrders) : emptyPayments;
 
-    const itemFrequencyAll = calcItemFrequency(validBaseOrders);
-    const itemFrequencyToday = calcItemFrequency(validTodayOrders);
+    const shouldComputeItems = summaryTab === 'ITEMS' || isItemFrequencyModalOpen;
+    const itemFrequencyAll = shouldComputeItems ? calcItemFrequency(validBaseOrders) : [];
+    const itemFrequencyToday = shouldComputeItems ? calcItemFrequency(validTodayOrders) : [];
 
     return {
       totalOrdersCount,
@@ -1165,7 +1189,7 @@ export const RunningOrdersScreen = () => {
       itemFrequencyAll,
       itemFrequencyToday
     };
-  }, [baseFilteredOrders, todayOrders, isReady]);
+  }, [baseFilteredOrders, todayOrders, isReady, selectedOrderTypeFilter, search, serverTotalCount, summaryTab, isItemFrequencyModalOpen]);
 
   // Reprint Bill handler
   const handleReprintBill = async (order: any) => {
@@ -1376,13 +1400,14 @@ export const RunningOrdersScreen = () => {
     return (
       <OrderCard
         item={item}
+        isDark={isDark}
         ordersGridColumns={ordersGridColumns}
         isHighest={isHighest}
         isLowest={isLowest}
         onPress={setSelectedOrder}
       />
     );
-  }, [timeScope, stats.todayHighestId, stats.highestOrderId, stats.todayLowestId, stats.lowestOrderId, filteredOrders.length, ordersGridColumns]);
+  }, [timeScope, isDark, stats.todayHighestId, stats.highestOrderId, stats.todayLowestId, stats.lowestOrderId, filteredOrders.length, ordersGridColumns]);
 
   return (
     <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-slate-50'}`}>
@@ -1534,18 +1559,19 @@ export const RunningOrdersScreen = () => {
           data={filteredOrders}
           numColumns={ordersGridColumns}
           keyExtractor={(item, index) => `${item.id || 'order'}-${index}`}
-          initialNumToRender={14}
-          maxToRenderPerBatch={14}
-          windowSize={5}
-          removeClippedSubviews={false}
-          updateCellsBatchingPeriod={50}
+          initialNumToRender={10}
+          maxToRenderPerBatch={8}
+          windowSize={3}
+          removeClippedSubviews={Platform.OS === 'android'}
+          updateCellsBatchingPeriod={40}
           contentContainerStyle={{
             padding: 12,
             paddingBottom: Math.max(insets.bottom + 36, 52),
             maxWidth: 1600,
             alignSelf: 'center',
             width: '100%'
-          }}          ListHeaderComponent={listHeader}
+          }}
+          ListHeaderComponent={listHeader}
           ListFooterComponent={
             timeScope === 'ALL' && currentLimit && stats.totalOrdersCount > filteredOrders.length ? (
               <View className="py-4 items-center">
@@ -1576,8 +1602,10 @@ export const RunningOrdersScreen = () => {
       {selectedOrder && (
         <Modal
           visible={!!selectedOrder}
-          transparent
-          animationType="slide"
+          transparent={false}
+          animationType="fade"
+          hardwareAccelerated
+          statusBarTranslucent
           onRequestClose={() => setSelectedOrder(null)}
         >
           <SafeAreaView className="flex-1 bg-[#0B1120]">

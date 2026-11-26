@@ -14,10 +14,12 @@ interface OrderState {
   subscribeToOrders: (specificLocationId?: string | null, customLimit?: number | null) => () => void;
   loadMoreOrders: () => void;
   fetchTotalOrdersCount: (locationId?: string | null) => Promise<number>;
+  resetOrders: () => void;
 }
 
 // Singleton listener state to prevent duplicate listeners
 let activeOrdersUnsub: (() => void) | null = null;
+let currentSubscribedKey: string | null = null;
 let currentSubscribedLocId: string | null = null;
 let orderSubscribersCount = 0;
 
@@ -28,6 +30,16 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   currentLimit: null, // Dynamic / unlimited by default (no hardcoded limits)
   setOrders: (orders) => set({ orders }),
   setLoading: (isLoading) => set({ isLoading }),
+  resetOrders: () => {
+    if (activeOrdersUnsub) {
+      try { activeOrdersUnsub(); } catch (_) {}
+      activeOrdersUnsub = null;
+    }
+    currentSubscribedKey = null;
+    currentSubscribedLocId = null;
+    orderSubscribersCount = 0;
+    set({ orders: [], isLoading: false, totalOrdersCount: null, currentLimit: null });
+  },
 
   fetchTotalOrdersCount: async (locationId?: string | null) => {
     const { tenant, activeLocationId, locations } = useTenantStore.getState();
@@ -109,31 +121,40 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       return () => {};
     }
 
+    const subKey = `${tenant.id}::${targetLocId || 'NONE'}::${orderLimit || 'ALL'}`;
+
     // Trigger server-side exact count in background
     get().fetchTotalOrdersCount(targetLocId);
 
-    // If already subscribed to this exact location & limit, increment subscriber count and reuse listener
-    if (activeOrdersUnsub && currentSubscribedLocId === (targetLocId || 'NONE')) {
+    // If already subscribed to this exact tenant + location + limit, increment subscriber count and reuse listener
+    if (activeOrdersUnsub && currentSubscribedKey === subKey) {
       orderSubscribersCount++;
       return () => {
         orderSubscribersCount--;
         if (orderSubscribersCount <= 0 && activeOrdersUnsub) {
           activeOrdersUnsub();
           activeOrdersUnsub = null;
+          currentSubscribedKey = null;
           currentSubscribedLocId = null;
           orderSubscribersCount = 0;
         }
       };
     }
 
-    // Clean up previous subscription if location changed
+    // Clean up previous subscription if tenant or location changed
     if (activeOrdersUnsub) {
       activeOrdersUnsub();
       activeOrdersUnsub = null;
       orderSubscribersCount = 0;
     }
 
-    set({ isLoading: true });
+    // Only show loading spinner if we have no orders for this key yet (switching tenant clears orders first)
+    const isSameTenant = currentSubscribedKey?.startsWith(`${tenant.id}::`);
+    set({
+      isLoading: true,
+      ...(isSameTenant ? {} : { orders: [] }),
+    });
+    currentSubscribedKey = subKey;
     currentSubscribedLocId = targetLocId || 'NONE';
     orderSubscribersCount = 1;
 
@@ -166,15 +187,21 @@ export const useOrderStore = create<OrderState>((set, get) => ({
             snapshot.forEach(d => locOrders.push({ ...d.data(), id: d.id, locationName: loc.name } as any));
             branchOrdersMap[loc.id] = locOrders;
 
-            const allMerged = Object.values(branchOrdersMap).flat().sort((a: any, b: any) => {
-              const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
-              const timeB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
-              return timeB - timeA;
-            });
+            const getMs = (o: any): number => {
+              const raw = o?.createdAt;
+              if (!raw) return 0;
+              if (raw.seconds !== undefined) return raw.seconds * 1000;
+              if (typeof raw === 'number') return raw;
+              if (typeof raw.toMillis === 'function') return raw.toMillis();
+              const parsed = Date.parse(raw);
+              return Number.isNaN(parsed) ? 0 : parsed;
+            };
+            const allMerged = Object.values(branchOrdersMap).flat().sort((a: any, b: any) => getMs(b) - getMs(a));
             set({ orders: allMerged, isLoading: false });
           },
           (err) => {
             console.warn(`Error fetching orders for ${loc.name}:`, err);
+            set({ isLoading: false });
           }
         );
         unsubs.push(unsub);
@@ -190,6 +217,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
         if (orderSubscribersCount <= 0 && activeOrdersUnsub) {
           activeOrdersUnsub();
           activeOrdersUnsub = null;
+          currentSubscribedKey = null;
           currentSubscribedLocId = null;
           orderSubscribersCount = 0;
         }
@@ -235,6 +263,7 @@ export const useOrderStore = create<OrderState>((set, get) => ({
       if (orderSubscribersCount <= 0 && activeOrdersUnsub) {
         activeOrdersUnsub();
         activeOrdersUnsub = null;
+        currentSubscribedKey = null;
         currentSubscribedLocId = null;
         orderSubscribersCount = 0;
       }
