@@ -14,6 +14,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native';
 import {
   ArrowLeft,
+  Bike,
+  Boxes,
   Building,
   LayoutGrid,
   MapPin,
@@ -65,12 +67,30 @@ type FlatGridItem =
 const SECTION_PRESETS = ['Main Floor', 'A/C', 'Non A/C', 'Family', 'Outdoor', 'Bar'];
 const CAPACITY_PRESETS = [2, 4, 6, 8];
 
-export const TablesScreen = () => {
+export interface TablesScreenProps {
+  isHomeRoot?: boolean;
+  onOpenBranchPicker?: () => void;
+  onOpenAggregator?: (platform: 'zomato' | 'swiggy') => void;
+  zomatoOrdersCount?: number;
+  swiggyOrdersCount?: number;
+  todaySales?: number;
+  todayOrdersCount?: number;
+}
+
+export const TablesScreen: React.FC<TablesScreenProps> = ({
+  isHomeRoot = false,
+  onOpenBranchPicker,
+  onOpenAggregator,
+  zomatoOrdersCount = 0,
+  swiggyOrdersCount = 0,
+  todaySales,
+  todayOrdersCount,
+}) => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { tables, isLoading, subscribeToTables } = useTableStore();
   const carts = useCartStore(state => state.carts);
-  const { tenant, branding, features, locations, activeLocationId, setActiveLocationId } = useTenantStore();
+  const { tenant, branding, features, locations, activeLocationId, setActiveLocationId, getActiveLocation } = useTenantStore();
   const { user } = useAuthStore();
   const { orders, subscribeToOrders } = useOrderStore();
   const { settings } = usePrinterStore();
@@ -81,8 +101,12 @@ export const TablesScreen = () => {
   const userAssigned = user?.assignedLocationId;
   const hasMultiBranchAccess =
     (user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'PLATFORM_ADMIN') &&
-    (!userAssigned || (user?.locationIds && user.locationIds.includes('*')));
+    (!userAssigned || (user?.locationIds && user?.locationIds.includes('*')));
+  const isManagerOrAbove =
+    hasMultiBranchAccess || user?.role === 'MANAGER' || user?.role === 'manager';
 
+  const activeLocation = getActiveLocation();
+  const businessTitle = branding?.displayName || branding?.businessName || tenant?.businessName || 'Zentiq POS';
   const paymentsEnabled = features.paymentsEnabled !== false;
   const pickupEnabled = features.pickupEnabled !== false;
   const activeMethods = useMemo(() => resolveActivePaymentMethods(features), [features]);
@@ -101,7 +125,6 @@ export const TablesScreen = () => {
   const [busySettleTableNo, setBusySettleTableNo] = useState<number | null>(null);
   const [settleTarget, setSettleTarget] = useState<{ table: Table; ctx: TableOrderContext } | null>(null);
 
-  // Table metadata edit modal state (Section / Capacity)
   const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [editSectionText, setEditSectionText] = useState('Main Floor');
   const [editCapacity, setEditCapacity] = useState<number>(4);
@@ -118,13 +141,9 @@ export const TablesScreen = () => {
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    const unsubTables = subscribeToTables();
-    const unsubOrders = subscribeToOrders(activeLocationId);
+    subscribeToTables();
+    subscribeToOrders(activeLocationId);
     setTimeout(() => setIsRefreshing(false), 450);
-    return () => {
-      unsubTables();
-      unsubOrders();
-    };
   }, [subscribeToTables, subscribeToOrders, activeLocationId]);
 
   // Index running orders by table number for O(1) lookup
@@ -139,7 +158,7 @@ export const TablesScreen = () => {
     return map;
   }, [orders]);
 
-  // Resolve visual & billing context per table once cleanly
+  // Resolve visual & billing context per table cleanly
   const tableContextMap = useMemo(() => {
     const map: Record<string, TableOrderContext> = {};
     tables.forEach(t => {
@@ -154,14 +173,12 @@ export const TablesScreen = () => {
     return map;
   }, [tables, carts, runningOrderMap, features]);
 
-  // Unique floor sections discovered dynamically
   const availableSections = useMemo(() => {
     const set = new Set<string>();
     tables.forEach(t => set.add(t.section?.trim() || 'Main Floor'));
     return Array.from(set);
   }, [tables]);
 
-  // Status summary counters for Legend bar
   const counts = useMemo(() => {
     const tally = {
       ALL: tables.length,
@@ -173,14 +190,11 @@ export const TablesScreen = () => {
     };
     tables.forEach(t => {
       const ctx = tableContextMap[t.id || String(t.tableNo)];
-      if (ctx) {
-        tally[ctx.visualState] += 1;
-      }
+      if (ctx) tally[ctx.visualState] += 1;
     });
     return tally;
   }, [tables, tableContextMap]);
 
-  // Filtered + search-matched tables
   const filteredTables = useMemo(() => {
     const q = billSearchQuery.trim().toLowerCase();
     return [...tables]
@@ -202,7 +216,6 @@ export const TablesScreen = () => {
       });
   }, [tables, selectedSection, statusFilter, billSearchQuery, tableContextMap]);
 
-  // Group into section headers + fixed multi-column rows for fast Android FlatList virtualization
   const gridRows = useMemo<FlatGridItem[]>(() => {
     const grouped: Record<string, Table[]> = {};
     filteredTables.forEach(t => {
@@ -398,7 +411,7 @@ export const TablesScreen = () => {
   const renderGridRow = useCallback(({ item }: { item: FlatGridItem }) => {
     if (item.type === 'SECTION_HEADER') {
       return (
-        <View className="flex-row items-center justify-between px-2 pt-3 pb-1.5">
+        <View className="flex-row items-center justify-between px-2 pt-3 pb-1">
           <View className="flex-row items-center">
             <Text className={`font-black text-sm tracking-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
               {item.section}
@@ -415,7 +428,7 @@ export const TablesScreen = () => {
 
     const cols = Math.max(2, tableGridColumns);
     return (
-      <View className="flex-row items-start px-0.5 mb-2">
+      <View className="flex-row items-start px-0.5 mb-1">
         {item.items.map(table => {
           const ctx = tableContextMap[table.id || String(table.tableNo)] ||
             resolveTableOrderContext(table, carts[table.tableNo], null, features);
@@ -459,7 +472,7 @@ export const TablesScreen = () => {
 
   const legendItems: { key: FilterStatus; label: string; count: number; dot: string }[] = [
     { key: 'ALL', label: 'All', count: counts.ALL, dot: 'bg-indigo-500' },
-    { key: 'BLANK', label: 'Blank Table', count: counts.BLANK, dot: 'bg-slate-400' },
+    { key: 'BLANK', label: 'Blank', count: counts.BLANK, dot: 'bg-slate-400' },
     { key: 'RUNNING', label: 'Running', count: counts.RUNNING, dot: 'bg-sky-400' },
     { key: 'RUNNING_KOT', label: 'Running KOT', count: counts.RUNNING_KOT, dot: 'bg-amber-400' },
     { key: 'PRINTED', label: 'Printed', count: counts.PRINTED, dot: 'bg-emerald-400' },
@@ -469,115 +482,195 @@ export const TablesScreen = () => {
     <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#090D1A]' : 'bg-white'}`}>
       <HamburgerMenu isVisible={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Top Command Bar (New Order, Bill No Search, Live Orders, Pick Up / Take Away) */}
+      {/* Unified Top Command Bar (Single Clean POS Header) */}
       <View
-        className={`px-3 sm:px-4 py-2.5 border-b flex-row flex-wrap items-center justify-between gap-2 ${
+        className={`px-3 sm:px-4 py-2.5 border-b gap-2 ${
           isDark ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-200'
         }`}
       >
-        {/* Left Command Group */}
-        <View className="flex-row items-center gap-2 flex-wrap">
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            className={`p-2 rounded-xl border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
-            accessibilityLabel="Back"
-          >
-            <ArrowLeft size={16} color={isDark ? '#CBD5E1' : '#475569'} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setSidebarOpen(true)}
-            className={`p-2 rounded-xl border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
-            accessibilityLabel="Open Navigation Menu"
-          >
-            <MenuIcon size={16} color={isDark ? '#CBD5E1' : '#475569'} />
-          </TouchableOpacity>
-
-          {/* New Order CTA */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'COUNTER' })}
-            className="bg-[#DC2626] px-3 py-2 rounded-xl flex-row items-center shadow-sm active:opacity-90"
-          >
-            <Zap size={14} color="white" />
-            <Text className="text-white font-bold text-xs ml-1.5">New Order</Text>
-          </TouchableOpacity>
-
-          {/* Bill No / Table Search */}
-          <View
-            className={`flex-row items-center px-2.5 py-1 rounded-xl border min-w-[130px] sm:min-w-[180px] ${
-              isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'
-            }`}
-          >
-            <Search size={13} color="#94A3B8" />
-            <TextInput
-              value={billSearchQuery}
-              onChangeText={setBillSearchQuery}
-              onSubmitEditing={handleBillSearchSubmit}
-              placeholder="Bill No / Table #"
-              placeholderTextColor="#94A3B8"
-              returnKeyType="search"
-              className={`ml-1.5 py-1 text-xs flex-1 ${isDark ? 'text-white' : 'text-slate-800'}`}
-            />
-            {billSearchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setBillSearchQuery('')}>
-                <X size={13} color="#94A3B8" />
+        {/* Row 1: Brand/Branch + Quick Utility Shortcuts + Pick Up */}
+        <View className="flex-row items-center justify-between gap-2">
+          <View className="flex-row items-center flex-1 min-w-0 gap-2">
+            {!isHomeRoot && (
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                className={`p-2 rounded-xl border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
+                accessibilityLabel="Back"
+              >
+                <ArrowLeft size={16} color={isDark ? '#CBD5E1' : '#475569'} />
               </TouchableOpacity>
             )}
+
+            <TouchableOpacity
+              onPress={() => setSidebarOpen(true)}
+              className={`p-2 rounded-xl border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
+              accessibilityLabel="Open Navigation Menu"
+            >
+              <MenuIcon size={17} color={isDark ? '#CBD5E1' : '#475569'} />
+            </TouchableOpacity>
+
+            <View className="flex-1 min-w-0">
+              <Text className={`font-black text-sm sm:text-base ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
+                {businessTitle}
+              </Text>
+              {onOpenBranchPicker ? (
+                <TouchableOpacity onPress={onOpenBranchPicker} className="flex-row items-center">
+                  <MapPin size={11} color="#A855F7" />
+                  <Text className="text-purple-500 text-[11px] font-bold ml-1" numberOfLines={1}>
+                    {activeLocation?.name || 'Select Branch'} ▾
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View className="flex-row items-center">
+                  <MapPin size={11} color="#10B981" />
+                  <Text className="text-emerald-500 text-[11px] font-bold ml-1" numberOfLines={1}>
+                    {activeLocation?.name || 'Table View'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          <View className="flex-row items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Compact Sales / Bill History shortcut */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate(Routes.ORDERS)}
+              className={`px-2.5 py-2 rounded-xl border flex-row items-center ${
+                isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <Receipt size={14} color={isDark ? '#CBD5E1' : '#475569'} />
+              <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                {isLargePOS && todaySales !== undefined
+                  ? `₹${todaySales.toFixed(0)} • ${todayOrdersCount || 0} Bills`
+                  : 'Orders'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Online Aggregators (Zomato & Swiggy) */}
+            {onOpenAggregator && (
+              <View className="hidden sm:flex flex-row items-center gap-1.5">
+                <TouchableOpacity
+                  onPress={() => onOpenAggregator('zomato')}
+                  className="bg-[#E23744]/10 border border-[#E23744]/30 px-2.5 py-2 rounded-xl flex-row items-center"
+                >
+                  <Bike size={13} color="#E23744" />
+                  <Text className="text-[#E23744] font-black text-[11px] ml-1">
+                    Z {zomatoOrdersCount > 0 ? `(${zomatoOrdersCount})` : ''}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onOpenAggregator('swiggy')}
+                  className="bg-[#FC8019]/10 border border-[#FC8019]/30 px-2.5 py-2 rounded-xl flex-row items-center"
+                >
+                  <Bike size={13} color="#FC8019" />
+                  <Text className="text-[#FC8019] font-black text-[11px] ml-1">
+                    S {swiggyOrdersCount > 0 ? `(${swiggyOrdersCount})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {isLargePOS && isManagerOrAbove && (
+              <TouchableOpacity
+                onPress={() => navigation.navigate(Routes.INVENTORY)}
+                className={`px-2.5 py-2 rounded-xl border flex-row items-center ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <Boxes size={14} color="#10B981" />
+                <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                  Stock
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Take Away / Pick Up CTA right in the top bar */}
+            {pickupEnabled && (
+              <TouchableOpacity
+                onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'PICKUP' })}
+                className="bg-[#DC2626] px-3 py-2 rounded-xl flex-row items-center shadow-sm active:opacity-90"
+              >
+                <ShoppingBag size={14} color="white" />
+                <Text className="text-white font-bold text-xs ml-1.5">Pick Up</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={toggleTheme}
+              className={`p-2 rounded-xl border ${
+                isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+              }`}
+              accessibilityLabel="Toggle Theme"
+            >
+              {isDark ? <Sun size={15} color="#FBBF24" /> : <Moon size={15} color="#6366F1" />}
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Right Utility & Take Away Group */}
-        <View className="flex-row items-center gap-1.5 sm:gap-2 flex-wrap">
-          <TouchableOpacity
-            onPress={() => navigation.navigate(Routes.ORDERS)}
-            className={`px-2.5 py-2 rounded-xl border flex-row items-center ${
-              isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <Receipt size={14} color={isDark ? '#CBD5E1' : '#475569'} />
-            {isLargePOS && (
-              <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                Bill History
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleRefresh}
-            className={`p-2 rounded-xl border ${
-              isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}
-            accessibilityLabel="Refresh Tables"
-          >
-            <RefreshCw size={15} color={isRefreshing ? '#6366F1' : isDark ? '#CBD5E1' : '#475569'} />
-          </TouchableOpacity>
-
-          {/* Take Away / Pick Up button - explicitly kept visible even when Pickup is enabled */}
-          {pickupEnabled && (
+        {/* Row 2: New Order + Bill Search + Refresh + Online Mobile Pill */}
+        <View className="flex-row items-center justify-between gap-2 flex-wrap">
+          <View className="flex-row items-center gap-2 flex-1 min-w-[200px]">
             <TouchableOpacity
-              onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'PICKUP' })}
-              className="bg-[#DC2626] px-3 py-2 rounded-xl flex-row items-center shadow-sm active:opacity-90"
+              onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'COUNTER' })}
+              className="bg-[#5D3FD3] px-3 py-1.5 rounded-xl flex-row items-center shadow-sm active:opacity-90"
             >
-              <ShoppingBag size={14} color="white" />
-              <Text className="text-white font-bold text-xs ml-1.5">Pick Up / Take Away</Text>
+              <Zap size={13} color="white" />
+              <Text className="text-white font-bold text-xs ml-1">New Order</Text>
             </TouchableOpacity>
-          )}
 
-          <TouchableOpacity
-            onPress={toggleTheme}
-            className={`p-2 rounded-xl border ${
-              isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
-            }`}
-            accessibilityLabel="Toggle Theme"
-          >
-            {isDark ? <Sun size={15} color="#FBBF24" /> : <Moon size={15} color="#6366F1" />}
-          </TouchableOpacity>
+            <View
+              className={`flex-1 flex-row items-center px-2.5 py-1 rounded-xl border max-w-[240px] ${
+                isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'
+              }`}
+            >
+              <Search size={13} color="#94A3B8" />
+              <TextInput
+                value={billSearchQuery}
+                onChangeText={setBillSearchQuery}
+                onSubmitEditing={handleBillSearchSubmit}
+                placeholder="Bill No / Table #"
+                placeholderTextColor="#94A3B8"
+                returnKeyType="search"
+                className={`ml-1.5 py-0.5 text-xs flex-1 ${isDark ? 'text-white' : 'text-slate-800'}`}
+              />
+              {billSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setBillSearchQuery('')}>
+                  <X size={13} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <View className="flex-row items-center gap-1.5">
+            {onOpenAggregator && (zomatoOrdersCount + swiggyOrdersCount) > 0 && (
+              <TouchableOpacity
+                onPress={() => onOpenAggregator(zomatoOrdersCount > 0 ? 'zomato' : 'swiggy')}
+                className="sm:hidden bg-amber-500/15 border border-amber-500/30 px-2.5 py-1.5 rounded-xl flex-row items-center"
+              >
+                <Bike size={13} color="#F59E0B" />
+                <Text className="text-amber-500 font-bold text-[11px] ml-1">
+                  {zomatoOrdersCount + swiggyOrdersCount} Online
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={handleRefresh}
+              className={`p-1.5 rounded-xl border ${
+                isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+              }`}
+              accessibilityLabel="Refresh Tables"
+            >
+              <RefreshCw size={14} color={isRefreshing ? '#6366F1' : isDark ? '#CBD5E1' : '#475569'} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      {/* Multi-Branch Floor Plan Switcher */}
-      {hasMultiBranchAccess && locations.length > 1 && (
+      {/* Multi-Branch Strip when pushed standalone without header modal picker */}
+      {!onOpenBranchPicker && hasMultiBranchAccess && locations.length > 1 && (
         <View
           className={`px-4 py-2 border-b flex-row items-center justify-between ${
             isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'
@@ -615,19 +708,18 @@ export const TablesScreen = () => {
 
       {/* Table View Actions + Color Legend Ribbon */}
       <View
-        className={`px-3 sm:px-4 py-2.5 border-b ${
+        className={`px-3 sm:px-4 py-2 border-b ${
           isDark ? 'bg-[#0c1222] border-slate-800' : 'bg-slate-50/70 border-slate-200'
         }`}
       >
         <View className="flex-row flex-wrap items-center justify-between gap-2">
-          {/* Left Action Pills */}
           <View className="flex-row items-center gap-1.5 flex-wrap">
             <TouchableOpacity
               onPress={handleAddTable}
               disabled={isAdding}
-              className="bg-[#5D3FD3] px-3 py-1.5 rounded-xl flex-row items-center shadow-sm"
+              className="bg-[#5D3FD3] px-2.5 py-1.5 rounded-xl flex-row items-center shadow-sm"
             >
-              {isAdding ? <ActivityIndicator size="small" color="white" /> : <Plus size={14} color="white" />}
+              {isAdding ? <ActivityIndicator size="small" color="white" /> : <Plus size={13} color="white" />}
               <Text className="text-white font-bold text-xs ml-1">Add Table</Text>
             </TouchableOpacity>
 
@@ -639,9 +731,9 @@ export const TablesScreen = () => {
                   : isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
               }`}
             >
-              <SlidersHorizontal size={13} color={isEditMode ? '#FFFFFF' : isDark ? '#CBD5E1' : '#475569'} />
-              <Text className={`text-xs font-bold ml-1.5 ${isEditMode ? 'text-white' : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                {isEditMode ? 'Done Editing' : 'Manage'}
+              <SlidersHorizontal size={12} color={isEditMode ? '#FFFFFF' : isDark ? '#CBD5E1' : '#475569'} />
+              <Text className={`text-xs font-bold ml-1 ${isEditMode ? 'text-white' : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                {isEditMode ? 'Done' : 'Manage'}
               </Text>
             </TouchableOpacity>
 
@@ -649,12 +741,11 @@ export const TablesScreen = () => {
               onPress={() => setIsQrModalOpen(true)}
               className="bg-emerald-600 px-2.5 py-1.5 rounded-xl flex-row items-center shadow-sm"
             >
-              <QrCode size={13} color="white" />
+              <QrCode size={12} color="white" />
               <Text className="text-white font-bold text-xs ml-1">QRs</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Right Legend & Quick Status Filters */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -686,7 +777,6 @@ export const TablesScreen = () => {
           </ScrollView>
         </View>
 
-        {/* Floor Sections Filter Row (shown whenever > 1 section or Manage mode) */}
         {(availableSections.length > 1 || isEditMode) && (
           <ScrollView
             horizontal
@@ -719,7 +809,7 @@ export const TablesScreen = () => {
         )}
       </View>
 
-      {/* Main Section-Grouped Virtualized Table Grid */}
+      {/* Single Unified Section-Grouped Virtualized Table Grid */}
       <FlatList
         className="flex-1"
         style={{ flex: 1 }}
@@ -732,7 +822,7 @@ export const TablesScreen = () => {
         keyExtractor={item => item.key}
         contentContainerStyle={{
           paddingHorizontal: 10,
-          paddingTop: 6,
+          paddingTop: 4,
           paddingBottom: Math.max(insets.bottom + 24, 32),
         }}
         ListEmptyComponent={
@@ -864,7 +954,6 @@ export const TablesScreen = () => {
         </View>
       </Modal>
 
-      {/* Download QR Modal */}
       <TableQrDownloadModal
         visible={isQrModalOpen}
         onClose={() => setIsQrModalOpen(false)}

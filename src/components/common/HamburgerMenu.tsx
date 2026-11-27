@@ -216,17 +216,17 @@ export const HamburgerMenu = ({ isVisible, onClose }: HamburgerMenuProps) => {
             {/* Navigation Items (Filtered by Role - Kitchen Staff gets 0 access to POS modules) */}
             {!isKitchenStaff && (
               <View className="space-y-1.5">
-                {/* Tables & Floor Plan */}
+                {/* Unified Table View (Home) */}
                 {features.tablesEnabled && (
                   <TouchableOpacity
-                    onPress={() => navigateTo(Routes.TABLES)}
+                    onPress={() => navigateTo(Routes.HOME)}
                     className={`flex-row items-center justify-between p-3 rounded-2xl ${
                       isDark ? 'active:bg-slate-800' : 'active:bg-slate-100'
                     }`}
                   >
                     <View className="flex-row items-center">
                       <LayoutGrid size={18} color={isDark ? '#818CF8' : '#6366F1'} />
-                      <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Floor Plan & Tables</Text>
+                      <Text className={`text-sm font-semibold ml-3 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Table View (POS)</Text>
                     </View>
                     <ChevronRight size={16} color={isDark ? '#64748B' : '#94A3B8'} />
                   </TouchableOpacity>

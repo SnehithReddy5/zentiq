@@ -1,6 +1,7 @@
 import { toast } from '../../utils/toast';
 import { confirmDialog } from '../../utils/confirm';
 import { MenuScreen } from '../menu/MenuScreen';
+import { TablesScreen } from '../tables/TablesScreen';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -45,7 +46,6 @@ import { useThemeStore } from '../../store/theme.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { useOrderStore } from '../../store/order.store';
 import { useTableStore } from '../../store/table.store';
-import { useCartStore } from '../../store/cart.store';
 import { usePrinterStore } from '../../store/printer.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
@@ -56,16 +56,6 @@ import { DBServices } from '../../services/firebase/db';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { AggregatorParserService } from '../../services/integrations/aggregatorParser.service';
-import {
-  printTableBillAction,
-  resolveActivePaymentMethods,
-  resolveTableOrderContext,
-  settleTableOrderAction,
-  TableOrderContext,
-} from '../../services/orders/tableActions.service';
-import { Table } from '../../types/table.types';
-import { TableTile } from '../tables/components/TableTile';
-import { QuickSettleModal } from '../tables/components/QuickSettleModal';
 
 export const HomeScreen = () => {
   const insets = useSafeAreaInsets();
@@ -73,7 +63,6 @@ export const HomeScreen = () => {
   const { tenant, branding, features, locations, activeLocationId, setActiveLocationId, getActiveLocation } = useTenantStore();
   const { orders, subscribeToOrders } = useOrderStore();
   const { tables, subscribeToTables } = useTableStore();
-  const carts = useCartStore(state => state.carts);
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
   const { isLargePOS, isDesktop } = useResponsiveLayout();
@@ -83,9 +72,6 @@ export const HomeScreen = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isBranchModalOpen, setBranchModalOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [busyPrintTableNo, setBusyPrintTableNo] = useState<number | null>(null);
-  const [busySettleTableNo, setBusySettleTableNo] = useState<number | null>(null);
-  const [homeSettleTarget, setHomeSettleTarget] = useState<{ table: Table; ctx: TableOrderContext } | null>(null);
 
   // Zomato & Swiggy Online Store Status
   const [isZomatoOnline, setZomatoOnline] = useState(true);
@@ -140,88 +126,6 @@ export const HomeScreen = () => {
       availableTablesCount: Math.max(0, tables.length - occupied.length)
     };
   }, [tables]);
-
-  const homeRunningOrderMap = React.useMemo(() => {
-    const map: Record<number, any> = {};
-    orders.forEach(o => {
-      if ((o.status === 'RUNNING' || o.status === 'running') && o.tableNo !== undefined && o.tableNo !== null) {
-        map[Number(o.tableNo)] = o;
-      }
-    });
-    return map;
-  }, [orders]);
-
-  const homeActiveMethods = React.useMemo(() => resolveActivePaymentMethods(features), [features]);
-  const homePaymentsEnabled = features.paymentsEnabled !== false;
-
-  const handleHomeTablePrint = React.useCallback(async (item: Table, ctx: TableOrderContext) => {
-    if (busyPrintTableNo !== null) return;
-    setBusyPrintTableNo(item.tableNo);
-    try {
-      await printTableBillAction({
-        tableNo: item.tableNo,
-        orderType: 'DINE_IN',
-        cartItems: ctx.items,
-        printedBillNo: ctx.billNo,
-        existingRunningOrder: ctx.runningOrder,
-        settings,
-        branding,
-        features,
-        tenantId: tenant?.id,
-        locationId: activeLocationId,
-        staffName: user?.name || 'Staff',
-      });
-    } finally {
-      setBusyPrintTableNo(null);
-    }
-  }, [busyPrintTableNo, settings, branding, features, tenant?.id, activeLocationId, user?.name]);
-
-  const executeHomeTableSettle = React.useCallback(async (
-    table: Table,
-    ctx: TableOrderContext,
-    method: string,
-    shouldPrint: boolean
-  ) => {
-    setBusySettleTableNo(table.tableNo);
-    try {
-      const res = await settleTableOrderAction({
-        tableNo: table.tableNo,
-        orderType: 'DINE_IN',
-        cartItems: ctx.items,
-        finalPayments: [{ method, amount: ctx.displayAmount }],
-        shouldPrint,
-        printedBillNo: ctx.billNo,
-        existingRunningOrder: ctx.runningOrder,
-        user,
-        tenantId: tenant?.id,
-        locationId: activeLocationId,
-        locations,
-        settings,
-        branding,
-        features,
-      });
-      if (res.success) {
-        setHomeSettleTarget(null);
-      }
-    } finally {
-      setBusySettleTableNo(null);
-    }
-  }, [user, tenant?.id, activeLocationId, locations, settings, branding, features]);
-
-  const handleHomeTableSave = React.useCallback((item: Table, ctx: TableOrderContext) => {
-    if (user?.role === 'WAITER' || user?.role === 'captain') {
-      toast.warning(
-        'Bill settlement requires Biller or Manager authorization. Please hand over this table order to the billing counter.',
-        'Action Restricted'
-      );
-      return;
-    }
-    if (!homePaymentsEnabled) {
-      executeHomeTableSettle(item, ctx, 'NO_PAYMENT', false);
-      return;
-    }
-    setHomeSettleTarget({ table: item, ctx });
-  }, [user?.role, homePaymentsEnabled, executeHomeTableSettle]);
 
   // LIVE Aggregator orders from real Firestore database (NO hardcoded fake data)
   const liveAggregatorOrders = React.useMemo(() => {
@@ -335,12 +239,354 @@ export const HomeScreen = () => {
     }
   };
 
-// When both Dine-In floor and Pickup are turned off, enter Quick Sale direct counter mode immediately (no intermediate button required)
+  const renderSharedModals = () => (
+    <>
+      {/* Aggregator Live Orders Modal */}
+      <Modal visible={selectedAggregator !== null} transparent animationType="slide">
+        <View className="flex-1 bg-black/70 justify-end">
+          <View
+            className={`border-t rounded-t-3xl p-5 max-h-[85%] ${
+              isDark
+                ? 'bg-slate-900 border-slate-700'
+                : 'bg-white border-slate-200 shadow-2xl'
+            }`}
+          >
+            <View
+              className={`flex-row items-center justify-between pb-3 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}
+            >
+              <View className="flex-row items-center">
+                <View className={'px-2.5 py-1 rounded-lg mr-2 ' + (selectedAggregator === 'zomato' ? 'bg-[#E23744]' : 'bg-[#FC8019]')}>
+                  <Text className="text-white font-black text-xs uppercase">{selectedAggregator}</Text>
+                </View>
+                <Text
+                  className={`font-black text-lg ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
+                  Incoming Online Orders
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setSelectedAggregator(null)}
+                className={`p-1 rounded-full border ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                }`}
+              >
+                <X size={20} color={isDark ? '#94A3B8' : '#64748B'} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView className="mt-3">
+              {(selectedAggregator === 'zomato' ? zomatoOrders : swiggyOrders).length === 0 ? (
+                <View className="py-8 px-4 items-center">
+                  <View
+                    className={`w-14 h-14 rounded-full items-center justify-center mb-3 ${
+                      isDark ? 'bg-slate-800' : 'bg-slate-100'
+                    }`}
+                  >
+                    <Bike size={28} color={isDark ? '#94A3B8' : '#64748B'} />
+                  </View>
+                  <Text
+                    className={`text-base font-bold text-center ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}
+                  >
+                    No Active Orders from {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'}
+                  </Text>
+                  <Text
+                    className={`text-xs text-center mt-1.5 leading-relaxed max-w-xs ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
+                    Orders placed on {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} will automatically appear here once forwarded via email or when simulated.
+                  </Text>
+
+                  <TouchableOpacity
+                    disabled={isSimulatingAggregator}
+                    onPress={() => handleSimulateTestOrder(selectedAggregator === 'zomato' ? 'ZOMATO' : 'SWIGGY')}
+                    className={'mt-5 px-5 py-3 rounded-2xl flex-row items-center ' + (
+                      selectedAggregator === 'zomato' ? 'bg-[#E23744]' : 'bg-[#FC8019]'
+                    )}
+                  >
+                    <Sparkles size={16} color="white" />
+                    <Text className="text-white font-bold text-xs ml-2">
+                      {isSimulatingAggregator
+                        ? 'Simulating Order...'
+                        : `Test Live ${ selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} Order`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View
+                    className={`mt-5 p-3.5 border rounded-2xl w-full ${
+                      isDark
+                        ? 'bg-slate-950/80 border-slate-800'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <Text
+                      className={`text-[11px] leading-relaxed ${
+                        isDark ? 'text-slate-400' : 'text-slate-600'
+                      }`}
+                    >
+                      💡 <Text className={`font-bold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>How to automate:</Text> Set up auto-forwarding from your registered restaurant email for {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} notifications.
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                (selectedAggregator === 'zomato' ? zomatoOrders : swiggyOrders).map(order => {
+                  const orderDisplayNo = order.aggregatorOrderId || String(order.kotNo || order.orderNumber || order.id);
+                  const isPaid = order.paymentStatus === 'PAID';
+                  return (
+                    <View
+                      key={order.id}
+                      className={`border rounded-2xl p-4 mb-3 ${
+                        isDark
+                          ? 'bg-slate-800/80 border-slate-700/80'
+                          : 'bg-slate-50 border-slate-200 shadow-sm'
+                      }`}
+                    >
+                      <View className="flex-row items-center justify-between mb-2">
+                        <View className="flex-row items-center flex-wrap gap-1.5 flex-1 mr-2">
+                          <Text
+                            className={`font-black text-base ${
+                              isDark ? 'text-white' : 'text-slate-900'
+                            }`}
+                          >
+                            #{orderDisplayNo}
+                          </Text>
+                          <View className="bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                            <Text className="text-emerald-500 text-[10px] font-bold">
+                              {isPaid ? 'PAID ONLINE' : 'PAY ON DELIVERY'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View className="flex-row items-center shrink-0">
+                          <Clock size={12} color={isDark ? '#94A3B8' : '#64748B'} />
+                          <Text
+                            className={`text-[11px] ml-1 ${
+                              isDark ? 'text-slate-400' : 'text-slate-500'
+                            }`}
+                          >
+                            {order.createdAt ? 'Active' : 'Live'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text
+                        className={`text-xs font-semibold mb-2 ${
+                          isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}
+                      >
+                        Customer: {order.customerName || 'Online Diner'} {order.customerPhone ? `(${ order.customerPhone })` : ''}
+                      </Text>
+
+                      <View
+                        className={`rounded-xl p-3 mb-3 border ${
+                          isDark
+                            ? 'bg-slate-900/90 border-slate-800'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        {(order.items || []).map((item: any, idx: number) => (
+                          <View
+                            key={idx}
+                            className={`flex-row justify-between py-1 border-b last:border-b-0 ${
+                              isDark ? 'border-slate-800/60' : 'border-slate-100'
+                            }`}
+                          >
+                            <Text
+                              className={`text-xs flex-1 mr-2 ${
+                                isDark ? 'text-slate-200' : 'text-slate-800'
+                              }`}
+                            >
+                              {item.qty || 1}x {item.itemName || item.name}
+                            </Text>
+                            <Text
+                              className={`text-xs font-bold ${
+                                isDark ? 'text-slate-400' : 'text-slate-600'
+                              }`}
+                            >
+                              ₹{Number(item.price || 0) * Number(item.qty || 1)}
+                            </Text>
+                          </View>
+                        ))}
+                        <View
+                          className={`flex-row justify-between pt-2 mt-1 border-t ${
+                            isDark ? 'border-slate-800' : 'border-slate-100'
+                          }`}
+                        >
+                          <Text
+                            className={`font-bold text-xs ${
+                              isDark ? 'text-slate-400' : 'text-slate-500'
+                            }`}
+                          >
+                            Total Bill
+                          </Text>
+                          <Text
+                            className={`font-black text-sm ${
+                              isDark ? 'text-white' : 'text-slate-900'
+                            }`}
+                          >
+                            ₹{Number(order.totalAmount || 0).toFixed(2)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {order.deliveryRiderName && (
+                        <View className="flex-row items-center mb-3 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl">
+                          <Bike size={14} color="#6366F1" />
+                          <Text className="text-indigo-600 text-xs font-medium ml-2 flex-1" numberOfLines={1}>
+                            {order.deliveryRiderName} {order.deliveryRiderPhone ? `• ${ order.deliveryRiderPhone } ` : ''}
+                          </Text>
+                        </View>
+                      )}
+
+                      <View className="flex-row gap-2">
+                        <TouchableOpacity
+                          onPress={() => handleAcceptOnlineOrder(order)}
+                          className="flex-1 bg-emerald-600 py-2.5 rounded-xl items-center justify-center flex-row shadow-sm active:bg-emerald-700"
+                        >
+                          <Printer size={15} color="white" />
+                          <Text className="text-white font-bold text-xs ml-1.5">Accept & Print KOT</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => handleMarkOrderReady(order.id, orderDisplayNo)}
+                          className="flex-1 bg-amber-600 py-2.5 rounded-xl items-center justify-center flex-row shadow-sm active:bg-amber-700"
+                        >
+                          <CheckCircle2 size={15} color="white" />
+                          <Text className="text-white font-bold text-xs ml-1.5">Food Ready / Settle</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => handleCancelOnlineOrder(order.id, orderDisplayNo)}
+                          className="px-3 bg-rose-600/20 border border-rose-500/30 py-2.5 rounded-xl items-center justify-center"
+                        >
+                          <X size={15} color="#F43F5E" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Branch Selection Modal for Client Admin */}
+      <Modal visible={isBranchModalOpen} transparent animationType="fade">
+        <View className="flex-1 bg-black/70 items-center justify-center p-5">
+          <View
+            className={`border rounded-3xl p-5 w-full max-w-md shadow-2xl ${
+              isDark
+                ? 'bg-slate-900 border-slate-800'
+                : 'bg-white border-slate-200'
+            }`}
+          >
+            <View
+              className={`flex-row items-center justify-between pb-3 border-b ${
+                isDark ? 'border-slate-800' : 'border-slate-200'
+              }`}
+            >
+              <View className="flex-row items-center">
+                <MapPin size={18} color="#A855F7" />
+                <Text
+                  className={`font-black text-lg ml-2 ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}
+                >
+                  Select Active Branch
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setBranchModalOpen(false)}
+                className={`p-1 rounded-full border ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                }`}
+              >
+                <X size={18} color={isDark ? '#94A3B8' : '#64748B'} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView className="my-3 max-h-72">
+              {locations.map(loc => {
+                const isSelected = activeLocationId === loc.id;
+                const isDisabled = loc.status === 'DISABLED';
+                return (
+                  <TouchableOpacity
+                    key={loc.id}
+                    disabled={isDisabled}
+                    onPress={() => handleSelectBranch(loc)}
+                    className={'p-3.5 mb-2 rounded-2xl border flex-row items-center justify-between ' + (
+                      isSelected
+                        ? 'bg-purple-500/15 border-[#5D3FD3]'
+                        : isDisabled
+                        ? isDark
+                          ? 'bg-slate-950/40 border-slate-850 opacity-40'
+                          : 'bg-slate-100 border-slate-200 opacity-40'
+                        : isDark
+                        ? 'bg-slate-800/80 border-slate-700/70'
+                        : 'bg-slate-50 border-slate-200'
+                    )}
+                  >
+                    <View className="flex-1 mr-2">
+                      <View className="flex-row items-center">
+                        <Text className={'font-bold text-sm ' + (isSelected ? 'text-purple-600 font-black' : (isDark ? 'text-white' : 'text-slate-900'))}>
+                          {loc.name}
+                        </Text>
+                        {isDisabled && (
+                          <View className="ml-2 px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/30">
+                            <Text className="text-rose-400 text-[9px] font-bold">DISABLED</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text
+                        className={`text-xs mt-0.5 ${
+                          isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}
+                        numberOfLines={1}
+                      >
+                        {loc.address}
+                      </Text>
+                    </View>
+                    {isSelected && <CheckCircle2 size={18} color="#A855F7" />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+
+  // When both Dine-In floor and Pickup are turned off, enter Quick Sale direct counter mode immediately (no intermediate button required)
   const isQuickSaleOnly = features.dineInEnabled === false && features.pickupEnabled === false;
   if (isQuickSaleOnly) {
     return (
       <View style={{ flex: 1, backgroundColor: isDark ? '#090D1A' : '#F8FAFC' }}>
         <MenuScreen isDirectHome={true} />
+      </View>
+    );
+  }
+
+  // Single Unified Table POS Workspace when Dine-In tables are enabled (eliminates duplicate Home vs Tables screens)
+  if (features.dineInEnabled !== false && features.tablesEnabled !== false) {
+    return (
+      <View style={{ flex: 1, backgroundColor: isDark ? '#090D1A' : '#FFFFFF' }}>
+        <TablesScreen
+          isHomeRoot={true}
+          onOpenBranchPicker={isClientAdmin ? () => setBranchModalOpen(true) : undefined}
+          onOpenAggregator={(platform) => setSelectedAggregator(platform)}
+          zomatoOrdersCount={zomatoOrdersCount}
+          swiggyOrdersCount={swiggyOrdersCount}
+          todaySales={todaySales}
+          todayOrdersCount={todayOrders.length}
+        />
+        {renderSharedModals()}
       </View>
     );
   }
@@ -399,18 +645,6 @@ export const HomeScreen = () => {
         <View className="flex-row items-center gap-1.5 sm:gap-2">
           {isLargePOS && (
             <>
-              {features.dineInEnabled !== false && features.tablesEnabled !== false && (
-                <TouchableOpacity
-                  onPress={() => navigation.navigate(Routes.TABLES)}
-                  className="flex-row items-center bg-[#5D3FD3] px-3 py-1.5 rounded-xl shadow-sm"
-                >
-                  <LayoutGrid size={14} color="white" />
-                  <Text className="text-white text-xs font-bold ml-1.5">
-                    Table View
-                  </Text>
-                </TouchableOpacity>
-              )}
-
               {isManagerOrAbove && (
                 <TouchableOpacity
                   onPress={() => navigation.navigate(Routes.INVENTORY)}
@@ -1224,109 +1458,6 @@ export const HomeScreen = () => {
                   )}
                 </View>
 
-                {/* Live Interactive Floor & Table Quick Hub (Only shown when dining tables are enabled) */}
-                {features.tablesEnabled !== false && features.dineInEnabled !== false && (
-                  <View
-                    className={`border rounded-3xl p-5 mb-6 ${
-                      isDark
-                        ? 'bg-slate-900 border-slate-800 shadow-md'
-                        : 'bg-white border-slate-200 shadow-sm'
-                    }`}
-                  >
-                    <View
-                      className={`flex-row items-center justify-between pb-3 border-b ${
-                        isDark ? 'border-slate-800' : 'border-slate-100'
-                      }`}
-                    >
-                      <View className="flex-row items-center">
-                        <LayoutGrid size={18} color={isDark ? '#818CF8' : '#6366F1'} />
-                        <Text
-                          className={`font-black text-base ml-2 ${
-                            isDark ? 'text-white' : 'text-slate-900'
-                          }`}
-                        >
-                          Floor Tables Quick Access
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => navigation.navigate(Routes.TABLES)}
-                        className={`px-3 py-1 rounded-xl flex-row items-center shrink-0 border ${
-                          isDark
-                            ? 'bg-purple-500/15 border-purple-500/30'
-                            : 'bg-purple-50 border-purple-200'
-                        }`}
-                      >
-                        <Text className="text-purple-600 font-bold text-xs">Full Floor Plan →</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Table Quick Matrix */}
-                    {tables.length === 0 ? (
-                      <View className="py-8 items-center justify-center">
-                        <Text
-                          className={`text-xs ${
-                            isDark ? 'text-slate-500' : 'text-slate-400'
-                          }`}
-                        >
-                          No dining tables configured yet.
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() => navigation.navigate(Routes.TABLES)}
-                          className="mt-2 bg-[#5D3FD3] px-3 py-1 rounded-lg shrink-0"
-                        >
-                          <Text className="text-white font-bold text-xs">+ Setup Tables</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <View className="mt-4">
-                        <View className="flex-row flex-wrap gap-1.5">
-                          {tables.slice(0, 18).map(item => {
-                            const ctx = resolveTableOrderContext(
-                              item,
-                              carts[item.tableNo],
-                              homeRunningOrderMap[Number(item.tableNo)] || null,
-                              features
-                            );
-                            return (
-                              <TableTile
-                                key={item.id}
-                                table={item}
-                                ctx={ctx}
-                                isDark={isDark}
-                                compact={true}
-                                isBusyPrint={busyPrintTableNo === item.tableNo}
-                                isBusySettle={busySettleTableNo === item.tableNo}
-                                onPressTable={t => navigation.navigate(Routes.MENU, { tableId: t.id, tableNo: t.tableNo, orderType: 'DINE_IN' })}
-                                onPressPrint={handleHomeTablePrint}
-                                onPressView={t => navigation.navigate(Routes.CART, { tableNo: t.tableNo, orderType: 'DINE_IN' })}
-                                onPressSave={handleHomeTableSave}
-                              />
-                            );
-                          })}
-                        </View>
-
-                        {tables.length > 18 && (
-                          <TouchableOpacity
-                            onPress={() => navigation.navigate(Routes.TABLES)}
-                            className={`mt-3 py-1.5 rounded-xl items-center border ${
-                              isDark
-                                ? 'bg-slate-800/80 border-slate-700/60'
-                                : 'bg-slate-100 border-slate-200'
-                            }`}
-                          >
-                            <Text
-                              className={`text-xs font-semibold ${
-                                isDark ? 'text-slate-400' : 'text-slate-600'
-                              }`}
-                            >
-                              + {tables.length - 18} more tables in Floor Plan
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                )}
               </View>
 
               {/* Right Column (40%): Aggregators & Hardware Station */}
@@ -1566,343 +1697,7 @@ export const HomeScreen = () => {
         )}
       </ScrollView>
 
-      {/* Aggregator Live Orders Modal */}
-      <Modal visible={selectedAggregator !== null} transparent animationType="slide">
-        <View className="flex-1 bg-black/70 justify-end">
-          <View
-            className={`border-t rounded-t-3xl p-5 max-h-[85%] ${
-              isDark
-                ? 'bg-slate-900 border-slate-700'
-                : 'bg-white border-slate-200 shadow-2xl'
-            }`}
-          >
-            <View
-              className={`flex-row items-center justify-between pb-3 border-b ${
-                isDark ? 'border-slate-800' : 'border-slate-200'
-              }`}
-            >
-              <View className="flex-row items-center">
-                <View className={'px-2.5 py-1 rounded-lg mr-2 ' + (selectedAggregator === 'zomato' ? 'bg-[#E23744]' : 'bg-[#FC8019]')}>
-                  <Text className="text-white font-black text-xs uppercase">{selectedAggregator}</Text>
-                </View>
-                <Text
-                  className={`font-black text-lg ${
-                    isDark ? 'text-white' : 'text-slate-900'
-                  }`}
-                >
-                  Incoming Online Orders
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setSelectedAggregator(null)}
-                className={`p-1 rounded-full border ${
-                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
-                }`}
-              >
-                <X size={20} color={isDark ? '#94A3B8' : '#64748B'} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView className="mt-3">
-              {(selectedAggregator === 'zomato' ? zomatoOrders : swiggyOrders).length === 0 ? (
-                <View className="py-8 px-4 items-center">
-                  <View
-                    className={`w-14 h-14 rounded-full items-center justify-center mb-3 ${
-                      isDark ? 'bg-slate-800' : 'bg-slate-100'
-                    }`}
-                  >
-                    <Bike size={28} color={isDark ? '#94A3B8' : '#64748B'} />
-                  </View>
-                  <Text
-                    className={`text-base font-bold text-center ${
-                      isDark ? 'text-white' : 'text-slate-900'
-                    }`}
-                  >
-                    No Active Orders from {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'}
-                  </Text>
-                  <Text
-                    className={`text-xs text-center mt-1.5 leading-relaxed max-w-xs ${
-                      isDark ? 'text-slate-400' : 'text-slate-500'
-                    }`}
-                  >
-                    Orders placed on {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} will automatically appear here once forwarded via email or when simulated.
-                  </Text>
-
-                  {/* 1-Tap Simulation Button to Test Real Order Flow */}
-                  <TouchableOpacity
-                    disabled={isSimulatingAggregator}
-                    onPress={() => handleSimulateTestOrder(selectedAggregator === 'zomato' ? 'ZOMATO' : 'SWIGGY')}
-                    className={'mt-5 px-5 py-3 rounded-2xl flex-row items-center ' + (
-                      selectedAggregator === 'zomato' ? 'bg-[#E23744]' : 'bg-[#FC8019]'
-                    )}
-                  >
-                    <Sparkles size={16} color="white" />
-                    <Text className="text-white font-bold text-xs ml-2">
-                      {isSimulatingAggregator
-                        ? 'Simulating Order...'
-                        : `Test Live ${ selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} Order`}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <View
-                    className={`mt-5 p-3.5 border rounded-2xl w-full ${
-                      isDark
-                        ? 'bg-slate-950/80 border-slate-800'
-                        : 'bg-slate-50 border-slate-200'
-                    }`}
-                  >
-                    <Text
-                      className={`text-[11px] leading-relaxed ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}
-                    >
-                      💡 <Text className={`font-bold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>How to automate:</Text> Set up auto-forwarding from your registered restaurant email for {selectedAggregator === 'zomato' ? 'Zomato' : 'Swiggy'} notifications.
-                    </Text>
-                  </View>
-                </View>
-              ) : (
-                (selectedAggregator === 'zomato' ? zomatoOrders : swiggyOrders).map(order => {
-                  const orderDisplayNo = order.aggregatorOrderId || String(order.kotNo || order.orderNumber || order.id);
-                  const isPaid = order.paymentStatus === 'PAID';
-                  return (
-                    <View
-                      key={order.id}
-                      className={`border rounded-2xl p-4 mb-3 ${
-                        isDark
-                          ? 'bg-slate-800/80 border-slate-700/80'
-                          : 'bg-slate-50 border-slate-200 shadow-sm'
-                      }`}
-                    >
-                      <View className="flex-row items-center justify-between mb-2">
-                        <View className="flex-row items-center flex-wrap gap-1.5 flex-1 mr-2">
-                          <Text
-                            className={`font-black text-base ${
-                              isDark ? 'text-white' : 'text-slate-900'
-                            }`}
-                          >
-                            #{orderDisplayNo}
-                          </Text>
-                          <View className="bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
-                            <Text className="text-emerald-500 text-[10px] font-bold">
-                              {isPaid ? 'PAID ONLINE' : 'PAY ON DELIVERY'}
-                            </Text>
-                          </View>
-                        </View>
-                        <View className="flex-row items-center shrink-0">
-                          <Clock size={12} color={isDark ? '#94A3B8' : '#64748B'} />
-                          <Text
-                            className={`text-[11px] ml-1 ${
-                              isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}
-                          >
-                            {order.createdAt ? 'Active' : 'Live'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <Text
-                        className={`text-xs font-semibold mb-2 ${
-                          isDark ? 'text-slate-300' : 'text-slate-700'
-                        }`}
-                      >
-                        Customer: {order.customerName || 'Online Diner'} {order.customerPhone ? `(${ order.customerPhone })` : ''}
-                      </Text>
-
-                      <View
-                        className={`rounded-xl p-3 mb-3 border ${
-                          isDark
-                            ? 'bg-slate-900/90 border-slate-800'
-                            : 'bg-white border-slate-200'
-                        }`}
-                      >
-                        {(order.items || []).map((item: any, idx: number) => (
-                          <View
-                            key={idx}
-                            className={`flex-row justify-between py-1 border-b last:border-b-0 ${
-                              isDark ? 'border-slate-800/60' : 'border-slate-100'
-                            }`}
-                          >
-                            <Text
-                              className={`text-xs flex-1 mr-2 ${
-                                isDark ? 'text-slate-200' : 'text-slate-800'
-                              }`}
-                            >
-                              {item.qty || 1}x {item.itemName || item.name}
-                            </Text>
-                            <Text
-                              className={`text-xs font-bold ${
-                                isDark ? 'text-slate-400' : 'text-slate-600'
-                              }`}
-                            >
-                              ₹{Number(item.price || 0) * Number(item.qty || 1)}
-                            </Text>
-                          </View>
-                        ))}
-                        <View
-                          className={`flex-row justify-between pt-2 mt-1 border-t ${
-                            isDark ? 'border-slate-800' : 'border-slate-100'
-                          }`}
-                        >
-                          <Text
-                            className={`font-bold text-xs ${
-                              isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}
-                          >
-                            Total Bill
-                          </Text>
-                          <Text
-                            className={`font-black text-sm ${
-                              isDark ? 'text-white' : 'text-slate-900'
-                            }`}
-                          >
-                            ₹{Number(order.totalAmount || 0).toFixed(2)}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {order.deliveryRiderName && (
-                        <View className="flex-row items-center mb-3 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl">
-                          <Bike size={14} color="#6366F1" />
-                          <Text className="text-indigo-600 text-xs font-medium ml-2 flex-1" numberOfLines={1}>
-                            {order.deliveryRiderName} {order.deliveryRiderPhone ? `• ${ order.deliveryRiderPhone } ` : ''}
-                          </Text>
-                        </View>
-                      )}
-
-                      <View className="flex-row gap-2">
-                        <TouchableOpacity
-                          onPress={() => handleAcceptOnlineOrder(order)}
-                          className="flex-1 bg-emerald-600 py-2.5 rounded-xl items-center justify-center flex-row shadow-sm active:bg-emerald-700"
-                        >
-                          <Printer size={15} color="white" />
-                          <Text className="text-white font-bold text-xs ml-1.5">Accept & Print KOT</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => handleMarkOrderReady(order.id, orderDisplayNo)}
-                          className="flex-1 bg-amber-600 py-2.5 rounded-xl items-center justify-center flex-row shadow-sm active:bg-amber-700"
-                        >
-                          <CheckCircle2 size={15} color="white" />
-                          <Text className="text-white font-bold text-xs ml-1.5">Food Ready / Settle</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => handleCancelOnlineOrder(order.id, orderDisplayNo)}
-                          className="px-3 bg-rose-600/20 border border-rose-500/30 py-2.5 rounded-xl items-center justify-center"
-                        >
-                          <X size={15} color="#F43F5E" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Branch Selection Modal for Client Admin */}
-      <Modal visible={isBranchModalOpen} transparent animationType="fade">
-        <View className="flex-1 bg-black/70 items-center justify-center p-5">
-          <View
-            className={`border rounded-3xl p-5 w-full max-w-md shadow-2xl ${
-              isDark
-                ? 'bg-slate-900 border-slate-800'
-                : 'bg-white border-slate-200'
-            }`}
-          >
-            <View
-              className={`flex-row items-center justify-between pb-3 border-b ${
-                isDark ? 'border-slate-800' : 'border-slate-200'
-              }`}
-            >
-              <View className="flex-row items-center">
-                <MapPin size={18} color="#A855F7" />
-                <Text
-                  className={`font-black text-lg ml-2 ${
-                    isDark ? 'text-white' : 'text-slate-900'
-                  }`}
-                >
-                  Select Active Branch
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setBranchModalOpen(false)}
-                className={`p-1 rounded-full border ${
-                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
-                }`}
-              >
-                <X size={18} color={isDark ? '#94A3B8' : '#64748B'} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView className="my-3 max-h-72">
-              {locations.map(loc => {
-                const isSelected = activeLocationId === loc.id;
-                const isDisabled = loc.status === 'DISABLED';
-                return (
-                  <TouchableOpacity
-                    key={loc.id}
-                    disabled={isDisabled}
-                    onPress={() => handleSelectBranch(loc)}
-                    className={'p-3.5 mb-2 rounded-2xl border flex-row items-center justify-between ' + (
-                      isSelected
-                        ? 'bg-purple-500/15 border-[#5D3FD3]'
-                        : isDisabled
-                        ? isDark
-                          ? 'bg-slate-950/40 border-slate-850 opacity-40'
-                          : 'bg-slate-100 border-slate-200 opacity-40'
-                        : isDark
-                        ? 'bg-slate-800/80 border-slate-700/70'
-                        : 'bg-slate-50 border-slate-200'
-                    )}
-                  >
-                    <View className="flex-1 mr-2">
-                      <View className="flex-row items-center">
-                        <Text className={'font-bold text-sm ' + (isSelected ? 'text-purple-600 font-black' : (isDark ? 'text-white' : 'text-slate-900'))}>
-                          {loc.name}
-                        </Text>
-                        {isDisabled && (
-                          <View className="ml-2 px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/30">
-                            <Text className="text-rose-400 text-[9px] font-bold">DISABLED</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text
-                        className={`text-xs mt-0.5 ${
-                          isDark ? 'text-slate-400' : 'text-slate-500'
-                        }`}
-                        numberOfLines={1}
-                      >
-                        {loc.address}
-                      </Text>
-                    </View>
-                    {isSelected && <CheckCircle2 size={18} color="#A855F7" />}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      <QuickSettleModal
-        visible={Boolean(homeSettleTarget)}
-        table={homeSettleTarget?.table || null}
-        ctx={homeSettleTarget?.ctx || null}
-        activeMethods={homeActiveMethods}
-        paymentsEnabled={homePaymentsEnabled}
-        isDark={isDark}
-        isSettling={busySettleTableNo !== null}
-        onClose={() => setHomeSettleTarget(null)}
-        onConfirmSettle={(method, shouldPrint) => {
-          if (homeSettleTarget) {
-            executeHomeTableSettle(homeSettleTarget.table, homeSettleTarget.ctx, method, shouldPrint);
-          }
-        }}
-        onOpenFullCart={t => navigation.navigate(Routes.CART, { tableNo: t.tableNo, orderType: 'DINE_IN' })}
-      />
+      {renderSharedModals()}
     </SafeAreaView>
   );
 };

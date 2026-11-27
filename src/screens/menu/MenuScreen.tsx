@@ -1524,47 +1524,49 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
               )}
             </TouchableOpacity>
           ) : (
-            <View className="flex-row gap-2">
-              {isDualPrinterMode && unsentItems.length > 0 ? (
-                <View className="flex-1 flex-row gap-2">
-                  <TouchableOpacity
-                    onPress={handleSendToKitchen}
-                    disabled={isSendingKOT}
-                    className="flex-1 bg-amber-500/20 border border-amber-500/40 py-3 rounded-2xl flex-row items-center justify-center active:opacity-80"
-                  >
-                    {isSendingKOT ? (
-                      <ActivityIndicator size="small" color="#F59E0B" />
-                    ) : (
-                      <View className="flex-row items-center">
-                        <Send size={15} color="#FBBF24" />
-                        <Text className="text-amber-400 font-black text-xs ml-1.5" numberOfLines={1}>
-                          Send KOT ({unsentItems.reduce((s, i) => s + i.qty, 0)})
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+            <View className="flex-row items-center gap-2">
+              {/* Compact Cart Drawer Trigger (view/edit items without blocking fast checkout) */}
+              <TouchableOpacity
+                onPress={() => setIsCartModalOpen(true)}
+                className={`px-3 py-3.5 rounded-2xl border flex-row items-center justify-center active:opacity-80 ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-300'
+                }`}
+                accessibilityLabel="View or Edit Cart Items"
+              >
+                <ShoppingBag size={16} color={isDark ? '#CBD5E1' : '#475569'} />
+                <Text className={`font-black text-xs ml-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  {cartItemCount}
+                </Text>
+              </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={() => setIsCartModalOpen(true)}
-                    className="flex-1 bg-[#5D3FD3] py-3 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-md shadow-purple-500/30"
-                  >
-                    <ShoppingBag size={15} color="white" />
-                    <Text className="text-white font-black text-xs ml-1.5" numberOfLines={1}>
-                      View Cart ({cartItemCount})
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
+              {isDualPrinterMode && unsentItems.length > 0 && (
                 <TouchableOpacity
-                  onPress={() => setIsCartModalOpen(true)}
-                  className="flex-1 bg-[#5D3FD3] py-3.5 rounded-2xl flex-row items-center justify-center active:opacity-80 shadow-md shadow-purple-500/30"
+                  onPress={handleSendToKitchen}
+                  disabled={isSendingKOT}
+                  className="flex-1 bg-amber-500/20 border border-amber-500/40 py-3.5 rounded-2xl flex-row items-center justify-center active:opacity-80"
                 >
-                  <ShoppingBag size={16} color="white" />
-                  <Text className="text-white font-black text-sm ml-2" numberOfLines={1}>
-                    {`View Cart (${cartItemCount} item${cartItemCount > 1 ? 's' : ''} • ₹${cartTotal.toFixed(2)}) →`}
-                  </Text>
+                  {isSendingKOT ? (
+                    <ActivityIndicator size="small" color="#F59E0B" />
+                  ) : (
+                    <View className="flex-row items-center">
+                      <Send size={15} color="#FBBF24" />
+                      <Text className="text-amber-500 font-black text-xs ml-1.5" numberOfLines={1}>
+                        Send KOT ({unsentItems.reduce((s, i) => s + i.qty, 0)})
+                      </Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               )}
+
+              <TouchableOpacity
+                onPress={() => navigation.navigate(Routes.CART, { tableNo, orderType })}
+                className="flex-[1.3] bg-[#5D3FD3] py-3.5 px-4 rounded-2xl flex-row items-center justify-center active:opacity-85 shadow-md shadow-purple-500/30"
+              >
+                <CreditCard size={16} color="white" />
+                <Text className="text-white font-black text-sm ml-2" numberOfLines={1}>
+                  {paymentsEnabled ? `Checkout • ₹${cartTotal.toFixed(0)} →` : 'Send KOT / Finish →'}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>

@@ -27,7 +27,7 @@ import {
   settleTableOrderAction,
 } from '../../services/orders/tableActions.service';
 import { Routes } from '../../constants/routes';
-import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2, Utensils, Tag, X, Plus, Minus, ArrowLeft, ShoppingBag } from 'lucide-react-native';
+import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2, Utensils, Tag, X, Plus, Minus, ArrowLeft, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react-native';
 
 export const CartScreen = () => {
   const insets = useSafeAreaInsets();
@@ -35,6 +35,7 @@ export const CartScreen = () => {
   const navigation = useNavigation<any>();
   const tableNo = route.params?.tableNo ?? 0;
   const orderType = route.params?.orderType || (tableNo === 0 ? 'PICKUP' : 'DINE_IN');
+  const [showMobileItems, setShowMobileItems] = useState(false);
 
   const { carts, clearCart, markAsSent, updateQuantity, removeItem } = useCartStore();
   const { orders } = useOrderStore();
@@ -394,33 +395,43 @@ export const CartScreen = () => {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <View className={isLargePOS ? 'flex-row gap-6 items-start' : ''}>
-          {/* Left Panel (50% on desktop): Order Summary and Item Details */}
+        <View className={isLargePOS ? 'flex-row gap-6 items-start' : 'flex-col-reverse'}>
+          {/* Left Panel (50% on desktop; collapsible items summary below payment on mobile) */}
           <View className={isLargePOS ? 'flex-1' : ''}>
             <View
               className={`p-5 rounded-3xl mb-5 shadow-md border ${
                 isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
               }`}
             >
-              <View
+              <TouchableOpacity
+                disabled={isLargePOS}
+                activeOpacity={0.75}
+                onPress={() => setShowMobileItems(prev => !prev)}
                 className={`flex-row items-center justify-between pb-3 border-b ${
                   isDark ? 'border-slate-800' : 'border-slate-200'
                 }`}
               >
-                <View className="flex-row items-center">
+                <View className="flex-row items-center flex-1 mr-2">
                   <Text className={`font-black text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    Order Breakdown
+                    {isLargePOS ? 'Order Breakdown' : 'Order Items'}
                   </Text>
                   <Text className={`text-xs ml-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    ({cartItems.length} {cartItems.length === 1 ? 'item' : 'items'})
+                    ({totalUnits} {totalUnits === 1 ? 'item' : 'items'})
                   </Text>
                 </View>
-                <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-lg border border-purple-500/30">
-                  <Text className="text-purple-400 font-bold text-xs">
-                    {orderType === 'PICKUP' ? 'Pick Up' : (orderType === 'COUNTER' ? 'Quick Counter' : ('Table ' + tableNo))}
-                  </Text>
+                <View className="flex-row items-center gap-2">
+                  <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-lg border border-purple-500/30">
+                    <Text className="text-purple-400 font-bold text-xs">
+                      {orderType === 'PICKUP' ? 'Pick Up' : (orderType === 'COUNTER' ? 'Quick Counter' : ('Table ' + tableNo))}
+                    </Text>
+                  </View>
+                  {!isLargePOS && cartItems.length > 0 && (
+                    showMobileItems
+                      ? <ChevronUp size={16} color={isDark ? '#94A3B8' : '#64748B'} />
+                      : <ChevronDown size={16} color={isDark ? '#94A3B8' : '#64748B'} />
+                  )}
                 </View>
-              </View>
+              </TouchableOpacity>
 
               <View className="mt-3">
                 {cartItems.length === 0 ? (
@@ -436,6 +447,18 @@ export const CartScreen = () => {
                       <Text className="text-white font-bold text-xs">← Back to Menu</Text>
                     </TouchableOpacity>
                   </View>
+                ) : !isLargePOS && !showMobileItems ? (
+                  <TouchableOpacity
+                    onPress={() => setShowMobileItems(true)}
+                    className={`py-2.5 px-3 rounded-xl border flex-row items-center justify-between ${
+                      isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <Text className={`text-xs flex-1 mr-2 ${isDark ? 'text-slate-300' : 'text-slate-600'}`} numberOfLines={1}>
+                      {cartItems.map(i => `${i.qty}x ${getBaseItemName(i.itemName, i.variantName)}`).join(', ')}
+                    </Text>
+                    <Text className="text-indigo-500 text-xs font-bold shrink-0">Edit Items</Text>
+                  </TouchableOpacity>
                 ) : (
                   cartItems.map((item, idx) => (
                     <View

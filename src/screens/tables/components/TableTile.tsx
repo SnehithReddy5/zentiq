@@ -11,7 +11,6 @@ interface TableTileProps {
   isEditMode?: boolean;
   isBusyPrint?: boolean;
   isBusySettle?: boolean;
-  compact?: boolean;
   onPressTable: (table: Table) => void;
   onPressPrint: (table: Table, ctx: TableOrderContext) => void;
   onPressView: (table: Table) => void;
@@ -93,7 +92,6 @@ export const TableTile: React.FC<TableTileProps> = React.memo(({
   isEditMode = false,
   isBusyPrint = false,
   isBusySettle = false,
-  compact = false,
   onPressTable,
   onPressPrint,
   onPressView,
@@ -106,86 +104,69 @@ export const TableTile: React.FC<TableTileProps> = React.memo(({
   const showSaveAction = ctx.isBillPrinted || ctx.isBillRequested;
 
   return (
-    <View className={compact ? 'm-1' : 'm-1.5'} style={{ overflow: 'visible' }}>
-      <TouchableOpacity
-        activeOpacity={0.82}
-        onPress={() => (isEditMode && onPressEditMeta ? onPressEditMeta(table) : onPressTable(table))}
-        onLongPress={() => onPressEditMeta && onPressEditMeta(table)}
-        className={`rounded-2xl border ${palette.container} ${
-          compact ? 'px-2.5 py-2.5 min-h-[82px] w-[96px]' : 'px-2.5 py-3 min-h-[104px]'
-        } items-center justify-between shadow-sm`}
-        style={{ borderStyle: palette.borderStyle }}
-      >
-        {/* Top Row: Status badge / Bill No / Edit delete button */}
-        <View className="w-full flex-row items-center justify-between min-h-[16px]">
-          {ctx.visualState === 'BILL_REQ' ? (
-            <View className="flex-row items-center bg-orange-500/20 px-1.5 py-0.5 rounded">
-              <Bell size={9} color="#EA580C" />
-              <Text className="text-[9px] font-black text-orange-600 ml-0.5">REQ</Text>
-            </View>
-          ) : ctx.billNo && ctx.isOccupied ? (
-            <Text className={`text-[9px] font-bold ${palette.subText}`} numberOfLines={1}>
-              #{ctx.billNo}
-            </Text>
-          ) : (
-            <View className="flex-row items-center">
-              <Users size={10} color={isDark ? '#64748B' : '#94A3B8'} />
-              <Text className={`text-[9px] font-semibold ml-0.5 ${palette.subText}`}>
-                {table.capacity || 4}
-              </Text>
-            </View>
-          )}
-
-          {isEditMode && onPressDelete ? (
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                onPressDelete(table);
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              className="p-1 rounded-lg bg-rose-500/15 border border-rose-500/30"
-            >
-              <Trash2 size={11} color="#F43F5E" />
-            </TouchableOpacity>
-          ) : (
-            <View className={`w-2 h-2 rounded-full ${palette.dotColor}`} />
-          )}
-        </View>
-
-        {/* Center: Clean Table Label + Amount / Items */}
-        <View className="items-center justify-center my-1">
-          <Text
-            className={`font-bold ${compact ? 'text-xs' : 'text-sm'} ${palette.titleText}`}
-            numberOfLines={1}
-          >
-            Table {table.tableNo}
+    <TouchableOpacity
+      activeOpacity={0.82}
+      onPress={() => (isEditMode && onPressEditMeta ? onPressEditMeta(table) : onPressTable(table))}
+      onLongPress={() => onPressEditMeta && onPressEditMeta(table)}
+      className={`m-1.5 rounded-2xl border ${palette.container} px-2.5 py-2.5 h-[112px] justify-between shadow-sm`}
+      style={{ borderStyle: palette.borderStyle }}
+    >
+      {/* Top Row: Bill No / REQ badge / Seats + Status dot or Edit delete */}
+      <View className="w-full flex-row items-center justify-between min-h-[16px]">
+        {ctx.visualState === 'BILL_REQ' ? (
+          <View className="flex-row items-center bg-orange-500/20 px-1.5 py-0.5 rounded">
+            <Bell size={9} color="#EA580C" />
+            <Text className="text-[9px] font-black text-orange-600 ml-0.5">REQ</Text>
+          </View>
+        ) : ctx.billNo && ctx.isOccupied ? (
+          <Text className={`text-[10px] font-bold ${palette.subText}`} numberOfLines={1}>
+            #{ctx.billNo}
           </Text>
-          {ctx.isOccupied && ctx.displayAmount > 0 ? (
-            <Text
-              className={`font-black ${compact ? 'text-[11px]' : 'text-xs'} mt-0.5 ${palette.subText}`}
-              numberOfLines={1}
-            >
-              ₹{ctx.displayAmount.toFixed(0)}
+        ) : (
+          <View className="flex-row items-center">
+            <Users size={10} color={isDark ? '#64748B' : '#94A3B8'} />
+            <Text className={`text-[10px] font-semibold ml-0.5 ${palette.subText}`}>
+              {table.capacity || 4}
             </Text>
-          ) : ctx.isOccupied && ctx.waiterName ? (
-            <Text className={`text-[10px] font-semibold mt-0.5 ${palette.subText}`} numberOfLines={1}>
-              {ctx.waiterName}
-            </Text>
-          ) : (
-            <Text className={`text-[9px] mt-0.5 ${palette.subText}`} numberOfLines={1}>
-              {isEditMode ? 'Tap to edit' : 'Blank'}
-            </Text>
-          )}
-        </View>
+          </View>
+        )}
 
-        {/* Spacer above floating bottom quick actions */}
-        <View className={ctx.isOccupied && !isEditMode ? 'h-3' : 'h-0.5'} />
-      </TouchableOpacity>
+        {isEditMode && onPressDelete ? (
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              onPressDelete(table);
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            className="p-1 rounded-lg bg-rose-500/15 border border-rose-500/30"
+          >
+            <Trash2 size={11} color="#F43F5E" />
+          </TouchableOpacity>
+        ) : (
+          <View className={`w-2 h-2 rounded-full ${palette.dotColor}`} />
+        )}
+      </View>
 
-      {/* Inline Floating Action Pills matching the reference screenshot */}
-      {ctx.isOccupied && !isEditMode && (
-        <View className="flex-row items-center justify-center gap-1.5 -mt-3.5 px-1">
-          {showSaveAction ? (
+      {/* Center: Clean Table Name + Amount */}
+      <View className="items-center justify-center">
+        <Text className={`font-bold text-sm ${palette.titleText}`} numberOfLines={1}>
+          Table {table.tableNo}
+        </Text>
+        {ctx.isOccupied && ctx.displayAmount > 0 ? (
+          <Text className={`font-black text-xs mt-0.5 ${palette.subText}`} numberOfLines={1}>
+            ₹{ctx.displayAmount.toFixed(0)}
+          </Text>
+        ) : ctx.isOccupied && ctx.waiterName ? (
+          <Text className={`text-[10px] font-semibold mt-0.5 ${palette.subText}`} numberOfLines={1}>
+            {ctx.waiterName}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* Uniform Bottom Slot: Inline Print/View or Save/View or Blank/Edit subtitle */}
+      <View className="w-full h-[28px] flex-row items-center justify-center gap-1.5">
+        {ctx.isOccupied && !isEditMode ? (
+          showSaveAction ? (
             <>
               <TouchableOpacity
                 onPress={(e) => {
@@ -194,7 +175,7 @@ export const TableTile: React.FC<TableTileProps> = React.memo(({
                 }}
                 disabled={isBusySettle}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                className={`px-2.5 py-1.5 rounded-lg border shadow-sm flex-row items-center justify-center ${palette.actionBg}`}
+                className={`h-[26px] px-2.5 rounded-lg border shadow-sm flex-row items-center justify-center ${palette.actionBg}`}
                 accessibilityLabel={`Save and settle Table ${table.tableNo}`}
               >
                 {isBusySettle ? (
@@ -210,8 +191,8 @@ export const TableTile: React.FC<TableTileProps> = React.memo(({
                   onPressView(table);
                 }}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                className={`px-2 py-1.5 rounded-lg border shadow-sm items-center justify-center ${palette.actionBg}`}
-                accessibilityLabel={`View Table ${table.tableNo} bill`}
+                className={`h-[26px] px-2 rounded-lg border shadow-sm items-center justify-center ${palette.actionBg}`}
+                accessibilityLabel={`Checkout Table ${table.tableNo}`}
               >
                 <Eye size={13} color={palette.actionIconColor} />
               </TouchableOpacity>
@@ -225,7 +206,7 @@ export const TableTile: React.FC<TableTileProps> = React.memo(({
                 }}
                 disabled={isBusyPrint}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                className={`px-2.5 py-1.5 rounded-lg border shadow-sm items-center justify-center ${palette.actionBg}`}
+                className={`h-[26px] px-2.5 rounded-lg border shadow-sm items-center justify-center ${palette.actionBg}`}
                 accessibilityLabel={`Print Table ${table.tableNo} bill`}
               >
                 {isBusyPrint ? (
@@ -241,15 +222,19 @@ export const TableTile: React.FC<TableTileProps> = React.memo(({
                   onPressView(table);
                 }}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                className={`px-2.5 py-1.5 rounded-lg border shadow-sm items-center justify-center ${palette.actionBg}`}
-                accessibilityLabel={`View Table ${table.tableNo} bill`}
+                className={`h-[26px] px-2 rounded-lg border shadow-sm items-center justify-center ${palette.actionBg}`}
+                accessibilityLabel={`Checkout Table ${table.tableNo}`}
               >
                 <Eye size={13} color={palette.actionIconColor} />
               </TouchableOpacity>
             </>
-          ) : null}
-        </View>
-      )}
-    </View>
+          ) : null
+        ) : (
+          <Text className={`text-[10px] font-medium ${palette.subText}`} numberOfLines={1}>
+            {isEditMode ? 'Tap to edit' : 'Available'}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 });
