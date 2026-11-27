@@ -343,7 +343,13 @@ export const DBServices = {
     }
   },
 
-  async addTable(tableNo: number, tenantId?: string, locationId?: string): Promise<void> {
+  async addTable(
+    tableNo: number,
+    tenantId?: string,
+    locationId?: string,
+    section?: string,
+    capacity?: number
+  ): Promise<void> {
     const tableRef = (tenantId && locationId)
       ? doc(collection(db, 'tenants', tenantId, 'locations', locationId, 'tables'))
       : doc(collection(db, 'tables'));
@@ -351,12 +357,30 @@ export const DBServices = {
     await setDoc(tableRef, {
       id: tableRef.id,
       tableNo,
+      section: section?.trim() || 'Main Floor',
+      capacity: capacity && capacity > 0 ? capacity : 4,
       status: 'available',
       currentOrderId: null,
       active: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+  },
+
+  async updateTableMetadata(
+    id: string,
+    updates: { section?: string; capacity?: number },
+    tenantId?: string,
+    locationId?: string
+  ): Promise<void> {
+    const tableRef = (tenantId && locationId)
+      ? doc(db, 'tenants', tenantId, 'locations', locationId, 'tables', id)
+      : doc(db, 'tables', id);
+    await updateDoc(tableRef, cleanFirestoreData({
+      ...(updates.section !== undefined ? { section: updates.section.trim() || 'Main Floor' } : {}),
+      ...(updates.capacity !== undefined ? { capacity: updates.capacity } : {}),
+      updatedAt: serverTimestamp(),
+    }));
   },
 
   async updateTableStatus(id: string, status: Table['status'], tenantId?: string, locationId?: string): Promise<void> {

@@ -20,6 +20,12 @@ import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { DBServices } from '../../services/firebase/db';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
+import {
+  calculateOrderTotals,
+  printTableBillAction,
+  resolveActivePaymentMethods,
+  settleTableOrderAction,
+} from '../../services/orders/tableActions.service';
 import { Routes } from '../../constants/routes';
 import { CreditCard, Banknote, Smartphone, HelpCircle, Trash2, Printer, CheckCircle2, Utensils, Tag, X, Plus, Minus, ArrowLeft, ShoppingBag } from 'lucide-react-native';
 
@@ -108,7 +114,6 @@ export const CartScreen = () => {
   const gstType = features.gstType || 'INCLUSIVE';
   const cgstRate = typeof features.cgstRate === 'number' ? features.cgstRate : 2.5;
   const sgstRate = typeof features.sgstRate === 'number' ? features.sgstRate : 2.5;
-  const totalTaxRate = (cgstRate + sgstRate) / 100;
 
   // Role Check: Discount enabled for Biller and above only
   const isBillerOrAbove = Boolean(user?.role && !['WAITER', 'captain'].includes(user.role));
@@ -120,51 +125,17 @@ export const CartScreen = () => {
     return Math.min(Math.max(0, parsed), rawItemsSum);
   }, [discountText, isBillerOrAbove, rawItemsSum]);
 
-  const { subtotal, cgst, sgst, totalTax, cartTotal } = useMemo(() => {
-    const discountedSum = Math.max(0, rawItemsSum - discountAmount);
-    if (!gstEnabled) {
-      return {
-        subtotal: rawItemsSum,
-        cgst: 0,
-        sgst: 0,
-        totalTax: 0,
-        cartTotal: discountedSum,
-      };
-    }
-    if (gstType === 'EXCLUSIVE') {
-      const sub = rawItemsSum;
-      const taxable = discountedSum;
-      const c = Math.round((taxable * (cgstRate / 100)) * 100) / 100;
-      const s = Math.round((taxable * (sgstRate / 100)) * 100) / 100;
-      const tax = c + s;
-      const total = Math.round(taxable + tax);
-      return { subtotal: sub, cgst: c, sgst: s, totalTax: tax, cartTotal: total };
-    } else {
-      // INCLUSIVE
-      const total = discountedSum;
-      const sub = totalTaxRate > 0 ? Math.round((total / (1 + totalTaxRate)) * 100) / 100 : total;
-      const tax = total - sub;
-      const c = Math.round((tax * (cgstRate / ((cgstRate + sgstRate) || 1))) * 100) / 100;
-      const s = Math.round((tax - c) * 100) / 100;
-      return { subtotal: sub, cgst: c, sgst: s, totalTax: tax, cartTotal: total };
-    }
-  }, [rawItemsSum, discountAmount, gstEnabled, gstType, cgstRate, sgstRate, totalTaxRate]);
+  const { subtotal, cgst, sgst, totalTax, cartTotal } = useMemo(
+    () => calculateOrderTotals(cartItems, features, discountAmount),
+    [cartItems, features, discountAmount]
+  );
 
   // Features & Active Payment Methods
   const paymentsEnabled = features.paymentsEnabled !== false;
-  const activePaymentMethods = useMemo(() => {
-    if (!paymentsEnabled) return [];
-    const methods: string[] = [];
-    if (features.cashEnabled !== false) methods.push('CASH');
-    if (features.upiEnabled !== false) methods.push('UPI');
-    if (features.cardEnabled !== false) methods.push('CARD');
-    if (features.customPaymentMethods && features.customPaymentMethods.length > 0) {
-      features.customPaymentMethods.forEach(m => {
-        if (!methods.includes(m)) methods.push(m);
-      });
-    }
-    return methods;
-  }, [features, paymentsEnabled]);
+  const activePaymentMethods = useMemo(
+    () => resolveActivePaymentMethods(features),
+    [features]
+  );
 
   const allowSplit = paymentsEnabled && features.splitPaymentsEnabled !== false && activePaymentMethods.length >= 2;
 
@@ -309,116 +280,28 @@ export const CartScreen = () => {
    * Guests remain seated and dining.
    */
   const handlePrintBillOnly = async () => {
-    if (cartItems.length === 0) {
-      toast.warning('Cart is empty. Add items first.', 'Empty Cart');
-      return;
-    }
-
-    const isUsb = settings.printerType === 'USB';
-    const mainTarget = isUsb ? (settings.printerName || 'POS-80') : (settings.ipAddress?.trim() || '');
-    const mainPort = settings.port || 9100;
-    const mainType = isUsb ? 'USB' : 'LAN';
-
-    if (!mainTarget) {
-      toast.warning('Please configure Billing Printer in Settings first.', 'Printer Required');
-      return;
-    }
-
     setIsPrintingBillOnly(true);
     try {
-      // 1. Resolve Bill Number (use existing running order number, previously printed number, or next sequence)
-      let billNo: number = printedBillNo || 0;
-      let existingRunningOrder: any = null;
-
-      if (!billNo && tableNo !== 0) {
-        try {
-          const { useOrderStore } = require('../../store/order.store');
-          existingRunningOrder = useOrderStore.getState().orders.find(
-            (o: any) => Number(o.tableNo) === Number(tableNo) && (o.status === 'RUNNING' || o.status === 'running')
-          ) || null;
-          if (existingRunningOrder?.orderNumber) {
-            billNo = Number(existingRunningOrder.orderNumber);
-          } else if (existingRunningOrder?.kotNo) {
-            billNo = Number(existingRunningOrder.kotNo);
-          }
-        } catch (_) { }
-      }
-
-      if (!billNo) {
-        billNo = await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
-      }
-      setPrintedBillNo(billNo);
-
-      // 2. Pre-generate ESC/POS bill receipt buffer
-      const activeLoc = locations.find(l => l.id === activeLocationId);
-      const brandPayload = branding ? { ...branding, gstEnabled, gstType, cgstRate, sgstRate } : null;
-      const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
-      const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
-      const isSingleKot = workflowMode === 'SINGLE_KOT_ONLY' || workflowMode === 'TOKEN_ONLY';
-
       const provisionalPayments = payments.length > 0
         ? payments
         : [{ method: selectedMethod, amount: cartTotal }];
 
-      const billBuffer = isSingleKot
-        ? ESCPOSService.buildTokenSlip(
-          billNo,
-          tableNo,
-          user?.name || 'Staff',
-          cartItems,
-          brandPayload,
-          'TOKEN DISPATCH',
-          orderType
-        )
-        : isCombinedMode
-        ? ESCPOSService.buildCombinedTiffinPrints(
-          billNo,
-          tableNo,
-          user?.name || 'Staff',
-          cartItems,
-          brandPayload,
-          orderType,
-          provisionalPayments,
-          discountAmount
-        )
-        : ESCPOSService.buildBill(
-          billNo,
-          tableNo,
-          user?.name || 'Staff',
-          cartItems,
-          brandPayload,
-          orderType,
-          provisionalPayments,
-          discountAmount
-        );
-
-      // 3. Dispatch to thermal printer via serialized mutex queue
-      await printerService.printReceiptOrKOT(billBuffer, mainTarget, mainPort, mainType);
-
-      // 4. If there is an existing running order in Firestore, mark billPrinted: true
-      if (existingRunningOrder && existingRunningOrder.id) {
-        DBServices.updateOrder(existingRunningOrder.id, {
-          billPrinted: true,
-          billPrintedAt: new Date(),
-          billNo: billNo,
-        }, tenant?.id, existingRunningOrder.locationId || activeLocationId || undefined).catch(() => { });
-      }
-
-      // 5. Update Table document in Firestore so all staff devices lock item editing in real-time
-      if (tableNo !== 0) {
-        DBServices.updateTableBillPrinted(tableNo, true, billNo, tenant?.id, activeLocationId || undefined).catch(() => { });
-      }
-
-      toast.success(
-        `${isSingleKot ? `Token #${billNo}` : `Bill #${billNo}`} printed successfully for ${tableNo !== 0 ? `Table ${tableNo}` : 'Order'}!`,
-        isSingleKot ? 'Token Printed' : 'Bill Printed'
-      );
-    } catch (err: any) {
-      const isExpoGoSocketError = err?.message?.includes('Thermal printing over raw TCP sockets is not supported in Expo Go');
-      if (isExpoGoSocketError) {
-        toast.info('Expo Go detected: Raw TCP socket simulated.', 'Printer Notice');
-      } else {
-        toast.error(`Thermal printer (${settings.ipAddress || 'LAN'}) error: ${err.message || 'offline'}. Check Wi-Fi.`, 'Print Failed');
+      const res = await printTableBillAction({
+        tableNo,
+        orderType,
+        cartItems,
+        printedBillNo,
+        provisionalPayments,
+        discountAmount,
+        settings,
+        branding,
+        features,
+        tenantId: tenant?.id,
+        locationId: activeLocationId,
+        staffName: user?.name || 'Staff',
+      });
+      if (res.success && res.billNo) {
+        setPrintedBillNo(res.billNo);
       }
     } finally {
       setIsPrintingBillOnly(false);
@@ -453,172 +336,32 @@ export const CartScreen = () => {
     finalPayments: { method: string; amount: number }[],
     shouldPrint: boolean = false
   ) => {
-    if (user?.role === 'WAITER' || user?.role === 'captain') {
-      toast.warning('Bill settlement requires Biller or Manager authorization. Please hand over this table order to the billing counter.', 'Action Restricted');
-      return;
-    }
-    if (cartItems.length === 0) return;
-
-    if (!activeLocationId && locations && locations.length > 0) {
-      toast.warning('Please select an active operating branch on the home screen before completing orders.', 'Branch Required');
-      return;
-    }
-
     setIsSettling(true);
     try {
-      // Re-use printedBillNo if bill was already printed to maintain sequence continuity
-      const billNo = printedBillNo || await DBServices.getNextSequenceNumber(tenant?.id, activeLocationId || undefined);
-
-      // Check for existing RUNNING order for this table (QR self-order or previous KOT)
-      let existingRunningOrder: any = null;
-      if (tableNo !== 0) {
-        try {
-          const { useOrderStore } = require('../../store/order.store');
-          existingRunningOrder = useOrderStore.getState().orders.find(
-            (o: any) => Number(o.tableNo) === Number(tableNo) && (o.status === 'RUNNING' || o.status === 'running')
-          ) || null;
-        } catch (_) { }
-      }
-
-      const paymentRows = finalPayments.map(p => ({
-        id: 'pay_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-        method: p.method as any,
-        amount: p.amount,
-        timestamp: new Date().toISOString(),
-      }));
-
-      // 1. Database updates
-      let orderPromise: Promise<any>;
-      if (existingRunningOrder && existingRunningOrder.id) {
-        // UPDATE existing running order → COMPLETED (no duplicate, saved with full item details like normal orders)
-        orderPromise = DBServices.updateOrderToSettled(
-          existingRunningOrder.id,
-          {
-            billNo,
-            payments: paymentRows,
-            totalAmount: cartTotal,
-            subtotal,
-            tax: totalTax,
-            discount: discountAmount,
-            captainId: user?.id || 'staff',
-            captainName: user?.name || 'Staff',
-            items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
-            orderType,
-            tableNo,
-          },
-          tenant?.id,
-          existingRunningOrder.locationId || activeLocationId || undefined
-        );
-      } else {
-        // No pre-existing running order (walk-in / counter / pickup): create new COMPLETED order
-        orderPromise = DBServices.createOrder({
-          orderNumber: billNo,
-          kotNo: billNo,
-          orderType,
-          tableNo,
-          captainId: user?.id || 'staff',
-          captainName: user?.name || 'Staff',
-          status: 'COMPLETED',
-          paymentStatus: 'PAID',
-          payments: paymentRows,
-          items: cartItems.map(i => ({ ...i, itemName: getBaseItemName(i.itemName, i.variantName) })),
-          discount: discountAmount,
-          totalAmount: cartTotal,
-          createdAt: new Date(),
-        }, tenant?.id, activeLocationId || undefined);
-      }
-
-      // 1b. Free the table
-      const tablePromise = tableNo !== 0
-        ? DBServices.updateTableStatusByNo(tableNo, 'available', tenant?.id, activeLocationId || undefined)
-        : Promise.resolve();
-
-      // 2. Dispatch Thermal Prints in Background if requested (e.g. Counter / Takeaway Settle & Print)
-      if (shouldPrint) {
-        const activeLoc = locations.find(l => l.id === activeLocationId);
-        const brandPayload = branding ? { ...branding, gstEnabled, gstType, cgstRate, sgstRate } : null;
-        const workflowMode = settings.printerWorkflowMode || 'RESTAURANT';
-
-        const dispatchPrints = async () => {
-          const isUsb = settings.printerType === 'USB';
-          const mainTarget = isUsb ? (settings.printerName || 'POS-80') : (settings.ipAddress || '127.0.0.1');
-          const mainPort = settings.port || 9100;
-          const mainType = isUsb ? 'USB' : 'LAN';
-
-          const isCombinedMode = workflowMode === 'SINGLE_COMBINED' || workflowMode === 'TIFFIN_CENTER';
-          const isSingleKot = workflowMode === 'SINGLE_KOT_ONLY' || workflowMode === 'TOKEN_ONLY';
-
-          try {
-            const billBuffer = isSingleKot
-              ? ESCPOSService.buildTokenSlip(
-                billNo,
-                tableNo,
-                user?.name || 'Staff',
-                cartItems,
-                brandPayload,
-                'TOKEN DISPATCH (PAID)',
-                orderType
-              )
-              : isCombinedMode
-              ? ESCPOSService.buildCombinedTiffinPrints(
-                billNo,
-                tableNo,
-                user?.name || 'Staff',
-                cartItems,
-                brandPayload,
-                orderType,
-                finalPayments,
-                discountAmount
-              )
-              : ESCPOSService.buildBill(
-                billNo,
-                tableNo,
-                user?.name || 'Staff',
-                cartItems,
-                brandPayload,
-                orderType,
-                finalPayments,
-                discountAmount
-              );
-
-            await printerService.printReceiptOrKOT(billBuffer, mainTarget, mainPort, mainType);
-          } catch (printErr: any) {
-            const isExpoGoSocketError = printErr?.message?.includes('Thermal printing over raw TCP sockets is not supported in Expo Go');
-            if (!isExpoGoSocketError) {
-              console.warn('Thermal print background dispatch error:', printErr);
-              useToastStore.getState().showToast({
-                type: 'error',
-                title: 'Print Failed (Saved to Cloud)',
-                message: `Bill #${billNo} recorded, but thermal printer (${settings.ipAddress || 'LAN'}) did not respond: ${printErr?.message || 'offline'}. Check Wi-Fi.`,
-                duration: 7000,
-              });
-            }
-          }
-        };
-
-        dispatchPrints();
-      }
-
-      // Await database write completion in parallel (~150ms)
-      await Promise.all([orderPromise, tablePromise]);
-
-      useToastStore.getState().showToast({
-        type: 'success',
-        title: 'Order Settled',
-        message: tableNo !== 0
-          ? `Table ${tableNo} settled & freed successfully.`
-          : `Bill #${billNo} settled successfully.`,
-        duration: 3500,
+      const result = await settleTableOrderAction({
+        tableNo,
+        orderType,
+        cartItems,
+        finalPayments,
+        shouldPrint,
+        printedBillNo,
+        discountAmount,
+        user,
+        tenantId: tenant?.id,
+        locationId: activeLocationId,
+        locations,
+        settings,
+        branding,
+        features,
       });
 
-      clearCart(tableNo);
-      // Reset navigation stack to Home so hardware back button never returns to checkout
-      navigation.reset({
-        index: 0,
-        routes: [{ name: Routes.HOME }],
-      });
-    } catch (e: any) {
-      toast.error(e.message, 'Checkout Error');
+      if (result.success) {
+        // Reset navigation stack to Home so hardware back button never returns to checkout
+        navigation.reset({
+          index: 0,
+          routes: [{ name: Routes.HOME }],
+        });
+      }
     } finally {
       setIsSettling(false);
     }

@@ -45,6 +45,7 @@ import { useThemeStore } from '../../store/theme.store';
 import { useTenantStore } from '../../store/tenant.store';
 import { useOrderStore } from '../../store/order.store';
 import { useTableStore } from '../../store/table.store';
+import { useCartStore } from '../../store/cart.store';
 import { usePrinterStore } from '../../store/printer.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
@@ -55,6 +56,16 @@ import { DBServices } from '../../services/firebase/db';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
 import { AggregatorParserService } from '../../services/integrations/aggregatorParser.service';
+import {
+  printTableBillAction,
+  resolveActivePaymentMethods,
+  resolveTableOrderContext,
+  settleTableOrderAction,
+  TableOrderContext,
+} from '../../services/orders/tableActions.service';
+import { Table } from '../../types/table.types';
+import { TableTile } from '../tables/components/TableTile';
+import { QuickSettleModal } from '../tables/components/QuickSettleModal';
 
 export const HomeScreen = () => {
   const insets = useSafeAreaInsets();
@@ -62,6 +73,7 @@ export const HomeScreen = () => {
   const { tenant, branding, features, locations, activeLocationId, setActiveLocationId, getActiveLocation } = useTenantStore();
   const { orders, subscribeToOrders } = useOrderStore();
   const { tables, subscribeToTables } = useTableStore();
+  const carts = useCartStore(state => state.carts);
   const { settings } = usePrinterStore();
   const { user } = useAuthStore();
   const { isLargePOS, isDesktop } = useResponsiveLayout();
@@ -71,6 +83,9 @@ export const HomeScreen = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isBranchModalOpen, setBranchModalOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [busyPrintTableNo, setBusyPrintTableNo] = useState<number | null>(null);
+  const [busySettleTableNo, setBusySettleTableNo] = useState<number | null>(null);
+  const [homeSettleTarget, setHomeSettleTarget] = useState<{ table: Table; ctx: TableOrderContext } | null>(null);
 
   // Zomato & Swiggy Online Store Status
   const [isZomatoOnline, setZomatoOnline] = useState(true);
@@ -125,6 +140,88 @@ export const HomeScreen = () => {
       availableTablesCount: Math.max(0, tables.length - occupied.length)
     };
   }, [tables]);
+
+  const homeRunningOrderMap = React.useMemo(() => {
+    const map: Record<number, any> = {};
+    orders.forEach(o => {
+      if ((o.status === 'RUNNING' || o.status === 'running') && o.tableNo !== undefined && o.tableNo !== null) {
+        map[Number(o.tableNo)] = o;
+      }
+    });
+    return map;
+  }, [orders]);
+
+  const homeActiveMethods = React.useMemo(() => resolveActivePaymentMethods(features), [features]);
+  const homePaymentsEnabled = features.paymentsEnabled !== false;
+
+  const handleHomeTablePrint = React.useCallback(async (item: Table, ctx: TableOrderContext) => {
+    if (busyPrintTableNo !== null) return;
+    setBusyPrintTableNo(item.tableNo);
+    try {
+      await printTableBillAction({
+        tableNo: item.tableNo,
+        orderType: 'DINE_IN',
+        cartItems: ctx.items,
+        printedBillNo: ctx.billNo,
+        existingRunningOrder: ctx.runningOrder,
+        settings,
+        branding,
+        features,
+        tenantId: tenant?.id,
+        locationId: activeLocationId,
+        staffName: user?.name || 'Staff',
+      });
+    } finally {
+      setBusyPrintTableNo(null);
+    }
+  }, [busyPrintTableNo, settings, branding, features, tenant?.id, activeLocationId, user?.name]);
+
+  const executeHomeTableSettle = React.useCallback(async (
+    table: Table,
+    ctx: TableOrderContext,
+    method: string,
+    shouldPrint: boolean
+  ) => {
+    setBusySettleTableNo(table.tableNo);
+    try {
+      const res = await settleTableOrderAction({
+        tableNo: table.tableNo,
+        orderType: 'DINE_IN',
+        cartItems: ctx.items,
+        finalPayments: [{ method, amount: ctx.displayAmount }],
+        shouldPrint,
+        printedBillNo: ctx.billNo,
+        existingRunningOrder: ctx.runningOrder,
+        user,
+        tenantId: tenant?.id,
+        locationId: activeLocationId,
+        locations,
+        settings,
+        branding,
+        features,
+      });
+      if (res.success) {
+        setHomeSettleTarget(null);
+      }
+    } finally {
+      setBusySettleTableNo(null);
+    }
+  }, [user, tenant?.id, activeLocationId, locations, settings, branding, features]);
+
+  const handleHomeTableSave = React.useCallback((item: Table, ctx: TableOrderContext) => {
+    if (user?.role === 'WAITER' || user?.role === 'captain') {
+      toast.warning(
+        'Bill settlement requires Biller or Manager authorization. Please hand over this table order to the billing counter.',
+        'Action Restricted'
+      );
+      return;
+    }
+    if (!homePaymentsEnabled) {
+      executeHomeTableSettle(item, ctx, 'NO_PAYMENT', false);
+      return;
+    }
+    setHomeSettleTarget({ table: item, ctx });
+  }, [user?.role, homePaymentsEnabled, executeHomeTableSettle]);
 
   // LIVE Aggregator orders from real Firestore database (NO hardcoded fake data)
   const liveAggregatorOrders = React.useMemo(() => {
@@ -302,6 +399,18 @@ export const HomeScreen = () => {
         <View className="flex-row items-center gap-1.5 sm:gap-2">
           {isLargePOS && (
             <>
+              {features.dineInEnabled !== false && features.tablesEnabled !== false && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate(Routes.TABLES)}
+                  className="flex-row items-center bg-[#5D3FD3] px-3 py-1.5 rounded-xl shadow-sm"
+                >
+                  <LayoutGrid size={14} color="white" />
+                  <Text className="text-white text-xs font-bold ml-1.5">
+                    Table View
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               {isManagerOrAbove && (
                 <TouchableOpacity
                   onPress={() => navigation.navigate(Routes.INVENTORY)}
@@ -1170,42 +1279,28 @@ export const HomeScreen = () => {
                       </View>
                     ) : (
                       <View className="mt-4">
-                        <View className="flex-row flex-wrap gap-2.5">
+                        <View className="flex-row flex-wrap gap-1.5">
                           {tables.slice(0, 18).map(item => {
-                            const isOccupied = item.status === 'running' || item.status === 'OCCUPIED' || ((item as any).cartItems && (item as any).cartItems.length > 0);
-                            const isBillPrinted = (item as any).billPrinted === true;
-                            const waiterName = (item as any).activeWaiterName;
-                            const itemCount = (item as any).cartItems?.reduce((s: number, i: any) => s + (i.qty || 0), 0) || 0;
-
+                            const ctx = resolveTableOrderContext(
+                              item,
+                              carts[item.tableNo],
+                              homeRunningOrderMap[Number(item.tableNo)] || null,
+                              features
+                            );
                             return (
-                              <TouchableOpacity
+                              <TableTile
                                 key={item.id}
-                                onPress={() => navigation.navigate(Routes.MENU, { tableId: item.id, tableNo: item.tableNo, orderType: 'DINE_IN' })}
-                                className={'w-[78px] h-[78px] rounded-2xl border p-2 justify-between ' + (
-                                  isBillPrinted
-                                    ? isDark
-                                      ? 'bg-cyan-950/30 border-cyan-400/80 shadow-sm shadow-cyan-500/20'
-                                      : 'bg-cyan-50 border-cyan-400 shadow-sm'
-                                    : isOccupied
-                                    ? isDark
-                                      ? 'bg-amber-950/30 border-amber-500/50'
-                                      : 'bg-amber-50 border-amber-400 shadow-sm'
-                                    : isDark
-                                    ? 'bg-emerald-950/20 border-emerald-500/40'
-                                    : 'bg-emerald-50 border-emerald-300 shadow-sm'
-                                )}
-                              >
-                                <View className="flex-row items-center justify-between">
-                                  <View className={'w-2 h-2 rounded-full ' + (isBillPrinted ? 'bg-cyan-400' : isOccupied ? 'bg-amber-500' : 'bg-emerald-500')} />
-                                  <Text className={'text-[9px] font-bold ' + (isBillPrinted ? 'text-cyan-500 font-black' : isOccupied ? 'text-amber-500' : 'text-emerald-500')}>
-                                    {isBillPrinted ? 'PRINT' : isOccupied ? 'RUN' : 'AVL'}
-                                  </Text>
-                                </View>
-                                <Text className={`font-black text-center text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.tableNo}</Text>
-                                <Text className={`text-[9px] text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`} numberOfLines={1}>
-                                  {isBillPrinted ? '🧾 Printed' : (isOccupied && waiterName ? waiterName : (isOccupied && itemCount > 0 ? (itemCount + ' items') : 'Table'))}
-                                </Text>
-                              </TouchableOpacity>
+                                table={item}
+                                ctx={ctx}
+                                isDark={isDark}
+                                compact={true}
+                                isBusyPrint={busyPrintTableNo === item.tableNo}
+                                isBusySettle={busySettleTableNo === item.tableNo}
+                                onPressTable={t => navigation.navigate(Routes.MENU, { tableId: t.id, tableNo: t.tableNo, orderType: 'DINE_IN' })}
+                                onPressPrint={handleHomeTablePrint}
+                                onPressView={t => navigation.navigate(Routes.CART, { tableNo: t.tableNo, orderType: 'DINE_IN' })}
+                                onPressSave={handleHomeTableSave}
+                              />
                             );
                           })}
                         </View>
@@ -1791,6 +1886,23 @@ export const HomeScreen = () => {
           </View>
         </View>
       </Modal>
+
+      <QuickSettleModal
+        visible={Boolean(homeSettleTarget)}
+        table={homeSettleTarget?.table || null}
+        ctx={homeSettleTarget?.ctx || null}
+        activeMethods={homeActiveMethods}
+        paymentsEnabled={homePaymentsEnabled}
+        isDark={isDark}
+        isSettling={busySettleTableNo !== null}
+        onClose={() => setHomeSettleTarget(null)}
+        onConfirmSettle={(method, shouldPrint) => {
+          if (homeSettleTarget) {
+            executeHomeTableSettle(homeSettleTarget.table, homeSettleTarget.ctx, method, shouldPrint);
+          }
+        }}
+        onOpenFullCart={t => navigation.navigate(Routes.CART, { tableNo: t.tableNo, orderType: 'DINE_IN' })}
+      />
     </SafeAreaView>
   );
 };
