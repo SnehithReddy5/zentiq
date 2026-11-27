@@ -95,6 +95,14 @@ jobs:
       - name: Prebuild Android project
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Configure Gradle JDK Toolchain for Offline-Safe CI
+        run: |
+          if [ -f node_modules/@react-native/gradle-plugin/settings.gradle.kts ]; then
+            sed -i '/foojay-resolver-convention/d' node_modules/@react-native/gradle-plugin/settings.gradle.kts
+          fi
+          echo "org.gradle.java.installations.auto-download=false" >> android/gradle.properties
+          echo "org.gradle.java.installations.fromEnv=JAVA_HOME" >> android/gradle.properties
+
       - name: Build Android APK
         working-directory: android
         env:

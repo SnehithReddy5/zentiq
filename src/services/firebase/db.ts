@@ -292,22 +292,62 @@ export const DBServices = {
     return locations;
   },
 
-  // 3. Monotonic Sequence Counter (Scoped)
+  // 3. Monotonic Sequence Counter (Scoped, supports Continuous vs Daily Reset)
   async getNextSequenceNumber(tenantId?: string, locationId?: string): Promise<number> {
-    let seqRef;
-    if (tenantId && locationId) {
-      seqRef = doc(db, 'tenants', tenantId, 'locations', locationId, 'settings', 'sequence');
-    } else {
-      seqRef = doc(db, 'settings', 'sequence');
-    }
+    const seqRef = (tenantId && locationId)
+      ? doc(db, 'tenants', tenantId, 'locations', locationId, 'settings', 'sequence')
+      : doc(db, 'settings', 'sequence');
+
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     const docSnap = await getDoc(seqRef);
+    const data = docSnap.exists() ? docSnap.data() : {};
+
+    let effectiveMode: 'CONTINUOUS' | 'DAILY_RESET' = data.kotNumberMode || 'CONTINUOUS';
+    if (!data.kotNumberMode) {
+      try {
+        const { usePrinterStore } = require('../../store/printer.store');
+        effectiveMode = usePrinterStore.getState().settings?.kotNumberMode || 'CONTINUOUS';
+      } catch (_) {}
+    }
+
     let nextSeq = 1;
     if (docSnap.exists()) {
-      nextSeq = (docSnap.data().value || 0) + 1;
+      const prevVal = Number(data.value || 0);
+      const lastDate = String(data.lastDate || '');
+      if (effectiveMode === 'DAILY_RESET' && lastDate !== todayKey) {
+        nextSeq = 1;
+      } else {
+        nextSeq = prevVal + 1;
+      }
     }
-    await setDoc(seqRef, { value: nextSeq }, { merge: true });
+
+    await setDoc(seqRef, {
+      value: nextSeq,
+      lastDate: todayKey,
+      kotNumberMode: effectiveMode,
+    }, { merge: true });
     return nextSeq;
+  },
+
+  async updateSequenceSettings(
+    kotNumberMode: 'CONTINUOUS' | 'DAILY_RESET',
+    tenantId?: string,
+    locationId?: string,
+    resetNow: boolean = false
+  ): Promise<void> {
+    const seqRef = (tenantId && locationId)
+      ? doc(db, 'tenants', tenantId, 'locations', locationId, 'settings', 'sequence')
+      : doc(db, 'settings', 'sequence');
+
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    await setDoc(seqRef, {
+      kotNumberMode,
+      ...(resetNow ? { value: 0, lastDate: todayKey } : {}),
+    }, { merge: true });
   },
 
   // 4. Tables with Concurrency Locking

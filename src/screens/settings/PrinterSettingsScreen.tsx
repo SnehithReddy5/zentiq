@@ -12,8 +12,9 @@ import { useToastStore } from '../../store/toast.store';
 import { useThemeStore } from '../../store/theme.store';
 import { printerService } from '../../services/printer/printer.service';
 import { ESCPOSService } from '../../services/printer/escpos.service';
+import { DBServices } from '../../services/firebase/db';
 import { PrinterWorkflowMode } from '../../types/printer.types';
-import { Printer, CheckCircle2, Check, Save, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw, MapPin, Building, ShieldCheck, Ticket } from 'lucide-react-native';
+import { Printer, CheckCircle2, Check, Save, AlertTriangle, Utensils, Coffee, ShoppingBag, Usb, Wifi, RefreshCw, MapPin, Building, ShieldCheck, Ticket, Hash } from 'lucide-react-native';
 
 export const PrinterSettingsScreen = () => {
   const insets = useSafeAreaInsets();
@@ -37,6 +38,9 @@ export const PrinterSettingsScreen = () => {
   }, [activeLocationId]);
 
   const [paperWidth, setPaperWidth] = useState<'80mm_48' | '80mm_42' | '58mm_32'>(settings.paperWidth || '80mm_48');
+  const [kotNumberMode, setKotNumberMode] = useState<'CONTINUOUS' | 'DAILY_RESET'>(
+    settings.kotNumberMode || 'CONTINUOUS'
+  );
   const [workflowMode, setWorkflowMode] = useState<PrinterWorkflowMode>(
     settings.printerWorkflowMode || 'DUAL_PRINTER'
   );
@@ -95,6 +99,7 @@ export const PrinterSettingsScreen = () => {
       if (settings.kitchenPort) setKitchenPort(settings.kitchenPort.toString());
       if (settings.printerWorkflowMode) setWorkflowMode(settings.printerWorkflowMode);
       if (settings.paperWidth) setPaperWidth(settings.paperWidth);
+      if (settings.kotNumberMode) setKotNumberMode(settings.kotNumberMode);
     }
   }, [settings]);
 
@@ -137,6 +142,7 @@ export const PrinterSettingsScreen = () => {
       printerName: cleanName,
       printerWorkflowMode: workflowMode,
       paperWidth,
+      kotNumberMode,
       ipAddress: cleanIp,
       port: parseInt(port, 10) || 9100,
       kitchenPrinterType,
@@ -152,7 +158,10 @@ export const PrinterSettingsScreen = () => {
     const { tenant } = useTenantStore.getState();
     const { user } = useAuthStore.getState();
     if (tenant?.id) {
-      await usePrinterStore.getState().saveSettingsToCloud(tenant.id, effectiveLocId, user?.id);
+      await Promise.all([
+        usePrinterStore.getState().saveSettingsToCloud(tenant.id, effectiveLocId, user?.id),
+        DBServices.updateSequenceSettings(kotNumberMode, tenant.id, effectiveLocId || undefined),
+      ]);
     }
 
     const branchName = locations.find(l => l.id === effectiveLocId)?.name || 'this branch';
@@ -696,6 +705,56 @@ export const PrinterSettingsScreen = () => {
                 </Text>
               </TouchableOpacity>
             ))}
+          </View>
+        </View>
+
+        {/* KOT / Bill Numbering Mode */}
+        <View
+          className={`p-5 rounded-3xl mb-5 border ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          }`}
+        >
+          <View className="flex-row items-center mb-1">
+            <Hash size={17} color="#A78BFA" />
+            <Text className={`font-black text-sm ml-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              KOT & Order Numbering
+            </Text>
+          </View>
+          <Text className={`text-xs mb-3 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            Choose whether KOT / Token / Order numbers continue indefinitely or reset to #1 each day:
+          </Text>
+          <View className="flex-row gap-2.5">
+            <TouchableOpacity
+              onPress={() => setKotNumberMode('CONTINUOUS')}
+              className={`flex-1 p-3.5 rounded-2xl border ${
+                kotNumberMode === 'CONTINUOUS'
+                  ? 'bg-[#5D3FD3]/15 border-[#5D3FD3]'
+                  : isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <Text className={`font-black text-xs ${kotNumberMode === 'CONTINUOUS' ? (isDark ? 'text-purple-300' : 'text-[#5D3FD3]') : (isDark ? 'text-slate-300' : 'text-slate-800')}`}>
+                Continue Number
+              </Text>
+              <Text className={`text-[11px] mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Never resets (#101, #102, #103...)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setKotNumberMode('DAILY_RESET')}
+              className={`flex-1 p-3.5 rounded-2xl border ${
+                kotNumberMode === 'DAILY_RESET'
+                  ? 'bg-emerald-500/15 border-emerald-500'
+                  : isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <Text className={`font-black text-xs ${kotNumberMode === 'DAILY_RESET' ? (isDark ? 'text-emerald-300' : 'text-emerald-700') : (isDark ? 'text-slate-300' : 'text-slate-800')}`}>
+                Refresh Every Day
+              </Text>
+              <Text className={`text-[11px] mt-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Starts fresh at #1 daily
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 

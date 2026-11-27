@@ -25,6 +25,7 @@ const defaultPrinterSettings: PrinterSettings = {
   kitchenIpAddress: '',
   kitchenPort: 9100,
   paperWidth: '80mm_48',
+  kotNumberMode: 'CONTINUOUS',
 };
 
 export const usePrinterStore = create<PrinterState>()(

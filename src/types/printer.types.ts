@@ -19,4 +19,5 @@ export interface PrinterSettings {
   kitchenIpAddress: string;
   kitchenPort: number;
   paperWidth?: '80mm_48' | '80mm_42' | '58mm_32';
+  kotNumberMode?: 'CONTINUOUS' | 'DAILY_RESET';
 }
