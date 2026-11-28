@@ -100,8 +100,7 @@ jobs:
           if [ -f node_modules/@react-native/gradle-plugin/settings.gradle.kts ]; then
             sed -i '/foojay-resolver-convention/d' node_modules/@react-native/gradle-plugin/settings.gradle.kts
           fi
-          echo "org.gradle.java.installations.auto-download=false" >> android/gradle.properties
-          echo "org.gradle.java.installations.fromEnv=JAVA_HOME" >> android/gradle.properties
+          printf "\norg.gradle.java.installations.auto-download=false\norg.gradle.java.installations.fromEnv=JAVA_HOME\n" >> android/gradle.properties
 
       - name: Build Android APK
         working-directory: android
