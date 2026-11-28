@@ -217,23 +217,23 @@ const OrderCard = React.memo(({
         {/* Items Summary Preview */}
         <View className="mb-2">
           {displayedItems.map((it: any, idx: number) => (
-            <Text key={idx} className="text-slate-300 text-xs py-0.5" numberOfLines={1}>
-              <Text className="text-purple-400 font-bold">{it.qty || 1}x</Text> {getItemDisplayName(it.itemName || it.name, it.variantName)}
+            <Text key={idx} className={`text-xs py-0.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`} numberOfLines={1}>
+              <Text className="text-purple-500 font-bold">{it.qty || 1}x</Text> {getItemDisplayName(it.itemName || it.name, it.variantName)}
             </Text>
           ))}
           {remainingCount > 0 && (
-            <Text className="text-[11px] text-indigo-400 font-bold mt-0.5">+ {remainingCount} more items</Text>
+            <Text className="text-[11px] text-indigo-500 font-bold mt-0.5">+ {remainingCount} more items</Text>
           )}
         </View>
       </View>
 
       {/* Footer Row: Timestamp, Cashier, and Tap to Open */}
-      <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-slate-800/80">
-        <Text className="text-slate-400 text-[10px]">
+      <View className={`flex-row items-center justify-between mt-2 pt-2 border-t ${isDark ? 'border-slate-800/80' : 'border-slate-200'}`}>
+        <Text className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
           {formatOrderDate(item.createdAt)} • By {item.captainName || 'Staff'}
         </Text>
         <View className="flex-row items-center gap-1">
-          <Text className="text-[10px] text-indigo-300 font-bold">
+          <Text className="text-[10px] text-indigo-500 font-bold">
             Details ➜
           </Text>
         </View>
@@ -252,6 +252,7 @@ interface OrdersSummaryDashboardProps {
   setSummaryTab: (tab: 'OVERVIEW' | 'PAYMENTS' | 'ITEMS') => void;
   stats: any;
   isPaymentsEnabled: boolean;
+  isDark: boolean;
   onOpenItemFrequencyModal: () => void;
 }
 
@@ -264,6 +265,7 @@ const OrdersSummaryDashboard = React.memo(({
   setSummaryTab,
   stats,
   isPaymentsEnabled,
+  isDark,
   onOpenItemFrequencyModal
 }: OrdersSummaryDashboardProps) => {
             const activeRevenue = timeScope === 'TODAY' ? stats.todayRevenue : stats.totalRevenue;
@@ -300,17 +302,17 @@ const OrdersSummaryDashboard = React.memo(({
             return (
               <View className="mb-3">
                 {/* Comprehensive Order Summary Dashboard */}
-                <View className="bg-slate-900 border border-slate-800/80 rounded-3xl p-3.5 sm:p-4 mb-2.5">
+                <View className={`border rounded-3xl p-3.5 sm:p-4 mb-2.5 ${isDark ? 'bg-slate-900 border-slate-800/80' : 'bg-white border-slate-200 shadow-sm'}`}>
                   {/* Collapsed View (Ultra-Compact on Mobile) */}
                   {!isSummaryExpanded ? (
                     <View className="flex-row items-center justify-between py-0.5">
                       <View className="flex-row items-center flex-1 mr-2 flex-wrap gap-x-2 gap-y-1">
-                        <View className="flex-row items-center px-2.5 py-1 rounded-xl bg-slate-950/80 border border-slate-800">
-                          <View className={`w-2 h-2 rounded-full mr-1.5 ${timeScope === 'TODAY' ? 'bg-emerald-400' : 'bg-indigo-400'}`} />
-                          <Text className="text-white text-xs font-bold">
+                        <View className={`flex-row items-center px-2.5 py-1 rounded-xl border ${isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                          <View className={`w-2 h-2 rounded-full mr-1.5 ${timeScope === 'TODAY' ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
+                          <Text className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                             {timeScope === 'TODAY' ? "Today's Revenue" : "All-Time Revenue"}: ₹{activeRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </Text>
-                          <Text className="text-slate-400 text-[11px] ml-1.5">
+                          <Text className={`text-[11px] ml-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                             ({activeCount} orders)
                           </Text>
                         </View>
@@ -318,36 +320,36 @@ const OrdersSummaryDashboard = React.memo(({
 
                       <TouchableOpacity
                         onPress={() => setIsSummaryExpanded(true)}
-                        className="flex-row items-center bg-slate-800 px-3 py-1.5 rounded-xl active:bg-slate-700 shrink-0"
+                        className={`flex-row items-center px-3 py-1.5 rounded-xl shrink-0 ${isDark ? 'bg-slate-800 active:bg-slate-700' : 'bg-slate-100 active:bg-slate-200'}`}
                       >
-                        <ChevronDown size={13} color="#94A3B8" />
+                        <ChevronDown size={13} color={isDark ? '#94A3B8' : '#475569'} />
                       </TouchableOpacity>
                     </View>
                   ) : (
                     <View>
                       {/* Expanded Header: Live Scope, Revenue & Collapse (Single Master Scope Controlled Above) */}
-                      <View className="flex-row items-center justify-between pb-3 border-b border-slate-800/80">
+                      <View className={`flex-row items-center justify-between pb-3 border-b ${isDark ? 'border-slate-800/80' : 'border-slate-200'}`}>
                         <View className="flex-1 mr-2">
                           <View className="flex-row items-center mb-0.5">
-                            <View className={`w-2 h-2 rounded-full mr-1.5 ${timeScope === 'TODAY' ? 'bg-emerald-400 animate-pulse' : 'bg-indigo-400'}`} />
-                            <Text className="text-slate-400 text-[10px] font-black uppercase tracking-wider">
+                            <View className={`w-2 h-2 rounded-full mr-1.5 ${timeScope === 'TODAY' ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}`} />
+                            <Text className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                               {timeScope === 'TODAY' ? "Today's Orders Summary" : "All-Time Orders Summary"}
                             </Text>
                           </View>
-                          <Text className="text-2xl font-black text-emerald-400" numberOfLines={1}>
+                          <Text className="text-2xl font-black text-emerald-500" numberOfLines={1}>
                             ₹{activeRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </Text>
-                          <Text className="text-slate-400 text-[11px] mt-0.5 font-medium">
-                            {activeCount} orders <Text className="text-slate-500">{formatBreakdownLong()}</Text>
+                          <Text className={`text-[11px] mt-0.5 font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                            {activeCount} orders <Text className={isDark ? 'text-slate-500' : 'text-slate-400'}>{formatBreakdownLong()}</Text>
                           </Text>
                         </View>
 
                         <TouchableOpacity
                           onPress={() => setIsSummaryExpanded(false)}
-                          className="p-2 rounded-xl bg-slate-800 active:bg-slate-700 shrink-0"
+                          className={`p-2 rounded-xl shrink-0 ${isDark ? 'bg-slate-800 active:bg-slate-700' : 'bg-slate-100 active:bg-slate-200'}`}
                           accessibilityLabel="Collapse Summary"
                         >
-                          <ChevronUp size={16} color="#94A3B8" />
+                          <ChevronUp size={16} color={isDark ? '#94A3B8' : '#475569'} />
                         </TouchableOpacity>
                       </View>
 
@@ -355,10 +357,10 @@ const OrdersSummaryDashboard = React.memo(({
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 6, paddingTop: 10, paddingBottom: 4 }}>
                         <TouchableOpacity
                           onPress={() => setSummaryTab('OVERVIEW')}
-                          className={`px-3 py-1.5 rounded-xl border flex-row items-center ${summaryTab === 'OVERVIEW' ? 'bg-indigo-600/30 border-indigo-500' : 'bg-slate-950 border-slate-800'
+                          className={`px-3 py-1.5 rounded-xl border flex-row items-center ${summaryTab === 'OVERVIEW' ? (isDark ? 'bg-indigo-600/30 border-indigo-500' : 'bg-indigo-50 border-indigo-400') : (isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200')
                             }`}
                         >
-                          <Text className={`text-xs font-bold ${summaryTab === 'OVERVIEW' ? 'text-indigo-300' : 'text-slate-400'}`}>
+                          <Text className={`text-xs font-bold ${summaryTab === 'OVERVIEW' ? (isDark ? 'text-indigo-300' : 'text-indigo-700') : (isDark ? 'text-slate-400' : 'text-slate-600')}`}>
                             📊 Overview
                           </Text>
                         </TouchableOpacity>
@@ -366,10 +368,10 @@ const OrdersSummaryDashboard = React.memo(({
                         {isPaymentsEnabled && (
                           <TouchableOpacity
                             onPress={() => setSummaryTab('PAYMENTS')}
-                            className={`px-3 py-1.5 rounded-xl border flex-row items-center ${summaryTab === 'PAYMENTS' ? 'bg-purple-600/30 border-purple-500' : 'bg-slate-950 border-slate-800'
+                            className={`px-3 py-1.5 rounded-xl border flex-row items-center ${summaryTab === 'PAYMENTS' ? (isDark ? 'bg-purple-600/30 border-purple-500' : 'bg-purple-50 border-purple-400') : (isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200')
                               }`}
                           >
-                            <Text className={`text-xs font-bold ${summaryTab === 'PAYMENTS' ? 'text-purple-300' : 'text-slate-400'}`}>
+                            <Text className={`text-xs font-bold ${summaryTab === 'PAYMENTS' ? (isDark ? 'text-purple-300' : 'text-purple-700') : (isDark ? 'text-slate-400' : 'text-slate-600')}`}>
                               💳 Payment Ways
                             </Text>
                           </TouchableOpacity>
@@ -377,10 +379,10 @@ const OrdersSummaryDashboard = React.memo(({
 
                         <TouchableOpacity
                           onPress={() => setSummaryTab('ITEMS')}
-                          className={`px-3 py-1.5 rounded-xl border flex-row items-center ${summaryTab === 'ITEMS' ? 'bg-emerald-600/30 border-emerald-500' : 'bg-slate-950 border-slate-800'
+                          className={`px-3 py-1.5 rounded-xl border flex-row items-center ${summaryTab === 'ITEMS' ? (isDark ? 'bg-emerald-600/30 border-emerald-500' : 'bg-emerald-50 border-emerald-400') : (isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200')
                             }`}
                         >
-                          <Text className={`text-xs font-bold ${summaryTab === 'ITEMS' ? 'text-emerald-300' : 'text-slate-400'}`}>
+                          <Text className={`text-xs font-bold ${summaryTab === 'ITEMS' ? (isDark ? 'text-emerald-300' : 'text-emerald-700') : (isDark ? 'text-slate-400' : 'text-slate-600')}`}>
                             🍲 Item Frequency ({activeItems.length})
                           </Text>
                         </TouchableOpacity>
@@ -389,83 +391,78 @@ const OrdersSummaryDashboard = React.memo(({
                       {/* Tab 1: OVERVIEW METRIC TILES */}
                       {summaryTab === 'OVERVIEW' && (
                         <View className="flex-row flex-wrap gap-2 pt-2.5">
-                          {/* Active Scope Orders Count Tile */}
-                          <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                          <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-slate-950/80 border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
                             <View className="flex-row items-center justify-between">
-                              <Text className="text-slate-400 text-[10px] font-bold uppercase">
+                              <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {timeScope === 'TODAY' ? "Today's Orders" : "Total Orders"}
                               </Text>
-                              {timeScope === 'TODAY' ? <Clock size={13} color="#34D399" /> : <Receipt size={13} color="#818CF8" />}
+                              {timeScope === 'TODAY' ? <Clock size={13} color="#10B981" /> : <Receipt size={13} color="#6366F1" />}
                             </View>
-                            <Text className={`${timeScope === 'TODAY' ? 'text-emerald-300' : 'text-white'} font-black text-base mt-1`} numberOfLines={1}>
-                              {activeCount} <Text className="text-xs text-slate-400 font-normal">{formatBreakdownShort()}</Text>
+                            <Text className={`${timeScope === 'TODAY' ? 'text-emerald-500' : (isDark ? 'text-white' : 'text-slate-900')} font-black text-base mt-1`} numberOfLines={1}>
+                              {activeCount} <Text className={`text-xs font-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{formatBreakdownShort()}</Text>
                             </Text>
-                            <Text className="text-slate-400 text-[10px] mt-0.5">
+                            <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                               ₹{activeRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })} {timeScope === 'TODAY' ? 'today' : 'all-time'}
                             </Text>
                           </View>
 
-                          {/* Active Scope Revenue Tile */}
-                          <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                          <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-slate-950/80 border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
                             <View className="flex-row items-center justify-between">
-                              <Text className="text-slate-400 text-[10px] font-bold uppercase">
+                              <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {timeScope === 'TODAY' ? "Today's Revenue" : "Total Revenue"}
                               </Text>
-                              <TrendingUp size={13} color="#34D399" />
+                              <TrendingUp size={13} color="#10B981" />
                             </View>
-                            <Text className="text-white font-black text-base mt-1" numberOfLines={1}>
+                            <Text className={`font-black text-base mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
                               ₹{activeRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </Text>
-                            <Text className="text-slate-400 text-[10px] mt-0.5">
+                            <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                               {timeScope === 'TODAY' ? `${stats.todayOrdersCount} orders today` : `${stats.totalOrdersCount} total orders`}
                             </Text>
                           </View>
 
-                          {/* Avg Bill Value Tile */}
-                          <View className="bg-slate-950/80 border border-slate-800/80 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                          <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-slate-950/80 border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
                             <View className="flex-row items-center justify-between">
-                              <Text className="text-slate-400 text-[10px] font-bold uppercase">Avg Ticket</Text>
-                              <Utensils size={13} color="#C084FC" />
+                              <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Avg Ticket</Text>
+                              <Utensils size={13} color="#A855F7" />
                             </View>
-                            <Text className="text-purple-300 font-black text-base mt-1" numberOfLines={1}>
+                            <Text className="text-purple-500 font-black text-base mt-1" numberOfLines={1}>
                               ₹{activeAvg.toFixed(0)}
                             </Text>
-                            <Text className="text-slate-400 text-[10px] mt-0.5">
+                            <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                               {timeScope === 'TODAY' ? "Today's avg bill" : "Historical avg"}
                             </Text>
                           </View>
 
-                          {/* Scope-Synchronized Peak Sale Tile */}
-                          <View className="bg-emerald-950/30 border border-emerald-500/40 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                          <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-emerald-950/30 border-emerald-500/40' : 'bg-emerald-50 border-emerald-300'}`}>
                             <View className="flex-row items-center justify-between">
-                              <Text className="text-emerald-400 text-[10px] font-black uppercase tracking-wide">
+                              <Text className="text-emerald-500 text-[10px] font-black uppercase tracking-wide">
                                 {timeScope === 'TODAY' ? "Today's Peak (🟢)" : "All-Time Peak (🟢)"}
                               </Text>
-                              <TrendingUp size={13} color="#34D399" />
+                              <TrendingUp size={13} color="#10B981" />
                             </View>
                             <View className="flex-row items-baseline gap-1 mt-1">
-                              <Text className="text-emerald-300 font-black text-base" numberOfLines={1}>
+                              <Text className={`font-black text-base ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`} numberOfLines={1}>
                                 ₹{(timeScope === 'TODAY' ? stats.todayHighestAmount : stats.highestOrderAmount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                               </Text>
                               {((timeScope === 'TODAY' ? stats.todayHighestKOT : stats.highestOrderKOT) !== 'None') && (
-                                <Text className="text-emerald-400/80 text-[10px] font-bold" numberOfLines={1}>
+                                <Text className="text-emerald-500 text-[10px] font-bold" numberOfLines={1}>
                                   {timeScope === 'TODAY' ? stats.todayHighestKOT : stats.highestOrderKOT}
                                 </Text>
                               )}
                             </View>
-                            <Text className="text-slate-400 text-[10px] mt-0.5">
+                            <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                               Min: ₹{(timeScope === 'TODAY' ? stats.todayLowestAmount : stats.lowestOrderAmount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </Text>
                           </View>
                         </View>
                       )}
 
-                      {/* Tab 2: PAYMENT WAYS BREAKDOWN (Shown when payments are enabled) */}
+                      {/* Tab 2: PAYMENT WAYS BREAKDOWN */}
                       {summaryTab === 'PAYMENTS' && isPaymentsEnabled && (
                         <View className="pt-2">
-                          {/* Multi-Tender Visual Stacked Bar */}
                           {activePayments.totalCollected > 0 && (
-                            <View className="h-1.5 rounded-full flex-row overflow-hidden bg-slate-950 mb-2.5">
+                            <View className={`h-1.5 rounded-full flex-row overflow-hidden mb-2.5 ${isDark ? 'bg-slate-950' : 'bg-slate-200'}`}>
                               {activePayments.cash.percent > 0 && (
                                 <View style={{ width: `${activePayments.cash.percent}%` }} className="bg-emerald-500 h-full" />
                               )}
@@ -481,96 +478,90 @@ const OrdersSummaryDashboard = React.memo(({
                             </View>
                           )}
 
-                          {/* Payment Mode Tiles Grid */}
                           <View className="flex-row flex-wrap gap-2">
-                            {/* Cash Collection */}
-                            <View className="bg-emerald-950/25 border border-emerald-500/30 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                            <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-emerald-950/25 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
                               <View className="flex-row items-center justify-between">
                                 <View className="flex-row items-center">
                                   <Banknote size={14} color="#10B981" />
-                                  <Text className="text-emerald-400 text-[11px] font-black uppercase ml-1.5">Cash</Text>
+                                  <Text className="text-emerald-500 text-[11px] font-black uppercase ml-1.5">Cash</Text>
                                 </View>
-                                <Text className="text-emerald-400 font-bold text-[10px]">
+                                <Text className="text-emerald-500 font-bold text-[10px]">
                                   {activePayments.cash.percent.toFixed(0)}%
                                 </Text>
                               </View>
-                              <Text className="text-white font-black text-base mt-1" numberOfLines={1}>
+                              <Text className={`font-black text-base mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
                                 ₹{activePayments.cash.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                               </Text>
-                              <Text className="text-slate-400 text-[10px] mt-0.5">
+                              <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                 {activePayments.cash.count} orders settled
                               </Text>
                             </View>
 
-                            {/* UPI Collection */}
-                            <View className="bg-purple-950/25 border border-purple-500/30 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                            <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-purple-950/25 border-purple-500/30' : 'bg-purple-50 border-purple-200'}`}>
                               <View className="flex-row items-center justify-between">
                                 <View className="flex-row items-center">
-                                  <Smartphone size={14} color="#A78BFA" />
-                                  <Text className="text-purple-300 text-[11px] font-black uppercase ml-1.5">UPI / QR</Text>
+                                  <Smartphone size={14} color="#8B5CF6" />
+                                  <Text className="text-purple-500 text-[11px] font-black uppercase ml-1.5">UPI / QR</Text>
                                 </View>
-                                <Text className="text-purple-300 font-bold text-[10px]">
+                                <Text className="text-purple-500 font-bold text-[10px]">
                                   {activePayments.upi.percent.toFixed(0)}%
                                 </Text>
                               </View>
-                              <Text className="text-white font-black text-base mt-1" numberOfLines={1}>
+                              <Text className={`font-black text-base mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
                                 ₹{activePayments.upi.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                               </Text>
-                              <Text className="text-slate-400 text-[10px] mt-0.5">
+                              <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                 {activePayments.upi.count} orders settled
                               </Text>
                             </View>
 
-                            {/* Card Collection (if card enabled or card sales exist) */}
                             {(isPaymentsEnabled || activePayments.card.amount > 0) && (
-                              <View className="bg-sky-950/25 border border-sky-500/30 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                              <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-sky-950/25 border-sky-500/30' : 'bg-sky-50 border-sky-200'}`}>
                                 <View className="flex-row items-center justify-between">
                                   <View className="flex-row items-center">
-                                    <CreditCard size={14} color="#38BDF8" />
-                                    <Text className="text-sky-300 text-[11px] font-black uppercase ml-1.5">Card</Text>
+                                    <CreditCard size={14} color="#0EA5E9" />
+                                    <Text className="text-sky-500 text-[11px] font-black uppercase ml-1.5">Card</Text>
                                   </View>
-                                  <Text className="text-sky-300 font-bold text-[10px]">
+                                  <Text className="text-sky-500 font-bold text-[10px]">
                                     {activePayments.card.percent.toFixed(0)}%
                                   </Text>
                                 </View>
-                                <Text className="text-white font-black text-base mt-1" numberOfLines={1}>
+                                <Text className={`font-black text-base mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
                                   ₹{activePayments.card.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                                 </Text>
-                                <Text className="text-slate-400 text-[10px] mt-0.5">
+                                <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                   {activePayments.card.count} orders settled
                                 </Text>
                               </View>
                             )}
 
-                            {/* Other / Custom Tenders (if any) */}
                             {activePayments.other.amount > 0 && (
-                              <View className="bg-amber-950/25 border border-amber-500/30 p-2.5 rounded-2xl flex-1 min-w-[130px]">
+                              <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-amber-950/25 border-amber-500/30' : 'bg-amber-50 border-amber-200'}`}>
                                 <View className="flex-row items-center justify-between">
                                   <View className="flex-row items-center">
-                                    <Receipt size={14} color="#FBBF24" />
-                                    <Text className="text-amber-300 text-[11px] font-black uppercase ml-1.5">Other</Text>
+                                    <Receipt size={14} color="#F59E0B" />
+                                    <Text className="text-amber-500 text-[11px] font-black uppercase ml-1.5">Other</Text>
                                   </View>
-                                  <Text className="text-amber-300 font-bold text-[10px]">
+                                  <Text className="text-amber-500 font-bold text-[10px]">
                                     {activePayments.other.percent.toFixed(0)}%
                                   </Text>
                                 </View>
-                                <Text className="text-white font-black text-base mt-1" numberOfLines={1}>
+                                <Text className={`font-black text-base mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
                                   ₹{activePayments.other.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                                 </Text>
-                                <Text className="text-slate-400 text-[10px] mt-0.5">
+                                <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                   {activePayments.other.count} orders
                                 </Text>
                               </View>
                             )}
 
-                            {/* Unpaid / Active Running (if any) */}
                             {activePayments.unpaid.amount > 0 && (
-                              <View className="bg-rose-950/20 border border-rose-500/30 p-2.5 rounded-2xl flex-1 min-w-[130px]">
-                                <Text className="text-rose-400 text-[10px] font-bold uppercase">Unpaid / Running</Text>
-                                <Text className="text-rose-300 font-black text-base mt-1" numberOfLines={1}>
+                              <View className={`border p-2.5 rounded-2xl flex-1 min-w-[130px] ${isDark ? 'bg-rose-950/20 border-rose-500/30' : 'bg-rose-50 border-rose-200'}`}>
+                                <Text className="text-rose-500 text-[10px] font-bold uppercase">Unpaid / Running</Text>
+                                <Text className="text-rose-500 font-black text-base mt-1" numberOfLines={1}>
                                   ₹{activePayments.unpaid.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                                 </Text>
-                                <Text className="text-slate-400 text-[10px] mt-0.5">
+                                <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                   {activePayments.unpaid.count} running tables
                                 </Text>
                               </View>
@@ -579,7 +570,7 @@ const OrdersSummaryDashboard = React.memo(({
                         </View>
                       )}
 
-                      {/* Tab 3: ITEM FREQUENCY (Top sold items & portions) */}
+                      {/* Tab 3: ITEM FREQUENCY */}
                       {summaryTab === 'ITEMS' && (
                         <View className="pt-2 gap-1.5">
                           {activeItems.length === 0 ? (
@@ -592,7 +583,7 @@ const OrdersSummaryDashboard = React.memo(({
                                 const maxQty = activeItems[0]?.qty || 1;
                                 const widthPct = Math.max(8, Math.min(100, (it.qty / maxQty) * 100));
                                 return (
-                                  <View key={`${it.itemName}-${it.variantName || ''}-${idx}`} className="bg-slate-950/70 border border-slate-800/80 p-2.5 rounded-2xl relative overflow-hidden">
+                                  <View key={`${it.itemName}-${it.variantName || ''}-${idx}`} className={`border p-2.5 rounded-2xl relative overflow-hidden ${isDark ? 'bg-slate-950/70 border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
                                     <View
                                       style={{ width: `${widthPct}%` }}
                                       className="absolute left-0 top-0 bottom-0 bg-indigo-500/10 rounded-2xl"
@@ -602,31 +593,31 @@ const OrdersSummaryDashboard = React.memo(({
                                         <View className={`w-5 h-5 rounded-full items-center justify-center mr-2 shrink-0 ${idx === 0 ? 'bg-amber-500/20 border border-amber-500/40' :
                                           idx === 1 ? 'bg-slate-400/20 border border-slate-400/40' :
                                             idx === 2 ? 'bg-amber-700/20 border border-amber-700/40' :
-                                              'bg-slate-800'
+                                              (isDark ? 'bg-slate-800' : 'bg-slate-200')
                                           }`}>
-                                          <Text className={`text-[10px] font-black ${idx === 0 ? 'text-amber-400' :
-                                            idx === 1 ? 'text-slate-300' :
-                                              idx === 2 ? 'text-amber-500' :
-                                                'text-slate-400'
+                                          <Text className={`text-[10px] font-black ${idx === 0 ? 'text-amber-500' :
+                                            idx === 1 ? (isDark ? 'text-slate-300' : 'text-slate-700') :
+                                              idx === 2 ? 'text-amber-600' :
+                                                (isDark ? 'text-slate-400' : 'text-slate-600')
                                             }`}>
                                             #{idx + 1}
                                           </Text>
                                         </View>
                                         <View className="flex-1">
-                                          <Text className="text-white text-xs font-bold" numberOfLines={1}>
+                                          <Text className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`} numberOfLines={1}>
                                             {it.itemName}
                                           </Text>
                                           {it.variantName ? (
-                                            <Text className="text-slate-400 text-[10px]" numberOfLines={1}>{it.variantName}</Text>
+                                            <Text className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`} numberOfLines={1}>{it.variantName}</Text>
                                           ) : null}
                                         </View>
                                       </View>
 
                                       <View className="items-end shrink-0">
                                         <View className="bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
-                                          <Text className="text-emerald-300 font-black text-xs">x{it.qty} sold</Text>
+                                          <Text className="text-emerald-500 font-black text-xs">x{it.qty} sold</Text>
                                         </View>
-                                        <Text className="text-slate-400 text-[10px] font-bold mt-0.5">
+                                        <Text className={`text-[10px] font-bold mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                           ₹{it.revenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                                         </Text>
                                       </View>
@@ -637,10 +628,10 @@ const OrdersSummaryDashboard = React.memo(({
 
                               <TouchableOpacity
                                 onPress={onOpenItemFrequencyModal}
-                                className="mt-1 py-2 bg-indigo-600/20 border border-indigo-500/30 rounded-xl items-center flex-row justify-center active:bg-indigo-600/30"
+                                className={`mt-1 py-2 border rounded-xl items-center flex-row justify-center ${isDark ? 'bg-indigo-600/20 border-indigo-500/30 active:bg-indigo-600/30' : 'bg-indigo-50 border-indigo-200 active:bg-indigo-100'}`}
                               >
-                                <Sparkles size={13} color="#818CF8" />
-                                <Text className="text-indigo-300 font-bold text-xs ml-1.5">
+                                <Sparkles size={13} color="#6366F1" />
+                                <Text className={`font-bold text-xs ml-1.5 ${isDark ? 'text-indigo-300' : 'text-indigo-700'}`}>
                                   View All Item Rankings ({activeItems.length} dishes)
                                 </Text>
                               </TouchableOpacity>
@@ -1398,9 +1389,10 @@ export const RunningOrdersScreen = () => {
       setSummaryTab={setSummaryTab}
       stats={stats}
       isPaymentsEnabled={isPaymentsEnabled}
+      isDark={isDark}
       onOpenItemFrequencyModal={() => setItemFrequencyModalOpen(true)}
     />
-  ), [timeScope, isSummaryExpanded, summaryTab, stats, isPaymentsEnabled]);
+  ), [timeScope, isSummaryExpanded, summaryTab, stats, isPaymentsEnabled, isDark]);
 
   const renderOrderItem = useCallback(({ item }: any) => {
     const activeHighestId = timeScope === 'TODAY' ? stats.todayHighestId : stats.highestOrderId;

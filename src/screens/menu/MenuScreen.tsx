@@ -1525,20 +1525,6 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({ isDirectHome = false }) 
             </TouchableOpacity>
           ) : (
             <View className="flex-row items-center gap-2">
-              {/* Compact Cart Drawer Trigger (view/edit items without blocking fast checkout) */}
-              <TouchableOpacity
-                onPress={() => setIsCartModalOpen(true)}
-                className={`px-3 py-3.5 rounded-2xl border flex-row items-center justify-center active:opacity-80 ${
-                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-300'
-                }`}
-                accessibilityLabel="View or Edit Cart Items"
-              >
-                <ShoppingBag size={16} color={isDark ? '#CBD5E1' : '#475569'} />
-                <Text className={`font-black text-xs ml-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {cartItemCount}
-                </Text>
-              </TouchableOpacity>
-
               {isDualPrinterMode && unsentItems.length > 0 && (
                 <TouchableOpacity
                   onPress={handleSendToKitchen}

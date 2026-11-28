@@ -571,23 +571,23 @@ export const PrinterSettingsScreen = () => {
             onPress={() => setWorkflowMode('DUAL_PRINTER')}
             className={`p-4 rounded-2xl border mb-3 ${
               isDualMode
-                ? 'bg-purple-900/20 border-purple-500/60'
-                : 'bg-slate-950/60 border-slate-800'
+                ? isDark ? 'bg-purple-900/20 border-purple-500/60' : 'bg-purple-50 border-purple-400'
+                : isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}
           >
             <View className="flex-row items-center justify-between mb-1">
               <View className="flex-row items-center flex-1 mr-2 flex-wrap">
-                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isDualMode ? 'bg-[#5D3FD3]' : 'bg-slate-800'}`} />
-                <Text className="text-white font-bold text-sm">1. Dual Printer (Counter Bill + Kitchen KOT)</Text>
+                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isDualMode ? 'bg-[#5D3FD3]' : (isDark ? 'bg-slate-800' : 'bg-slate-300')}`} />
+                <Text className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>1. Dual Printer (Counter Bill + Kitchen KOT)</Text>
               </View>
               {isDualMode && (
                 <View className="bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/30 shrink-0">
-                  <Text className="text-purple-300 font-bold text-[10px]">ACTIVE</Text>
+                  <Text className={`font-bold text-[10px] ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>ACTIVE</Text>
                 </View>
               )}
             </View>
-            <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
-              Cash counter prints Customer Bill upon settlement. Separate Kitchen printer receives KOT tickets via <Text className="text-purple-300 font-bold">"Send KOT"</Text> button.
+            <Text className={`text-xs ml-5 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              Cash counter prints Customer Bill upon settlement. Separate Kitchen printer receives KOT tickets via <Text className={`font-bold ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>"Send KOT"</Text> button.
             </Text>
           </TouchableOpacity>
 
@@ -596,23 +596,23 @@ export const PrinterSettingsScreen = () => {
             onPress={() => setWorkflowMode('SINGLE_COMBINED')}
             className={`p-4 rounded-2xl border mb-3 ${
               isCombinedMode
-                ? 'bg-emerald-950/30 border-emerald-500/60'
-                : 'bg-slate-950/60 border-slate-800'
+                ? isDark ? 'bg-emerald-950/30 border-emerald-500/60' : 'bg-emerald-50 border-emerald-400'
+                : isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}
           >
             <View className="flex-row items-center justify-between mb-1">
               <View className="flex-row items-center flex-1 mr-2 flex-wrap">
-                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isCombinedMode ? 'bg-emerald-600' : 'bg-slate-800'}`} />
-                <Text className="text-white font-bold text-sm">2. Single Printer (Bill + Kitchen Slip Together)</Text>
+                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isCombinedMode ? 'bg-emerald-600' : (isDark ? 'bg-slate-800' : 'bg-slate-300')}`} />
+                <Text className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>2. Single Printer (Bill + Kitchen Slip Together)</Text>
               </View>
               {isCombinedMode && (
                 <View className="bg-emerald-500/20 px-2.5 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
-                  <Text className="text-emerald-300 font-bold text-[10px]">ACTIVE</Text>
+                  <Text className={`font-bold text-[10px] ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>ACTIVE</Text>
                 </View>
               )}
             </View>
-            <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
-              1 printer prints Customer Bill and Kitchen Slip one after the other on payment. <Text className="text-slate-300 font-semibold">"Send KOT" button is hidden.</Text>
+            <Text className={`text-xs ml-5 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              1 printer prints Customer Bill and Kitchen Slip one after the other on payment. <Text className={`font-semibold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>"Send KOT" button is hidden.</Text>
             </Text>
           </TouchableOpacity>
 
@@ -621,23 +621,23 @@ export const PrinterSettingsScreen = () => {
             onPress={() => setWorkflowMode('SINGLE_BILL_ONLY')}
             className={`p-4 rounded-2xl border mb-3 ${
               isSingleBillMode
-                ? 'bg-amber-950/30 border-amber-500/60'
-                : 'bg-slate-950/60 border-slate-800'
+                ? isDark ? 'bg-amber-950/30 border-amber-500/60' : 'bg-amber-50 border-amber-400'
+                : isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}
           >
             <View className="flex-row items-center justify-between mb-1">
               <View className="flex-row items-center flex-1 mr-2 flex-wrap">
-                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isSingleBillMode ? 'bg-amber-600' : 'bg-slate-800'}`} />
-                <Text className="text-white font-bold text-sm">3. Single Printer (Bill Only - Quick Service)</Text>
+                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isSingleBillMode ? 'bg-amber-600' : (isDark ? 'bg-slate-800' : 'bg-slate-300')}`} />
+                <Text className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>3. Single Printer (Bill Only - Quick Service)</Text>
               </View>
               {isSingleBillMode && (
                 <View className="bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30 shrink-0">
-                  <Text className="text-amber-300 font-bold text-[10px]">ACTIVE</Text>
+                  <Text className={`font-bold text-[10px] ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>ACTIVE</Text>
                 </View>
               )}
             </View>
-            <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
-              1 printer prints Customer Bill only. No kitchen tickets, and <Text className="text-slate-300 font-semibold">"Send KOT" button is hidden.</Text>
+            <Text className={`text-xs ml-5 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              1 printer prints Customer Bill only. No kitchen tickets, and <Text className={`font-semibold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>"Send KOT" button is hidden.</Text>
             </Text>
           </TouchableOpacity>
 
@@ -646,23 +646,23 @@ export const PrinterSettingsScreen = () => {
             onPress={() => setWorkflowMode('SINGLE_KOT_ONLY')}
             className={`p-4 rounded-2xl border ${
               isSingleKotMode
-                ? 'bg-sky-950/30 border-sky-500/60'
-                : 'bg-slate-950/60 border-slate-800'
+                ? isDark ? 'bg-sky-950/30 border-sky-500/60' : 'bg-sky-50 border-sky-400'
+                : isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
             }`}
           >
             <View className="flex-row items-center justify-between mb-1">
               <View className="flex-row items-center flex-1 mr-2 flex-wrap">
-                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isSingleKotMode ? 'bg-sky-500' : 'bg-slate-800'}`} />
-                <Text className="text-white font-bold text-sm">4. Single Printer (KOT / Token Only - No Bill)</Text>
+                <View className={`w-3 h-3 rounded-full mr-2 shrink-0 ${isSingleKotMode ? 'bg-sky-500' : (isDark ? 'bg-slate-800' : 'bg-slate-300')}`} />
+                <Text className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>4. Single Printer (KOT / Token Only - No Bill)</Text>
               </View>
               {isSingleKotMode && (
                 <View className="bg-sky-500/20 px-2.5 py-0.5 rounded-full border border-sky-500/30 shrink-0">
-                  <Text className="text-sky-300 font-bold text-[10px]">ACTIVE</Text>
+                  <Text className={`font-bold text-[10px] ${isDark ? 'text-sky-300' : 'text-sky-700'}`}>ACTIVE</Text>
                 </View>
               )}
             </View>
-            <Text className="text-slate-400 text-xs ml-5 leading-relaxed">
-              1 printer prints Kitchen KOT / Order Token slip only upon checkout. No main customer bill is printed. <Text className="text-slate-300 font-semibold">"Send KOT" button is hidden.</Text> Ideal for fast food, token counters, canteens & kiosks.
+            <Text className={`text-xs ml-5 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              1 printer prints Kitchen KOT / Order Token slip only upon checkout. No main customer bill is printed. <Text className={`font-semibold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>"Send KOT" button is hidden.</Text> Ideal for fast food, token counters, canteens & kiosks.
             </Text>
           </TouchableOpacity>
         </View>
@@ -789,8 +789,8 @@ export const PrinterSettingsScreen = () => {
           </View>
 
           {/* Connection Type Switcher */}
-          <Text className="text-slate-300 font-bold text-xs mb-2">Connection Interface</Text>
-          <View className="flex-row bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-4">
+          <Text className={`font-bold text-xs mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Connection Interface</Text>
+          <View className={`flex-row p-1 rounded-2xl border mb-4 ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => setPrinterType('LAN')}
@@ -798,8 +798,8 @@ export const PrinterSettingsScreen = () => {
                 printerType === 'LAN' ? 'bg-[#5D3FD3]' : ''
               }`}
             >
-              <Wifi size={14} color={printerType === 'LAN' ? '#FFF' : '#94A3B8'} />
-              <Text className={`text-xs font-black ml-1.5 ${printerType === 'LAN' ? 'text-white' : 'text-slate-400'}`}>
+              <Wifi size={14} color={printerType === 'LAN' ? '#FFF' : (isDark ? '#94A3B8' : '#64748B')} />
+              <Text className={`text-xs font-black ml-1.5 ${printerType === 'LAN' ? 'text-white' : (isDark ? 'text-slate-400' : 'text-slate-600')}`}>
                 LAN / Wi-Fi (IP)
               </Text>
             </TouchableOpacity>
@@ -811,8 +811,8 @@ export const PrinterSettingsScreen = () => {
                 printerType === 'USB' ? 'bg-indigo-600' : ''
               }`}
             >
-              <Usb size={14} color={printerType === 'USB' ? '#FFF' : '#94A3B8'} />
-              <Text className={`text-xs font-black ml-1.5 ${printerType === 'USB' ? 'text-white' : 'text-slate-400'}`}>
+              <Usb size={14} color={printerType === 'USB' ? '#FFF' : (isDark ? '#94A3B8' : '#64748B')} />
+              <Text className={`text-xs font-black ml-1.5 ${printerType === 'USB' ? 'text-white' : (isDark ? 'text-slate-400' : 'text-slate-600')}`}>
                 USB (Windows Cable)
               </Text>
             </TouchableOpacity>
@@ -821,18 +821,20 @@ export const PrinterSettingsScreen = () => {
           {printerType === 'USB' ? (
             <View className="mb-2">
               <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-slate-300 font-bold text-xs">Installed Windows Printers</Text>
+                <Text className={`font-bold text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Installed Windows Printers</Text>
                 <TouchableOpacity
                   onPress={refreshWindowsPrinters}
-                  className="flex-row items-center bg-white/5 px-2 py-1 rounded-lg border border-white/10 active:bg-white/10"
+                  className={`flex-row items-center px-2 py-1 rounded-lg border ${
+                    isDark ? 'bg-white/5 border-white/10 active:bg-white/10' : 'bg-indigo-50 border-indigo-200'
+                  }`}
                 >
-                  <RefreshCw size={11} color="#818CF8" />
-                  <Text className="text-indigo-400 text-[10px] font-bold ml-1">Scan Printers</Text>
+                  <RefreshCw size={11} color="#6366F1" />
+                  <Text className={`text-[10px] font-bold ml-1 ${isDark ? 'text-indigo-400' : 'text-indigo-700'}`}>Scan Printers</Text>
                 </TouchableOpacity>
               </View>
 
               {detectedPrinters.length > 0 ? (
-                <View className="bg-slate-950 rounded-2xl p-2 border border-slate-800 mb-3">
+                <View className={`rounded-2xl p-2 border mb-3 ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                   {detectedPrinters.map((name) => {
                     const isSelected = printerName === name;
                     return (
@@ -840,23 +842,23 @@ export const PrinterSettingsScreen = () => {
                         key={name}
                         onPress={() => setPrinterName(name)}
                         className={`flex-row items-center justify-between p-2.5 rounded-xl mb-1 ${
-                          isSelected ? 'bg-indigo-600/20 border border-indigo-500/30' : 'bg-transparent'
+                          isSelected ? (isDark ? 'bg-indigo-600/20 border border-indigo-500/30' : 'bg-indigo-50 border border-indigo-300') : 'bg-transparent'
                         }`}
                       >
                         <View className="flex-row items-center flex-1 mr-2">
-                          <Printer size={15} color={isSelected ? '#818CF8' : '#64748B'} />
-                          <Text className={`text-xs ml-2 font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                          <Printer size={15} color={isSelected ? '#6366F1' : '#64748B'} />
+                          <Text className={`text-xs ml-2 font-bold ${isSelected ? (isDark ? 'text-white' : 'text-indigo-900') : (isDark ? 'text-slate-300' : 'text-slate-700')}`}>
                             {name}
                           </Text>
                         </View>
-                        {isSelected && <CheckCircle2 size={16} color="#818CF8" />}
+                        {isSelected && <CheckCircle2 size={16} color="#6366F1" />}
                       </TouchableOpacity>
                     );
                   })}
                 </View>
               ) : (
-                <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 mb-3">
-                  <Text className="text-slate-400 text-xs">
+                <View className={`p-3 rounded-2xl border mb-3 ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     {isLoadingPrinters ? 'Scanning printers on Windows...' : 'No printers detected. Ensure USB thermal printer is plugged in and turned ON.'}
                   </Text>
                 </View>
@@ -866,15 +868,15 @@ export const PrinterSettingsScreen = () => {
               <View className="flex-row gap-2 mb-3">
                 <TouchableOpacity
                   onPress={() => setPrinterName('POS-80')}
-                  className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl active:bg-white/10"
+                  className={`border px-3 py-1.5 rounded-xl ${isDark ? 'bg-white/5 border-white/10 active:bg-white/10' : 'bg-slate-100 border-slate-300'}`}
                 >
-                  <Text className="text-indigo-300 font-bold text-[11px]">Set: POS-80</Text>
+                  <Text className={`font-bold text-[11px] ${isDark ? 'text-indigo-300' : 'text-indigo-700'}`}>Set: POS-80</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setPrinterName('Gobbler 80mm')}
-                  className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl active:bg-white/10"
+                  className={`border px-3 py-1.5 rounded-xl ${isDark ? 'bg-white/5 border-white/10 active:bg-white/10' : 'bg-slate-100 border-slate-300'}`}
                 >
-                  <Text className="text-indigo-300 font-bold text-[11px]">Set: Gobbler 80mm</Text>
+                  <Text className={`font-bold text-[11px] ${isDark ? 'text-indigo-300' : 'text-indigo-700'}`}>Set: Gobbler 80mm</Text>
                 </TouchableOpacity>
               </View>
 
@@ -986,9 +988,9 @@ export const PrinterSettingsScreen = () => {
 
             {kitchenPrinterType === 'USB' ? (
               <View className="mb-2">
-                <Text className="text-slate-300 font-bold text-xs mb-2">Select Kitchen USB Printer</Text>
+                <Text className={`font-bold text-xs mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Select Kitchen USB Printer</Text>
                 {detectedPrinters.length > 0 ? (
-                  <View className="bg-slate-950 rounded-2xl p-2 border border-slate-800 mb-3">
+                  <View className={`rounded-2xl p-2 border mb-3 ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                     {detectedPrinters.map((name) => {
                       const isSelected = kitchenPrinterName === name;
                       return (
@@ -996,12 +998,12 @@ export const PrinterSettingsScreen = () => {
                           key={name}
                           onPress={() => setKitchenPrinterName(name)}
                           className={`flex-row items-center justify-between p-2.5 rounded-xl mb-1 ${
-                            isSelected ? 'bg-amber-600/20 border border-amber-500/30' : 'bg-transparent'
+                            isSelected ? (isDark ? 'bg-amber-600/20 border border-amber-500/30' : 'bg-amber-50 border border-amber-300') : 'bg-transparent'
                           }`}
                         >
                           <View className="flex-row items-center flex-1 mr-2">
                             <Printer size={15} color={isSelected ? '#F59E0B' : '#64748B'} />
-                            <Text className={`text-xs ml-2 font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                            <Text className={`text-xs ml-2 font-bold ${isSelected ? (isDark ? 'text-white' : 'text-amber-900') : (isDark ? 'text-slate-300' : 'text-slate-700')}`}>
                               {name}
                             </Text>
                           </View>
@@ -1011,8 +1013,8 @@ export const PrinterSettingsScreen = () => {
                     })}
                   </View>
                 ) : (
-                  <View className="bg-slate-950 p-3 rounded-2xl border border-slate-800 mb-3">
-                    <Text className="text-slate-400 text-xs">No USB printers detected.</Text>
+                  <View className={`p-3 rounded-2xl border mb-3 ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                    <Text className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>No USB printers detected.</Text>
                   </View>
                 )}
 
@@ -1088,15 +1090,17 @@ export const PrinterSettingsScreen = () => {
               <TouchableOpacity
                 onPress={testBillingPrinter}
                 disabled={isTestingBilling}
-                className="flex-1 bg-indigo-600/20 border border-indigo-500/40 p-3 rounded-2xl items-center justify-center"
+                className={`flex-1 p-3 rounded-2xl items-center justify-center border ${
+                  isDark ? 'bg-indigo-600/20 border-indigo-500/40' : 'bg-indigo-50 border-indigo-200'
+                }`}
               >
                 {isTestingBilling ? (
-                  <ActivityIndicator size="small" color="#818CF8" />
+                  <ActivityIndicator size="small" color="#6366F1" />
                 ) : (
                   <View className="items-center">
-                    <Printer size={16} color="#818CF8" />
-                    <Text className="text-indigo-300 font-bold text-xs mt-1">Test Counter Bill</Text>
-                    <Text className="text-slate-400 text-[10px] mt-0.5" numberOfLines={1}>
+                    <Printer size={16} color="#6366F1" />
+                    <Text className={`font-bold text-xs mt-1 ${isDark ? 'text-indigo-300' : 'text-indigo-700'}`}>Test Counter Bill</Text>
+                    <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} numberOfLines={1}>
                       {printerType === 'USB' ? (printerName || 'USB') : (ipAddress || 'Not set')}
                     </Text>
                   </View>
@@ -1106,15 +1110,17 @@ export const PrinterSettingsScreen = () => {
               <TouchableOpacity
                 onPress={testKitchenPrinter}
                 disabled={isTestingKitchen}
-                className="flex-1 bg-amber-600/20 border border-amber-500/40 p-3 rounded-2xl items-center justify-center"
+                className={`flex-1 p-3 rounded-2xl items-center justify-center border ${
+                  isDark ? 'bg-amber-600/20 border-amber-500/40' : 'bg-amber-50 border-amber-200'
+                }`}
               >
                 {isTestingKitchen ? (
                   <ActivityIndicator size="small" color="#F59E0B" />
                 ) : (
                   <View className="items-center">
                     <Printer size={16} color="#F59E0B" />
-                    <Text className="text-amber-300 font-bold text-xs mt-1">Test Kitchen KOT</Text>
-                    <Text className="text-slate-400 text-[10px] mt-0.5" numberOfLines={1}>
+                    <Text className={`font-bold text-xs mt-1 ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>Test Kitchen KOT</Text>
+                    <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} numberOfLines={1}>
                       {kitchenPrinterType === 'USB' ? (kitchenPrinterName || 'USB') : (kitchenIpAddress || 'Not set')}
                     </Text>
                   </View>
@@ -1127,15 +1133,17 @@ export const PrinterSettingsScreen = () => {
             <TouchableOpacity
               onPress={testBillingPrinter}
               disabled={isTestingBilling}
-              className="w-full bg-amber-600/20 border border-amber-500/40 p-3.5 rounded-2xl items-center justify-center"
+              className={`w-full p-3.5 rounded-2xl items-center justify-center border ${
+                isDark ? 'bg-amber-600/20 border-amber-500/40' : 'bg-amber-50 border-amber-200'
+              }`}
             >
               {isTestingBilling ? (
                 <ActivityIndicator size="small" color="#F59E0B" />
               ) : (
                 <View className="items-center">
                   <Printer size={16} color="#F59E0B" />
-                  <Text className="text-amber-300 font-bold text-xs mt-1">Test Counter Bill Print</Text>
-                  <Text className="text-slate-400 text-[10px] mt-0.5">
+                  <Text className={`font-bold text-xs mt-1 ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>Test Counter Bill Print</Text>
+                  <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
                   </Text>
                 </View>
@@ -1147,15 +1155,17 @@ export const PrinterSettingsScreen = () => {
             <TouchableOpacity
               onPress={testTiffinTwoPrints}
               disabled={isTestingTiffin}
-              className="w-full bg-emerald-600/20 border border-emerald-500/40 p-3.5 rounded-2xl items-center justify-center"
+              className={`w-full p-3.5 rounded-2xl items-center justify-center border ${
+                isDark ? 'bg-emerald-600/20 border-emerald-500/40' : 'bg-emerald-50 border-emerald-200'
+              }`}
             >
               {isTestingTiffin ? (
-                <ActivityIndicator size="small" color="#34D399" />
+                <ActivityIndicator size="small" color="#10B981" />
               ) : (
                 <View className="items-center">
-                  <Coffee size={16} color="#34D399" />
-                  <Text className="text-emerald-300 font-bold text-xs mt-1">Test 2-Print Slip (Bill + Kitchen Slip)</Text>
-                  <Text className="text-slate-400 text-[10px] mt-0.5">
+                  <Coffee size={16} color="#10B981" />
+                  <Text className={`font-bold text-xs mt-1 ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>Test 2-Print Slip (Bill + Kitchen Slip)</Text>
+                  <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
                   </Text>
                 </View>
@@ -1167,15 +1177,17 @@ export const PrinterSettingsScreen = () => {
             <TouchableOpacity
               onPress={testSingleKotPrint}
               disabled={isTestingKotOnly}
-              className="w-full bg-sky-600/20 border border-sky-500/40 p-3.5 rounded-2xl items-center justify-center"
+              className={`w-full p-3.5 rounded-2xl items-center justify-center border ${
+                isDark ? 'bg-sky-600/20 border-sky-500/40' : 'bg-sky-50 border-sky-200'
+              }`}
             >
               {isTestingKotOnly ? (
-                <ActivityIndicator size="small" color="#38BDF8" />
+                <ActivityIndicator size="small" color="#0EA5E9" />
               ) : (
                 <View className="items-center">
-                  <Ticket size={16} color="#38BDF8" />
-                  <Text className="text-sky-300 font-bold text-xs mt-1">Test KOT / Token Slip Print</Text>
-                  <Text className="text-slate-400 text-[10px] mt-0.5">
+                  <Ticket size={16} color="#0EA5E9" />
+                  <Text className={`font-bold text-xs mt-1 ${isDark ? 'text-sky-300' : 'text-sky-700'}`}>Test KOT / Token Slip Print</Text>
+                  <Text className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {printerType === 'USB' ? printerName : `${ipAddress}:${port}`}
                   </Text>
                 </View>

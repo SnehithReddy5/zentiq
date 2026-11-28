@@ -30,7 +30,6 @@ import {
   SlidersHorizontal,
   Sun,
   X,
-  Zap,
 } from 'lucide-react-native';
 import { HamburgerMenu } from '../../components/common/HamburgerMenu';
 import { Routes } from '../../constants/routes';
@@ -102,8 +101,10 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
   const hasMultiBranchAccess =
     (user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'PLATFORM_ADMIN') &&
     (!userAssigned || (user?.locationIds && user?.locationIds.includes('*')));
+  const isWaiter = user?.role === 'WAITER' || user?.role === 'captain';
+  const isBillerOrAbove = !isWaiter;
   const isManagerOrAbove =
-    hasMultiBranchAccess || user?.role === 'MANAGER' || user?.role === 'manager';
+    hasMultiBranchAccess || user?.role === 'MANAGER' || user?.role === 'manager' || user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'TENANT_SUPER_ADMIN' || user?.role === 'PLATFORM_ADMIN';
 
   const activeLocation = getActiveLocation();
   const businessTitle = branding?.displayName || branding?.businessName || tenant?.businessName || 'Zentiq POS';
@@ -439,6 +440,8 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
                 ctx={ctx}
                 isDark={isDark}
                 isEditMode={isEditMode}
+                canSettle={isBillerOrAbove}
+                canManageTables={isManagerOrAbove}
                 isBusyPrint={busyPrintTableNo === table.tableNo}
                 isBusySettle={busySettleTableNo === table.tableNo}
                 onPressTable={handleTablePress}
@@ -488,14 +491,14 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           isDark ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-200'
         }`}
       >
-        {/* Row 1: Brand/Branch + Quick Utility Shortcuts + Pick Up */}
+        {/* Row 1: Brand/Branch (full visibility on mobile) + Pick Up + Theme */}
         <View className="flex-row items-center justify-between gap-2">
           <View className="flex-row items-center flex-1 min-w-0 gap-2">
             {!isHomeRoot && (
               <TouchableOpacity
                 onPress={() => navigation.goBack()}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                className={`p-2 rounded-xl border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
+                className={`p-2 rounded-xl border shrink-0 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
                 accessibilityLabel="Back"
               >
                 <ArrowLeft size={16} color={isDark ? '#CBD5E1' : '#475569'} />
@@ -504,7 +507,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
 
             <TouchableOpacity
               onPress={() => setSidebarOpen(true)}
-              className={`p-2 rounded-xl border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
+              className={`p-2 rounded-xl border shrink-0 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
               accessibilityLabel="Open Navigation Menu"
             >
               <MenuIcon size={17} color={isDark ? '#CBD5E1' : '#475569'} />
@@ -517,14 +520,14 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
               {onOpenBranchPicker ? (
                 <TouchableOpacity onPress={onOpenBranchPicker} className="flex-row items-center">
                   <MapPin size={11} color="#A855F7" />
-                  <Text className="text-purple-500 text-[11px] font-bold ml-1" numberOfLines={1}>
+                  <Text className="text-purple-500 text-xs font-bold ml-1 flex-1" numberOfLines={2}>
                     {activeLocation?.name || 'Select Branch'} ▾
                   </Text>
                 </TouchableOpacity>
               ) : (
                 <View className="flex-row items-center">
                   <MapPin size={11} color="#10B981" />
-                  <Text className="text-emerald-500 text-[11px] font-bold ml-1" numberOfLines={1}>
+                  <Text className="text-emerald-500 text-xs font-bold ml-1 flex-1" numberOfLines={2}>
                     {activeLocation?.name || 'Table View'}
                   </Text>
                 </View>
@@ -533,23 +536,25 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           </View>
 
           <View className="flex-row items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Compact Sales / Bill History shortcut */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate(Routes.ORDERS)}
-              className={`px-2.5 py-2 rounded-xl border flex-row items-center ${
-                isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
-              }`}
-            >
-              <Receipt size={14} color={isDark ? '#CBD5E1' : '#475569'} />
-              <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                {isLargePOS && todaySales !== undefined
-                  ? `₹${todaySales.toFixed(0)} • ${todayOrdersCount || 0} Bills`
-                  : 'Orders'}
-              </Text>
-            </TouchableOpacity>
+            {/* Desktop-only Today Sales chip (removed on mobile to keep branch name fully visible) */}
+            {isLargePOS && isBillerOrAbove && (
+              <TouchableOpacity
+                onPress={() => navigation.navigate(Routes.ORDERS)}
+                className={`px-2.5 py-2 rounded-xl border flex-row items-center ${
+                  isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <Receipt size={14} color={isDark ? '#CBD5E1' : '#475569'} />
+                <Text className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                  {todaySales !== undefined
+                    ? `₹${todaySales.toFixed(0)} • ${todayOrdersCount || 0} Bills`
+                    : 'Orders'}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {/* Online Aggregators (Zomato & Swiggy) */}
-            {onOpenAggregator && (
+            {onOpenAggregator && isBillerOrAbove && (
               <View className="hidden sm:flex flex-row items-center gap-1.5">
                 <TouchableOpacity
                   onPress={() => onOpenAggregator('zomato')}
@@ -590,10 +595,10 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
             {pickupEnabled && (
               <TouchableOpacity
                 onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'PICKUP' })}
-                className="bg-[#DC2626] px-3 py-2 rounded-xl flex-row items-center shadow-sm active:opacity-90"
+                className="bg-[#DC2626] px-2.5 sm:px-3 py-2 rounded-xl flex-row items-center shadow-sm active:opacity-90"
               >
                 <ShoppingBag size={14} color="white" />
-                <Text className="text-white font-bold text-xs ml-1.5">Pick Up</Text>
+                <Text className="text-white font-bold text-xs ml-1">Pick Up</Text>
               </TouchableOpacity>
             )}
 
@@ -609,42 +614,32 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
           </View>
         </View>
 
-        {/* Row 2: New Order + Bill Search + Refresh + Online Mobile Pill */}
-        <View className="flex-row items-center justify-between gap-2 flex-wrap">
-          <View className="flex-row items-center gap-2 flex-1 min-w-[200px]">
-            <TouchableOpacity
-              onPress={() => navigation.navigate(Routes.MENU, { tableNo: 0, orderType: 'COUNTER' })}
-              className="bg-[#5D3FD3] px-3 py-1.5 rounded-xl flex-row items-center shadow-sm active:opacity-90"
-            >
-              <Zap size={13} color="white" />
-              <Text className="text-white font-bold text-xs ml-1">New Order</Text>
-            </TouchableOpacity>
-
-            <View
-              className={`flex-1 flex-row items-center px-2.5 py-1 rounded-xl border max-w-[240px] ${
-                isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'
-              }`}
-            >
-              <Search size={13} color="#94A3B8" />
-              <TextInput
-                value={billSearchQuery}
-                onChangeText={setBillSearchQuery}
-                onSubmitEditing={handleBillSearchSubmit}
-                placeholder="Bill No / Table #"
-                placeholderTextColor="#94A3B8"
-                returnKeyType="search"
-                className={`ml-1.5 py-0.5 text-xs flex-1 ${isDark ? 'text-white' : 'text-slate-800'}`}
-              />
-              {billSearchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setBillSearchQuery('')}>
-                  <X size={13} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
-            </View>
+        {/* Row 2: Bill/Table Search + Online Mobile Pill + Refresh */}
+        <View className="flex-row items-center justify-between gap-2">
+          <View
+            className={`flex-1 flex-row items-center px-2.5 py-1.5 rounded-xl border sm:max-w-[280px] ${
+              isDark ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'
+            }`}
+          >
+            <Search size={13} color="#94A3B8" />
+            <TextInput
+              value={billSearchQuery}
+              onChangeText={setBillSearchQuery}
+              onSubmitEditing={handleBillSearchSubmit}
+              placeholder="Search Bill No or Table #"
+              placeholderTextColor="#94A3B8"
+              returnKeyType="search"
+              className={`ml-1.5 py-0 text-xs flex-1 ${isDark ? 'text-white' : 'text-slate-800'}`}
+            />
+            {billSearchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setBillSearchQuery('')}>
+                <X size={13} color="#94A3B8" />
+              </TouchableOpacity>
+            )}
           </View>
 
-          <View className="flex-row items-center gap-1.5">
-            {onOpenAggregator && (zomatoOrdersCount + swiggyOrdersCount) > 0 && (
+          <View className="flex-row items-center gap-1.5 shrink-0">
+            {onOpenAggregator && isBillerOrAbove && (zomatoOrdersCount + swiggyOrdersCount) > 0 && (
               <TouchableOpacity
                 onPress={() => onOpenAggregator(zomatoOrdersCount > 0 ? 'zomato' : 'swiggy')}
                 className="sm:hidden bg-amber-500/15 border border-amber-500/30 px-2.5 py-1.5 rounded-xl flex-row items-center"
@@ -658,7 +653,7 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
 
             <TouchableOpacity
               onPress={handleRefresh}
-              className={`p-1.5 rounded-xl border ${
+              className={`p-2 rounded-xl border ${
                 isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
               }`}
               accessibilityLabel="Refresh Tables"
@@ -713,38 +708,40 @@ export const TablesScreen: React.FC<TablesScreenProps> = ({
         }`}
       >
         <View className="flex-row flex-wrap items-center justify-between gap-2">
-          <View className="flex-row items-center gap-1.5 flex-wrap">
-            <TouchableOpacity
-              onPress={handleAddTable}
-              disabled={isAdding}
-              className="bg-[#5D3FD3] px-2.5 py-1.5 rounded-xl flex-row items-center shadow-sm"
-            >
-              {isAdding ? <ActivityIndicator size="small" color="white" /> : <Plus size={13} color="white" />}
-              <Text className="text-white font-bold text-xs ml-1">Add Table</Text>
-            </TouchableOpacity>
+          {isManagerOrAbove && (
+            <View className="flex-row items-center gap-1.5 flex-wrap">
+              <TouchableOpacity
+                onPress={handleAddTable}
+                disabled={isAdding}
+                className="bg-[#5D3FD3] px-2.5 py-1.5 rounded-xl flex-row items-center shadow-sm"
+              >
+                {isAdding ? <ActivityIndicator size="small" color="white" /> : <Plus size={13} color="white" />}
+                <Text className="text-white font-bold text-xs ml-1">Add Table</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setIsEditMode(prev => !prev)}
-              className={`px-2.5 py-1.5 rounded-xl border flex-row items-center ${
-                isEditMode
-                  ? 'bg-amber-500 border-amber-600'
-                  : isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
-              }`}
-            >
-              <SlidersHorizontal size={12} color={isEditMode ? '#FFFFFF' : isDark ? '#CBD5E1' : '#475569'} />
-              <Text className={`text-xs font-bold ml-1 ${isEditMode ? 'text-white' : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                {isEditMode ? 'Done' : 'Manage'}
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setIsEditMode(prev => !prev)}
+                className={`px-2.5 py-1.5 rounded-xl border flex-row items-center ${
+                  isEditMode
+                    ? 'bg-amber-500 border-amber-600'
+                    : isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'
+                }`}
+              >
+                <SlidersHorizontal size={12} color={isEditMode ? '#FFFFFF' : isDark ? '#CBD5E1' : '#475569'} />
+                <Text className={`text-xs font-bold ml-1 ${isEditMode ? 'text-white' : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                  {isEditMode ? 'Done' : 'Manage'}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setIsQrModalOpen(true)}
-              className="bg-emerald-600 px-2.5 py-1.5 rounded-xl flex-row items-center shadow-sm"
-            >
-              <QrCode size={12} color="white" />
-              <Text className="text-white font-bold text-xs ml-1">QRs</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                onPress={() => setIsQrModalOpen(true)}
+                className="bg-emerald-600 px-2.5 py-1.5 rounded-xl flex-row items-center shadow-sm"
+              >
+                <QrCode size={12} color="white" />
+                <Text className="text-white font-bold text-xs ml-1">QRs</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <ScrollView
             horizontal
